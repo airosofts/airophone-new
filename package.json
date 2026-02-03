@@ -1,0 +1,40 @@
+{
+  "name": "sms-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:generate-types": "supabase gen types typescript --project-id YOUR_PROJECT_ID > types/supabase.ts",
+    "test-sms": "node scripts/test-sms.js"
+  },
+  "dependencies": {
+    "@fortawesome/fontawesome-svg-core": "^7.0.1",
+    "@fortawesome/free-solid-svg-icons": "^7.0.1",
+    "@fortawesome/react-fontawesome": "^3.0.2",
+    "@stripe/react-stripe-js": "^5.2.0",
+    "@stripe/stripe-js": "^8.1.0",
+    "@supabase/supabase-js": "^2.56.0",
+    "@telnyx/webrtc": "^2.22.17",
+    "axios": "^1.11.0",
+    "bcryptjs": "^3.0.2",
+    "date-fns-tz": "^3.2.0",
+    "jsonwebtoken": "^9.0.2",
+    "lucide-react": "^0.541.0",
+    "next": "^16.1.6",
+    "papaparse": "^5.5.3",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "stripe": "^19.1.0"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^24.3.0",
+    "eslint": "^9",
+    "eslint-config-next": "^16.1.6",
+    "tailwindcss": "^4"
+  }
+}
