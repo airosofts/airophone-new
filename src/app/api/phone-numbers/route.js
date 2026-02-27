@@ -53,7 +53,8 @@ export async function GET(request) {
           voiceProfileId: phone.voice_profile_id,
           capabilities: phone.capabilities,
           purchasedAt: phone.purchased_at,
-          custom_name: phone.custom_name
+          custom_name: phone.custom_name,
+          prefix: phone.prefix
         }))
 
         // Deduplicate by phone number (keep the most recent entry)
@@ -265,7 +266,7 @@ export async function PATCH(request) {
     }
 
     const body = await request.json()
-    const { phoneNumberId, customName } = body
+    const { phoneNumberId, customName, prefix } = body
 
     if (!phoneNumberId) {
       return NextResponse.json(
@@ -274,15 +275,16 @@ export async function PATCH(request) {
       )
     }
 
-    console.log('Updating custom name for phone number:', phoneNumberId, 'to:', customName)
+    console.log('Updating phone number:', phoneNumberId, { customName, prefix })
 
-    // Update custom_name in database
+    const updateFields = { updated_at: new Date().toISOString() }
+    if (customName !== undefined) updateFields.custom_name = customName
+    if (prefix !== undefined) updateFields.prefix = prefix
+
+    // Update in database
     const { data, error } = await supabaseAdmin
       .from('phone_numbers')
-      .update({
-        custom_name: customName,
-        updated_at: new Date().toISOString()
-      })
+      .update(updateFields)
       .eq('id', phoneNumberId)
       .eq('workspace_id', workspace.workspaceId)
       .select()
@@ -304,7 +306,8 @@ export async function PATCH(request) {
       phoneNumber: {
         id: data.id,
         phoneNumber: data.phone_number,
-        custom_name: data.custom_name
+        custom_name: data.custom_name,
+        prefix: data.prefix
       },
       timestamp: new Date().toISOString()
     })

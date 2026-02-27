@@ -18,6 +18,7 @@ export async function GET(request) {
 
     const { searchParams } = new URL(request.url)
     const contactListId = searchParams.get('contact_list_id')
+    const q = searchParams.get('q')
 
     let query = supabaseAdmin
       .from('contacts')
@@ -30,6 +31,11 @@ export async function GET(request) {
 
     if (contactListId) {
       query = query.eq('contact_list_id', contactListId)
+    }
+
+    if (q) {
+      query = query.or(`business_name.ilike.%${q}%,phone_number.ilike.%${q}%`)
+      query = query.limit(10)
     }
 
     const { data: contacts, error } = await query

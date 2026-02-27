@@ -3,12 +3,12 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
-import { apiGet } from '@/lib/api-client'
+import { apiGet, apiPost, apiDelete } from '@/lib/api-client'
 import { validateAndUpgradeSession } from '@/lib/session-validator'
 import ConversationList from '@/components/inbox/ConversationList'
 import ChatWindow from '@/components/inbox/ChatWindow'
 import ContactPanel from '@/components/inbox/ContactPanel'
-import NewMessageModal from '@/components/inbox/NewMessageModal'
+import NewConversationView from '@/components/inbox/NewConversationView'
 import FilterTabs from '@/components/inbox/FilterTabs'
 import CallInterface from '@/components/calling/CallInterface'
 import { useRealtimeConversations, useRealtimeMessages } from '@/hooks/useRealtime'
@@ -18,7 +18,7 @@ import SkeletonLoader from '@/components/ui/skeleton-loader'
 export default function InboxPage() {
   const [phoneNumbers, setPhoneNumbers] = useState([])
   const [selectedConversation, setSelectedConversation] = useState(null)
-  const [showNewMessageModal, setShowNewMessageModal] = useState(false)
+  const [isCreatingNewConversation, setIsCreatingNewConversation] = useState(false)
   const [showContactPanel, setShowContactPanel] = useState(false)
   const [filter, setFilter] = useState('all')
   const [user, setUser] = useState(null)
@@ -108,6 +108,7 @@ export default function InboxPage() {
   const handleConversationSelect = async (conversation) => {
     setActiveConversation(conversation.id)
     setSelectedConversation(conversation)
+    setIsCreatingNewConversation(false)
     setShowContactPanel(false)
     setMobileView('chat') // Switch to chat view on mobile
 
@@ -137,8 +138,17 @@ export default function InboxPage() {
   const handleConversationDeselect = () => {
     setActiveConversation(null)
     setSelectedConversation(null)
+    setIsCreatingNewConversation(false)
     setShowContactPanel(false)
     setMobileView('list') // Go back to list on mobile
+  }
+
+  const handleNewConversationCreated = (conversation) => {
+    setIsCreatingNewConversation(false)
+    setSelectedConversation(conversation)
+    setActiveConversation(conversation.id)
+    setMobileView('chat')
+    refetch()
   }
 
   const handleDeleteConversation = async (conversationId) => {
@@ -218,6 +228,28 @@ export default function InboxPage() {
     }
   }
 
+  const handleBlockContact = async (conversationId, phoneNumber) => {
+    try {
+      // Optimistically remove the conversation from the list
+      if (selectedConversation?.id === conversationId) {
+        handleConversationDeselect()
+      }
+
+      const response = await apiPost('/api/contacts/block', { phoneNumber })
+
+      if (!response.ok) {
+        console.error('Failed to block contact')
+        refetch()
+      } else {
+        // Remove conversation from local state
+        refetch(true)
+      }
+    } catch (error) {
+      console.error('Error blocking contact:', error)
+      refetch()
+    }
+  }
+
   const handlePinConversation = async (conversationId) => {
     try {
       const conversation = conversations.find(c => c.id === conversationId)
@@ -244,20 +276,32 @@ export default function InboxPage() {
     }
   }
 
-  const filteredConversations = conversations.filter(conv => {
-    switch (filter) {
-      case 'unread':
-        return conv.unreadCount > 0
-      case 'open':
-        return conv.status !== 'closed'
-      case 'done':
-        return conv.status === 'closed'
-      case 'unresponded':
-        return conv.lastMessage?.direction === 'inbound'
-      default:
-        return true
-    }
-  })
+  const filteredConversations = conversations
+    .filter(conv => {
+      switch (filter) {
+        case 'unread':
+          return conv.unreadCount > 0
+        case 'open':
+          return conv.status !== 'closed'
+        case 'done':
+          return conv.status === 'closed'
+        case 'unresponded':
+          return conv.lastMessage?.direction === 'inbound'
+        default:
+          return true
+      }
+    })
+    .sort((a, b) => {
+      if (a.pinned && !b.pinned) return -1
+      if (!a.pinned && b.pinned) return 1
+      return 0
+    })
+
+  // Always use the up-to-date conversation from the live array so optimistic
+  // updates (pin, status, etc.) are reflected in the chat window immediately
+  const activeConversation = selectedConversation
+    ? conversations.find(c => c.id === selectedConversation.id) || selectedConversation
+    : null
 
   const formatPhoneNumber = (phone) => {
     if (!phone) return phone
@@ -293,35 +337,37 @@ export default function InboxPage() {
       {/* Conversation List - Hidden on mobile when chat is open */}
       <div className={`${mobileView === 'chat' ? 'hidden' : 'flex'} md:flex w-full md:w-96 border-r border-gray-200 flex-col`}>
         <div className="bg-white sticky top-0 z-10">
-          <div className="px-4 pt-4 pb-3 flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-gray-900">Inbox</h1>
+          {/* Row 1: Chats tab + compose icon */}
+          <div className="px-4 pt-3 pb-2 flex items-center justify-between">
+            <span className="text-sm font-semibold text-gray-900">Chats</span>
             <button
-              onClick={() => setShowNewMessageModal(true)}
-              className="p-2 bg-red-600 hover:bg-red-700 text-white rounded-full transition-colors"
-              title="New message"
+              onClick={() => {
+                setIsCreatingNewConversation(true)
+                setSelectedConversation(null)
+                setMobileView('chat')
+              }}
+              className="p-1.5 hover:bg-red-50 rounded-lg transition-colors"
+              title="New conversation"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-[#C54A3F]">
+                <path fillRule="evenodd" clipRule="evenodd" d="M15.1285 1.66675C16.8917 1.66675 18.3337 3.03489 18.3337 4.73971V12.8489L18.3282 13.0303C18.2303 14.6497 16.8287 15.9219 15.1285 15.9219L14.0608 15.9212L14.0602 18.5254L14.0532 18.6219C13.985 19.09 13.4269 19.3354 13.0313 19.0351L8.92956 15.9212L4.87212 15.9219C3.109 15.9219 1.66699 14.5537 1.66699 12.8489V4.73971C1.66699 3.03489 3.109 1.66675 4.87212 1.66675H15.1285ZM15.1285 2.94715H4.87212C3.80276 2.94715 2.94904 3.75714 2.94904 4.73971V12.8489C2.94904 13.8315 3.80276 14.6415 4.87212 14.6415H9.14562L9.24965 14.65C9.3523 14.6668 9.44984 14.7085 9.5335 14.772L12.7788 17.2344L12.7781 15.2817C12.7781 14.9281 13.0651 14.6415 13.4191 14.6415H15.1285C16.1979 14.6415 17.0516 13.8315 17.0516 12.8489V4.73971C17.0516 3.75714 16.1979 2.94715 15.1285 2.94715ZM14.1077 8.27685C14.0672 8.21813 14.0175 8.16426 13.9588 8.11741C13.6052 7.83486 13.06 7.85665 12.7502 8.2433L12.6925 8.3264L12.6618 8.38077C12.4778 8.71014 12.526 9.13374 12.8063 9.41372C13.1245 9.73151 13.6276 9.75084 13.969 9.47806L14.0585 9.3795C14.3042 9.07481 14.3451 8.69488 14.1808 8.39597L14.1077 8.27685ZM10.5415 8.11741C10.6002 8.16426 10.6499 8.21813 10.6904 8.27685L10.7635 8.39597C10.9278 8.69488 10.8869 9.07481 10.6412 9.3795L10.5517 9.47806C10.2103 9.75084 9.70723 9.73151 9.38903 9.41372C9.10869 9.13374 9.06051 8.71014 9.24452 8.38077L9.27516 8.3264L9.33294 8.2433C9.64266 7.85665 10.1879 7.83486 10.5415 8.11741ZM7.2701 8.27685C7.22957 8.21813 7.17986 8.16426 7.12122 8.11741C6.76759 7.83486 6.22236 7.85665 5.91264 8.2433L5.85486 8.3264L5.82422 8.38077C5.64021 8.71014 5.68839 9.13374 5.96873 9.41372C6.28693 9.73151 6.79 9.75084 7.1314 9.47806L7.2209 9.3795C7.46664 9.07481 7.50748 8.69488 7.34316 8.39597L7.2701 8.27685Z" fill="currentColor" />
               </svg>
             </button>
           </div>
 
-          <div className="px-4 pb-2">
-            <p className="text-sm text-gray-600">
-              {selectedPhoneNumber ? formatPhoneNumber(selectedPhoneNumber.phoneNumber) : 'No number selected'}
-            </p>
-          </div>
-
-          <div className="border-b border-gray-200">
+          {/* Row 2: Filter chips */}
+          <div className="px-3 pb-2.5">
             <FilterTabs currentFilter={filter} onFilterChange={setFilter} conversations={filteredConversations} />
           </div>
+
+          <div className="border-b border-gray-100" />
         </div>
 
         <div className="flex-1 overflow-y-auto scrollbar-thin">
           {phoneNumbers.length === 0 ? (
             <div className="p-8 text-center">
-              <div className="w-16 h-16 bg-gradient-to-br from-red-100 to-red-200 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
                 </svg>
               </div>
@@ -329,14 +375,14 @@ export default function InboxPage() {
               <p className="text-xs text-gray-500 mb-4">Purchase phone numbers to start messaging</p>
               <button
                 onClick={() => router.push('/settings?tab=numbers')}
-                className="px-6 py-2.5 bg-gradient-to-r from-[#C54A3F] to-[#B73E34] hover:from-[#B73E34] hover:to-[#A53329] text-white rounded-lg font-semibold shadow-lg transition-all duration-200 hover:scale-105"
+                className="px-4 py-2 bg-[#C54A3F] hover:bg-[#B73E34] text-white text-sm font-medium rounded-md transition-colors"
               >
                 Buy Phone Number
               </button>
             </div>
           ) : !selectedPhoneNumber ? (
             <div className="p-8 text-center">
-              <div className="w-16 h-16 bg-gradient-to-br from-gray-100 to-gray-200 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center mx-auto mb-4">
                 <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
                 </svg>
@@ -358,7 +404,9 @@ export default function InboxPage() {
               onMarkAsDone={handleMarkAsDone}
               onMarkAsOpen={handleMarkAsOpen}
               onPinConversation={handlePinConversation}
+              onBlockContact={handleBlockContact}
               callHook={callHook}
+              isCreatingNew={isCreatingNewConversation}
             />
           )}
         </div>
@@ -366,11 +414,24 @@ export default function InboxPage() {
 
       {/* Chat Window - Full width on mobile when open */}
       <div className={`${mobileView === 'list' ? 'hidden md:flex' : 'flex'} flex-1`}>
-        {selectedConversation ? (
+        {isCreatingNewConversation ? (
+          <div className="flex-1">
+            <NewConversationView
+              phoneNumber={selectedPhoneNumber}
+              formatPhoneNumber={formatPhoneNumber}
+              onConversationCreated={handleNewConversationCreated}
+              onCancel={() => {
+                setIsCreatingNewConversation(false)
+                setMobileView('list')
+              }}
+              user={user}
+            />
+          </div>
+        ) : activeConversation ? (
           <>
             <div className="flex-1">
               <ChatWindow
-                conversation={selectedConversation}
+                conversation={activeConversation}
                 messages={messages}
                 loading={messagesLoading}
                 phoneNumber={selectedPhoneNumber}
@@ -386,32 +447,36 @@ export default function InboxPage() {
                 mobileView={mobileView}
                 onMarkAsUnread={handleMarkAsUnread}
                 onMarkAsDone={handleMarkAsDone}
+                onMarkAsOpen={handleMarkAsOpen}
+                onPinConversation={handlePinConversation}
+                onBlockContact={handleBlockContact}
+                onDeleteConversation={handleDeleteConversation}
               />
             </div>
 
             {/* Contact Panel - Always visible on desktop, hidden on mobile */}
             <div className="hidden lg:block w-80 border-l border-gray-200 bg-white overflow-y-auto">
               <ContactPanel
-                conversation={selectedConversation}
+                conversation={activeConversation}
                 formatPhoneNumber={formatPhoneNumber}
                 user={user}
               />
             </div>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-gray-50 to-white p-8">
+          <div className="flex-1 flex items-center justify-center bg-white p-8">
             <div className="text-center max-w-md">
-              <div className="w-20 h-20 bg-gradient-to-br from-[#C54A3F]/10 to-[#B73E34]/10 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-lg">
-                <svg className="w-10 h-10 text-[#C54A3F]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center mx-auto mb-5">
+                <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
               </div>
-              <h3 className="text-2xl font-bold text-gray-900 mb-2">Select a conversation</h3>
-              <p className="text-gray-500 mb-8">Choose a conversation from the list to start messaging</p>
+              <h3 className="text-lg font-semibold text-gray-900 mb-1">Select a conversation</h3>
+              <p className="text-sm text-gray-500 mb-6">Choose a conversation from the list to start messaging</p>
               {selectedPhoneNumber && (
                 <button
-                  onClick={() => setShowNewMessageModal(true)}
-                  className="px-8 py-3.5 bg-gradient-to-r from-[#C54A3F] to-[#B73E34] hover:from-[#B73E34] hover:to-[#A53329] text-white rounded-xl font-semibold shadow-lg shadow-[#C54A3F]/30 transition-all duration-200 hover:scale-105 active:scale-95"
+                  onClick={() => setIsCreatingNewConversation(true)}
+                  className="px-4 py-2 bg-[#C54A3F] hover:bg-[#B73E34] text-white text-sm font-medium rounded-md transition-colors"
                 >
                   Start new conversation
                 </button>
@@ -440,20 +505,6 @@ export default function InboxPage() {
         />
       )}
 
-      {showNewMessageModal && (
-        <NewMessageModal
-          phoneNumber={selectedPhoneNumber}
-          formatPhoneNumber={formatPhoneNumber}
-          onClose={() => setShowNewMessageModal(false)}
-          onConversationCreated={(conversation) => {
-            setSelectedConversation(conversation)
-            setShowContactPanel(true)
-            setActiveConversation(conversation.id)
-            setMobileView('chat')
-            refetch()
-          }}
-        />
-      )}
     </div>
   )
 }

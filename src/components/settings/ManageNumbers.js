@@ -20,6 +20,7 @@ export default function ManageNumbers() {
     national_destination_code: '',
     number_type: '',
     features: [],
+    exact_number: '',
   })
   const [searchPerformed, setSearchPerformed] = useState(false)
   const [loadingWallet, setLoadingWallet] = useState(true)
@@ -27,6 +28,7 @@ export default function ManageNumbers() {
   const [confirmPurchase, setConfirmPurchase] = useState(null)
   const [editingNumberId, setEditingNumberId] = useState(null)
   const [editingNumberName, setEditingNumberName] = useState('')
+  const [editingNumberPrefix, setEditingNumberPrefix] = useState('')
 
   useEffect(() => {
     const init = async () => {
@@ -92,15 +94,22 @@ export default function ManageNumbers() {
     setSearchPerformed(true)
     try {
       const queryParams = new URLSearchParams()
-      Object.keys(filters).forEach(key => {
-        if (filters[key]) {
-          if (key === 'features' && filters[key].length > 0) {
-            filters[key].forEach(feature => queryParams.append(key, feature))
-          } else if (key !== 'features') {
-            queryParams.append(key, filters[key])
+
+      // If exact number is provided, use only that
+      if (filters.exact_number.trim()) {
+        queryParams.append('exact_number', filters.exact_number.trim())
+      } else {
+        Object.keys(filters).forEach(key => {
+          if (key === 'exact_number') return
+          if (filters[key]) {
+            if (key === 'features' && filters[key].length > 0) {
+              filters[key].forEach(feature => queryParams.append(key, feature))
+            } else if (key !== 'features') {
+              queryParams.append(key, filters[key])
+            }
           }
-        }
-      })
+        })
+      }
 
       const response = await fetch(`/api/telnyx/search-numbers?${queryParams}`)
       const data = await response.json()
@@ -220,11 +229,13 @@ export default function ManageNumbers() {
   const startEditingNumber = (number) => {
     setEditingNumberId(number.id)
     setEditingNumberName(number.custom_name || '')
+    setEditingNumberPrefix(number.prefix || '')
   }
 
   const cancelEditingNumber = () => {
     setEditingNumberId(null)
     setEditingNumberName('')
+    setEditingNumberPrefix('')
   }
 
   const saveCustomName = async (numberId) => {
@@ -239,52 +250,47 @@ export default function ManageNumbers() {
         },
         body: JSON.stringify({
           phoneNumberId: numberId,
-          customName: editingNumberName.trim() || null
+          customName: editingNumberName.trim() || null,
+          prefix: editingNumberPrefix.trim() || null
         })
       })
 
       const data = await response.json()
 
       if (data.success) {
-        // Update local state
         setMyNumbers(prev => prev.map(num =>
           num.id === numberId
-            ? { ...num, custom_name: editingNumberName.trim() || null }
+            ? { ...num, custom_name: editingNumberName.trim() || null, prefix: editingNumberPrefix.trim() || null }
             : num
         ))
         setEditingNumberId(null)
         setEditingNumberName('')
+        setEditingNumberPrefix('')
       } else {
         setShowError({
           title: 'Update Failed',
-          message: data.error || 'Failed to update custom name'
+          message: data.error || 'Failed to update'
         })
       }
     } catch (error) {
-      console.error('Error saving custom name:', error)
+      console.error('Error saving:', error)
       setShowError({
         title: 'Update Error',
-        message: error.message || 'An error occurred while updating the custom name'
+        message: error.message || 'An error occurred while saving'
       })
     }
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Success Toast */}
       {showSuccess && (
-        <div className="fixed top-4 right-4 z-50 animate-slide-in-right">
-          <div className="bg-green-500 text-white px-6 py-4 rounded-lg shadow-2xl flex items-center space-x-3">
-            <i className="fas fa-check-circle text-2xl"></i>
-            <div>
-              <p className="font-bold">Number Purchased!</p>
-              <p className="text-sm">Your new number is ready to use</p>
-            </div>
-            <button
-              onClick={() => setShowSuccess(false)}
-              className="ml-4 hover:bg-green-600 rounded-full p-1"
-            >
-              <i className="fas fa-times"></i>
+        <div className="fixed top-4 right-4 z-50">
+          <div className="bg-gray-900 text-white px-4 py-3 rounded-lg shadow-xl flex items-center gap-3 text-sm">
+            <i className="fas fa-check-circle text-green-400"></i>
+            <span>Number purchased — ready to use</span>
+            <button onClick={() => setShowSuccess(false)} className="ml-2 text-gray-400 hover:text-white">
+              <i className="fas fa-times text-xs"></i>
             </button>
           </div>
         </div>
@@ -292,74 +298,24 @@ export default function ManageNumbers() {
 
       {/* Confirmation Dialog */}
       {confirmPurchase && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6">
-            <div className="flex items-start space-x-4 mb-6">
-              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-                <i className="fas fa-shopping-cart text-blue-600 text-xl"></i>
-              </div>
-              <div className="flex-1">
-                <h3 className="text-lg font-bold text-gray-900 mb-2">Confirm Purchase</h3>
-                <p className="text-gray-600">
-                  You are about to purchase{' '}
-                  <span className="font-mono font-bold text-gray-900">
-                    {formatPhoneNumber(confirmPurchase.number.phone_number)}
-                  </span>
-                </p>
-              </div>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-sm w-full mx-4">
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h3 className="text-sm font-semibold text-gray-900">Confirm Purchase</h3>
+              <p className="text-sm text-gray-500 mt-0.5 font-mono">{formatPhoneNumber(confirmPurchase.number.phone_number)}</p>
             </div>
-
-            {/* Cost Breakdown */}
-            <div className="bg-gray-50 rounded-lg p-4 mb-6 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">One-time setup fee:</span>
-                <span className="font-semibold text-gray-900">${confirmPurchase.oneTimeCost.toFixed(2)}</span>
+            <div className="px-5 py-4 space-y-2 text-sm">
+              <div className="flex justify-between text-gray-600"><span>Setup fee</span><span>${confirmPurchase.oneTimeCost.toFixed(2)}</span></div>
+              <div className="flex justify-between text-gray-600"><span>First month</span><span>${confirmPurchase.monthlyCost.toFixed(2)}</span></div>
+              <div className="flex justify-between text-gray-600"><span>VAT (13%)</span><span>${confirmPurchase.vat.toFixed(2)}</span></div>
+              <div className="flex justify-between font-semibold text-gray-900 pt-2 border-t border-gray-100">
+                <span>Total</span><span>${confirmPurchase.totalCost.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">First month charge:</span>
-                <span className="font-semibold text-gray-900">${confirmPurchase.monthlyCost.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">VAT (13%):</span>
-                <span className="font-semibold text-gray-900">${confirmPurchase.vat.toFixed(2)}</span>
-              </div>
-              <div className="border-t border-gray-300 pt-2 mt-2"></div>
-              <div className="flex justify-between text-base">
-                <span className="font-bold text-gray-900">Total charge:</span>
-                <span className="font-bold text-[#C54A3F] text-lg">${confirmPurchase.totalCost.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-sm mt-2">
-                <span className="text-gray-600">New balance:</span>
-                <span className="font-semibold text-gray-700">
-                  ${(wallet.balance - confirmPurchase.totalCost).toFixed(2)}
-                </span>
-              </div>
+              <p className="text-xs text-gray-400 pt-1">${confirmPurchase.monthlyCost.toFixed(2)}/month recurring after purchase</p>
             </div>
-
-            {/* Monthly Recurring Notice */}
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-6">
-              <div className="flex items-start space-x-2">
-                <i className="fas fa-info-circle text-amber-600 mt-0.5"></i>
-                <p className="text-xs text-amber-800">
-                  After purchase, you&apos;ll be charged <strong>${confirmPurchase.monthlyCost.toFixed(2)}/month</strong> for this number.
-                </p>
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div className="flex justify-end space-x-3">
-              <button
-                onClick={() => setConfirmPurchase(null)}
-                className="px-5 py-2.5 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmPurchaseAction}
-                className="px-5 py-2.5 bg-gradient-to-r from-[#C54A3F] to-[#B73E34] text-white rounded-lg font-semibold hover:from-[#B73E34] hover:to-[#A53329] transition-all shadow-md hover:shadow-lg"
-              >
-                Confirm Purchase
-              </button>
+            <div className="px-5 py-3 border-t border-gray-100 flex justify-end gap-2">
+              <button onClick={() => setConfirmPurchase(null)} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">Cancel</button>
+              <button onClick={confirmPurchaseAction} className="px-3 py-1.5 text-sm font-medium text-white bg-[#C54A3F] hover:bg-[#B73E34] rounded-md">Confirm Purchase</button>
             </div>
           </div>
         </div>
@@ -367,157 +323,119 @@ export default function ManageNumbers() {
 
       {/* Error Modal */}
       {showError && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6">
-            <div className="flex items-start space-x-4">
-              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
-                <i className="fas fa-exclamation-triangle text-red-600 text-xl"></i>
-              </div>
-              <div className="flex-1">
-                <h3 className="text-lg font-bold text-gray-900 mb-2">{showError.title}</h3>
-                <p className="text-gray-600 mb-4">{showError.message}</p>
-                {showError.details && (
-                  <p className="text-sm text-gray-500 bg-gray-50 p-3 rounded-lg font-mono">
-                    {JSON.stringify(showError.details, null, 2)}
-                  </p>
-                )}
-              </div>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-sm w-full mx-4">
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h3 className="text-sm font-semibold text-gray-900">{showError.title}</h3>
             </div>
-            <div className="flex justify-end space-x-3 mt-6">
+            <div className="px-5 py-4">
+              <p className="text-sm text-gray-600">{showError.message}</p>
+              {showError.details && (
+                <pre className="mt-3 text-xs text-gray-500 bg-gray-50 p-3 rounded font-mono overflow-auto">
+                  {JSON.stringify(showError.details, null, 2)}
+                </pre>
+              )}
+            </div>
+            <div className="px-5 py-3 border-t border-gray-100 flex justify-end gap-2">
               {showError.action === 'topup' && (
-                <button
-                  onClick={() => {
-                    setShowError(null)
-                    window.location.href = '/billing'
-                  }}
-                  className="px-4 py-2 bg-gradient-to-r from-[#C54A3F] to-[#B73E34] text-white rounded-lg font-semibold hover:from-[#B73E34] hover:to-[#A53329]"
-                >
+                <button onClick={() => { setShowError(null); window.location.href = '/billing' }}
+                  className="px-3 py-1.5 text-sm font-medium text-white bg-[#C54A3F] hover:bg-[#B73E34] rounded-md">
                   Go to Billing
                 </button>
               )}
-              <button
-                onClick={() => setShowError(null)}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300"
-              >
-                Close
-              </button>
+              <button onClick={() => setShowError(null)} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">Close</button>
             </div>
           </div>
         </div>
       )}
 
       {/* My Phone Numbers */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
-          <h3 className="text-xl font-bold text-gray-900 flex items-center">
-            <i className="fas fa-phone-alt mr-3 text-[#C54A3F]"></i>
-            My Phone Numbers
-            {!loadingMyNumbers && (
-              <span className="ml-3 px-3 py-1 bg-[#C54A3F]/10 text-[#C54A3F] text-sm font-semibold rounded-full">
-                {myNumbers.length}
-              </span>
-            )}
-          </h3>
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-900">Phone Numbers</h3>
+          {!loadingMyNumbers && myNumbers.length > 0 && (
+            <span className="text-xs text-gray-400">{myNumbers.length} active</span>
+          )}
         </div>
         {loadingMyNumbers ? (
-          <div className="p-8">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="flex items-center space-x-4 mb-4">
-                <div className="w-12 h-12 bg-gray-200 rounded-lg animate-pulse"></div>
-                <div className="flex-1">
-                  <div className="h-6 bg-gray-200 rounded w-48 mb-2 animate-pulse"></div>
-                  <div className="h-4 bg-gray-100 rounded w-32 animate-pulse"></div>
-                </div>
+          <div className="px-5 py-4 space-y-3">
+            {[1,2].map(i => (
+              <div key={i} className="flex items-center gap-3">
+                <div className="w-2 h-2 bg-gray-200 rounded-full animate-pulse" />
+                <div className="h-4 bg-gray-100 rounded w-40 animate-pulse" />
+                <div className="h-3 bg-gray-100 rounded w-24 animate-pulse ml-auto" />
               </div>
             ))}
           </div>
         ) : myNumbers.length === 0 ? (
-          <div className="p-12 text-center">
-            <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <i className="fas fa-phone-slash text-gray-300 text-3xl"></i>
-            </div>
-            <p className="text-gray-500 text-lg font-medium mb-2">No phone numbers yet</p>
-            <p className="text-sm text-gray-400">Search and purchase numbers below</p>
+          <div className="px-5 py-8 text-center">
+            <p className="text-sm text-gray-500">No phone numbers yet</p>
+            <p className="text-xs text-gray-400 mt-1">Search and purchase a number below</p>
           </div>
         ) : (
           <div className="divide-y divide-gray-100">
             {myNumbers.map((number, index) => {
               const isEditing = editingNumberId === number.id
               return (
-                <div key={index} className="p-4 hover:bg-gray-50 transition-colors">
-                  <div className="flex items-center space-x-4">
-                    <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                      <i className="fas fa-check-circle text-green-600 text-xl"></i>
-                    </div>
-                    <div className="flex-1">
-                      {isEditing ? (
-                        <div className="space-y-2">
-                          <input
-                            type="text"
-                            value={editingNumberName}
-                            onChange={(e) => setEditingNumberName(e.target.value)}
-                            placeholder="Enter custom name (e.g., California Office)"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#C54A3F]"
-                            autoFocus
-                          />
-                          <p className="text-sm text-gray-600 font-mono">
-                            {formatPhoneNumber(number.phoneNumber)}
-                          </p>
-                        </div>
-                      ) : (
-                        <>
-                          {number.custom_name && (
-                            <p className="text-lg font-bold text-gray-900">
-                              {number.custom_name}
-                            </p>
-                          )}
-                          <p className={`${number.custom_name ? 'text-sm' : 'text-lg'} font-${number.custom_name ? 'medium' : 'bold'} text-gray-${number.custom_name ? '600' : '900'} font-mono`}>
-                            {formatPhoneNumber(number.phoneNumber)}
-                          </p>
-                        </>
-                      )}
-                      <div className="flex items-center space-x-3 mt-1">
-                        <span className="text-xs text-gray-500">
-                          <i className="fas fa-calendar mr-1"></i>
-                          Purchased {new Date(number.purchasedAt || number.created_at).toLocaleDateString()}
-                        </span>
-                        <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${
-                          number.status === 'active'
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-gray-100 text-gray-600'
-                        }`}>
-                          {number.status}
-                        </span>
+                <div key={index} className="px-5 py-3 flex items-center gap-4 hover:bg-gray-50">
+                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${number.status === 'active' ? 'bg-green-500' : 'bg-gray-300'}`} />
+                  <div className="flex-1 min-w-0">
+                    {isEditing ? (
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={editingNumberName}
+                          onChange={(e) => setEditingNumberName(e.target.value)}
+                          placeholder="Custom name (e.g., California Office)"
+                          className="flex-1 px-2.5 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
+                          autoFocus
+                        />
+                        <input
+                          type="text"
+                          value={editingNumberPrefix}
+                          onChange={(e) => setEditingNumberPrefix(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                          placeholder="Prefix e.g. 217615"
+                          maxLength={6}
+                          className="w-36 px-2.5 py-1.5 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
+                        />
                       </div>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      {isEditing ? (
-                        <>
-                          <button
-                            onClick={() => saveCustomName(number.id)}
-                            className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-semibold"
-                          >
-                            <i className="fas fa-check mr-1"></i>
-                            Save
-                          </button>
-                          <button
-                            onClick={cancelEditingNumber}
-                            className="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm font-semibold"
-                          >
-                            <i className="fas fa-times mr-1"></i>
-                            Cancel
-                          </button>
-                        </>
+                    ) : (
+                      <div>
+                        {number.custom_name && <p className="text-sm font-medium text-gray-900">{number.custom_name}</p>}
+                        <p className={`font-mono text-sm ${number.custom_name ? 'text-gray-500' : 'text-gray-900 font-medium'}`}>
+                          {formatPhoneNumber(number.phoneNumber)}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Prefix column */}
+                  {!isEditing && (
+                    <div className="w-24 flex-shrink-0">
+                      {number.prefix ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded bg-blue-50 text-blue-700 text-xs font-mono font-medium">
+                          {number.prefix}
+                        </span>
                       ) : (
-                        <button
-                          onClick={() => startEditingNumber(number)}
-                          className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-semibold"
-                        >
-                          <i className="fas fa-edit mr-1"></i>
-                          {number.custom_name ? 'Edit Name' : 'Add Name'}
-                        </button>
+                        <span className="text-xs text-gray-300">—</span>
                       )}
                     </div>
+                  )}
+
+                  <div className="flex items-center gap-3 flex-shrink-0">
+                    <span className={`px-2 py-0.5 text-xs rounded-full ${number.status === 'active' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                      {number.status}
+                    </span>
+                    {isEditing ? (
+                      <div className="flex gap-1.5">
+                        <button onClick={() => saveCustomName(number.id)} className="px-2.5 py-1 text-xs font-medium text-white bg-[#C54A3F] hover:bg-[#B73E34] rounded">Save</button>
+                        <button onClick={cancelEditingNumber} className="px-2.5 py-1 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-50">Cancel</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => startEditingNumber(number)} className="text-xs text-gray-400 hover:text-gray-700">
+                        <i className="fas fa-pen mr-1"></i>Edit
+                      </button>
+                    )}
                   </div>
                 </div>
               )
@@ -527,51 +445,37 @@ export default function ManageNumbers() {
       </div>
 
       {/* Search Filters */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <h2 className="text-xl font-bold text-gray-900 mb-6 flex items-center">
-          <i className="fas fa-search mr-3 text-[#C54A3F]"></i>
-          Search Available Numbers
-        </h2>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {/* Country - Fixed to USA */}
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-gray-100">
+          <h3 className="text-sm font-semibold text-gray-900">Search Available Numbers</h3>
+        </div>
+        <div className="px-5 py-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              <i className="fas fa-globe mr-2"></i>
-              Country
-            </label>
-            <div className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 font-medium">
-              <i className="fas fa-flag-usa mr-2"></i>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Country</label>
+            <div className="px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-sm text-gray-500">
               United States
             </div>
           </div>
 
-          {/* Area Code / NPA */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              <i className="fas fa-hashtag mr-2"></i>
-              Area Code
-            </label>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Area Code</label>
             <input
               type="text"
               value={filters.national_destination_code}
               onChange={(e) => handleFilterChange('national_destination_code', e.target.value.replace(/\D/g, ''))}
               placeholder="e.g., 212, 415"
               maxLength="3"
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#C54A3F] focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
             />
           </div>
 
-          {/* State / Administrative Area */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              <i className="fas fa-map-marked-alt mr-2"></i>
-              State
-            </label>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">State</label>
             <select
               value={filters.administrative_area}
               onChange={(e) => handleFilterChange('administrative_area', e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#C54A3F] focus:border-transparent bg-white"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F] bg-white"
             >
               <option value="">All States</option>
               <option value="AL">Alabama</option>
@@ -628,79 +532,71 @@ export default function ManageNumbers() {
             </select>
           </div>
 
-          {/* City / Locality */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              <i className="fas fa-city mr-2"></i>
-              City
-            </label>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">City</label>
             <input
               type="text"
               value={filters.locality}
               onChange={(e) => handleFilterChange('locality', e.target.value)}
-              placeholder="e.g., Miami, Dallas, Seattle"
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#C54A3F] focus:border-transparent"
+              placeholder="e.g., Miami, Dallas"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
             />
           </div>
         </div>
 
-        {/* Search Button */}
+        {/* Exact number search */}
+        <div className="flex items-center gap-3 mb-4">
+          <div className="flex-1 h-px bg-gray-100" />
+          <span className="text-xs text-gray-400 whitespace-nowrap">or search exact number</span>
+          <div className="flex-1 h-px bg-gray-100" />
+        </div>
+        <div className="mb-4">
+          <label className="block text-xs font-medium text-gray-600 mb-1.5">Number prefix or exact number</label>
+          <input
+            type="text"
+            value={filters.exact_number}
+            onChange={(e) => handleFilterChange('exact_number', e.target.value)}
+            placeholder="e.g., 212555 or +12125551234"
+            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
+          />
+          {filters.exact_number && (
+            <p className="text-xs text-gray-400 mt-1">
+              <i className="fas fa-info-circle mr-1"></i>
+              Enter first 6+ digits to browse a range, or full number to check availability
+            </p>
+          )}
+        </div>
+
         <button
           onClick={searchNumbers}
           disabled={loading}
-          className="w-full px-6 py-3.5 bg-gradient-to-r from-[#C54A3F] to-[#B73E34] text-white rounded-lg font-bold text-lg hover:from-[#B73E34] hover:to-[#A53329] transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-[1.02] active:scale-[0.98]"
+          className="px-4 py-2 bg-[#C54A3F] hover:bg-[#B73E34] text-white text-sm font-medium rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
-          {loading ? (
-            <>
-              <i className="fas fa-spinner fa-spin mr-2"></i>
-              Searching...
-            </>
-          ) : (
-            <>
-              <i className="fas fa-search mr-2"></i>
-              Search Available Numbers
-            </>
-          )}
+          {loading ? <><i className="fas fa-spinner fa-spin mr-1.5"></i>Searching…</> : <><i className="fas fa-search mr-1.5"></i>Search Numbers</>}
         </button>
+        </div>
       </div>
 
       {/* Results */}
       {searchPerformed && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
-            <h3 className="text-xl font-bold text-gray-900 flex items-center">
-              <i className="fas fa-list mr-3 text-[#C54A3F]"></i>
-              Available Numbers
-              {!loading && (
-                <span className="ml-3 px-3 py-1 bg-blue-100 text-blue-700 text-sm font-semibold rounded-full">
-                  {availableNumbers.length} found
-                </span>
-              )}
-            </h3>
+        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-900">Available Numbers</h3>
+            {!loading && <span className="text-xs text-gray-400">{availableNumbers.length} found</span>}
           </div>
 
           {loading ? (
-            <div className="p-12 text-center">
-              <div className="inline-block">
-                <div className="relative w-16 h-16">
-                  <div className="absolute inset-0 border-4 border-[#C54A3F]/20 rounded-full"></div>
-                  <div className="absolute inset-0 border-4 border-[#C54A3F] border-t-transparent rounded-full animate-spin"></div>
-                </div>
-              </div>
-              <p className="text-gray-500 mt-4 font-medium">Searching for available numbers...</p>
+            <div className="px-5 py-8 text-center text-sm text-gray-400">
+              <i className="fas fa-spinner fa-spin mr-2"></i>Searching…
             </div>
           ) : availableNumbers.length === 0 ? (
-            <div className="p-12 text-center">
-              <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <i className="fas fa-phone-slash text-gray-300 text-3xl"></i>
-              </div>
-              <p className="text-gray-500 text-lg font-medium mb-2">No numbers found</p>
-              <p className="text-sm text-gray-400">Try adjusting your search filters</p>
+            <div className="px-5 py-8 text-center">
+              <p className="text-sm text-gray-500">No numbers found</p>
+              <p className="text-xs text-gray-400 mt-1">Try adjusting your filters</p>
             </div>
           ) : (
             <div className="divide-y divide-gray-100">
               {availableNumbers.map((number, index) => {
-                // Calculate total cost: $1 one-time + $1 monthly + $0.30 VAT = $2.30
                 const oneTimeCost = 1.00
                 const monthlyCost = 1.00
                 const vat = 0.30
@@ -709,91 +605,36 @@ export default function ManageNumbers() {
                 const canAfford = wallet && wallet.balance >= totalCost
 
                 return (
-                  <div key={index} className="p-5 hover:bg-gray-50 transition-all border-l-4 border-transparent hover:border-[#C54A3F]">
-                    <div className="flex items-center justify-between gap-6">
-                      <div className="flex-1">
-                        <div className="flex items-start space-x-4">
-                          <div className="w-14 h-14 bg-gradient-to-br from-[#C54A3F]/10 to-[#B73E34]/10 rounded-xl flex items-center justify-center flex-shrink-0">
-                            <i className="fas fa-phone-alt text-[#C54A3F] text-xl"></i>
-                          </div>
-                          <div className="flex-1">
-                            <p className="text-xl font-bold text-gray-900 font-mono mb-2">
-                              {formatPhoneNumber(number.phone_number)}
-                            </p>
-                            <div className="flex items-center flex-wrap gap-3 mb-3">
-                              <span className="text-sm text-gray-600 font-medium">
-                                <i className="fas fa-map-marker-alt mr-1.5 text-red-500"></i>
-                                {number.locality}, {number.administrative_area}
-                              </span>
-                              <span className="text-sm text-gray-500">
-                                <i className="fas fa-tag mr-1.5"></i>
-                                {number.record_type}
-                              </span>
-                            </div>
-                            <div className="flex items-center flex-wrap gap-2">
-                              {number.features?.voice && (
-                                <span className="px-3 py-1.5 bg-blue-100 text-blue-700 text-xs font-bold rounded-full">
-                                  <i className="fas fa-phone mr-1"></i>
-                                  Voice
-                                </span>
-                              )}
-                              {number.features?.sms && (
-                                <span className="px-3 py-1.5 bg-green-100 text-green-700 text-xs font-bold rounded-full">
-                                  <i className="fas fa-comment mr-1"></i>
-                                  SMS
-                                </span>
-                              )}
-                              {number.features?.mms && (
-                                <span className="px-3 py-1.5 bg-purple-100 text-purple-700 text-xs font-bold rounded-full">
-                                  <i className="fas fa-image mr-1"></i>
-                                  MMS
-                                </span>
-                              )}
-                            </div>
-                          </div>
+                  <div key={index} className="px-5 py-3 flex items-center gap-4 hover:bg-gray-50">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 font-mono">{formatPhoneNumber(number.phone_number)}</p>
+                      <div className="flex items-center gap-3 mt-0.5">
+                        <span className="text-xs text-gray-500">{number.locality}, {number.administrative_area}</span>
+                        <div className="flex gap-1">
+                          {number.features?.voice && <span className="px-1.5 py-0.5 bg-blue-50 text-blue-600 text-[10px] font-medium rounded">Voice</span>}
+                          {number.features?.sms && <span className="px-1.5 py-0.5 bg-green-50 text-green-600 text-[10px] font-medium rounded">SMS</span>}
+                          {number.features?.mms && <span className="px-1.5 py-0.5 bg-purple-50 text-purple-600 text-[10px] font-medium rounded">MMS</span>}
                         </div>
                       </div>
-                      <div className="text-right flex-shrink-0">
-                        <div className="mb-4">
-                          <p className="text-3xl font-bold text-gray-900 mb-1">
-                            ${totalCost.toFixed(2)}
-                          </p>
-                          <p className="text-xs text-gray-500 font-medium mb-0.5">
-                            Setup: ${oneTimeCost.toFixed(2)} + Monthly: ${monthlyCost.toFixed(2)}
-                          </p>
-                          <p className="text-xs text-gray-400">
-                            (includes ${vat.toFixed(2)} VAT)
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => handlePurchase(number)}
-                          disabled={isPurchasing || !canAfford}
-                          className={`px-6 py-3 rounded-lg font-bold shadow-md transition-all transform hover:scale-105 active:scale-95 ${
-                            isPurchasing
-                              ? 'bg-gray-300 text-gray-600 cursor-wait'
-                              : canAfford
-                              ? 'bg-gradient-to-r from-[#C54A3F] to-[#B73E34] text-white hover:from-[#B73E34] hover:to-[#A53329] hover:shadow-lg'
-                              : 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                          }`}
-                        >
-                          {isPurchasing ? (
-                            <>
-                              <i className="fas fa-spinner fa-spin mr-2"></i>
-                              Purchasing...
-                            </>
-                          ) : canAfford ? (
-                            <>
-                              <i className="fas fa-shopping-cart mr-2"></i>
-                              Buy Now
-                            </>
-                          ) : (
-                            <>
-                              <i className="fas fa-wallet mr-2"></i>
-                              Insufficient Funds
-                            </>
-                          )}
-                        </button>
+                    </div>
+                    <div className="flex items-center gap-4 flex-shrink-0">
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-gray-900">${totalCost.toFixed(2)}</p>
+                        <p className="text-[10px] text-gray-400">setup + 1st month</p>
                       </div>
+                      <button
+                        onClick={() => handlePurchase(number)}
+                        disabled={isPurchasing || !canAfford}
+                        className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                          isPurchasing ? 'bg-gray-100 text-gray-400 cursor-wait'
+                          : canAfford ? 'bg-[#C54A3F] hover:bg-[#B73E34] text-white'
+                          : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        }`}
+                      >
+                        {isPurchasing ? <><i className="fas fa-spinner fa-spin mr-1"></i>Buying…</>
+                          : canAfford ? 'Buy'
+                          : 'No funds'}
+                      </button>
                     </div>
                   </div>
                 )

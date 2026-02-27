@@ -6,6 +6,7 @@ import MessageBubble from '../ui/message-bubble'
 import CallInterface from '../calling/CallInterface'
 import { PhoneNumberSelector } from '../calling/PhoneNumberSelector'
 import { apiPost } from '@/lib/api-client'
+import { getAvatarColor, getInitials } from '@/lib/avatar-color'
 
 export default function ChatWindow({
   conversation,
@@ -26,14 +27,31 @@ export default function ChatWindow({
   mobileView,
   // Action handlers
   onMarkAsUnread,
-  onMarkAsDone
+  onMarkAsDone,
+  onMarkAsOpen,
+  onPinConversation,
+  onBlockContact,
+  onDeleteConversation
 }) {
   const [newMessage, setNewMessage] = useState('')
   const [sending, setSending] = useState(false)
   const [showPhoneSelector, setShowPhoneSelector] = useState(false)
+  const [showMoreMenu, setShowMoreMenu] = useState(false)
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
   const textareaRef = useRef(null)
+  const moreMenuRef = useRef(null)
+
+  // Close more menu when clicking outside
+  useEffect(() => {
+    const handler = (e) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target)) {
+        setShowMoreMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -242,7 +260,7 @@ export default function ChatWindow({
   }
 
   const displayName = conversation.name || formatPhoneNumber(conversation.phone_number)
-  const initials = displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+  const initials = getInitials(displayName, conversation.phone_number)
   const isOnCall = callHook?.getCurrentCallNumber && callHook.getCurrentCallNumber() === conversation.phone_number
 
   return (
@@ -270,7 +288,10 @@ export default function ChatWindow({
 
                 {/* Avatar */}
                 <div className="relative flex-shrink-0">
-                  <div className="w-10 h-10 bg-red-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
+                  <div
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-semibold"
+                    style={{ backgroundColor: getAvatarColor(conversation.phone_number) }}
+                  >
                     {initials}
                   </div>
                 </div>
@@ -287,41 +308,102 @@ export default function ChatWindow({
               </div>
 
               {/* Right: Action Buttons */}
-              <div className="flex items-center gap-1">
-                {/* Call Button */}
+              <div className="flex items-center gap-0.5">
+                {/* Call */}
                 <button
                   onClick={handleCallClick}
                   disabled={callHook?.isCallActive && !isOnCall}
-                  className="p-2.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-none disabled:opacity-50"
+                  className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-40"
                   title="Call"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                  <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.01 2.18 2 2 0 012 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 14.92v2z" />
                   </svg>
                 </button>
 
-                {/* Mark as Done (Checkmark in Circle) */}
+                {/* Done / Open toggle */}
                 <button
-                  onClick={() => onMarkAsDone && onMarkAsDone(conversation.id)}
-                  className="p-2.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-none"
-                  title="Mark as done"
+                  onClick={() => {
+                    if (conversation.status === 'closed') {
+                      onMarkAsOpen?.(conversation.id)
+                    } else {
+                      onMarkAsDone?.(conversation.id)
+                    }
+                  }}
+                  className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                  title={conversation.status === 'closed' ? 'Mark as open' : 'Mark as done'}
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
                   </svg>
                 </button>
 
-                {/* Mark as Unread (Circle Dot - cleaner icon) */}
+                {/* Mark as unread */}
                 <button
-                  onClick={() => onMarkAsUnread && onMarkAsUnread(conversation.id)}
-                  className="p-2.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-none"
+                  onClick={() => onMarkAsUnread?.(conversation.id)}
+                  className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
                   title="Mark as unread"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <circle cx="12" cy="12" r="9" strokeWidth={2} />
-                    <circle cx="12" cy="12" r="4" fill="currentColor" />
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M8.33333333,1.875 C8.6785113,1.875 8.95833333,2.15482203 8.95833333,2.5 C8.95833333,2.81379815 8.72707546,3.07358314 8.42569125,3.1182234 L8.33333333,3.125 L4.99999978,3.125 C4.01378052,3.125 3.20539387,3.88642392 3.13064099,4.85347034 L3.12499978,5 L3.12499978,15 C3.12499978,15.9862194 3.88642349,16.7946059 4.85347009,16.8693588 L4.99999978,16.875 L14.9999998,16.875 C15.9862192,16.875 16.7946057,16.1135763 16.8693586,15.1465297 L16.8749998,15 L16.8749998,11.6666667 C16.8749998,11.3214887 17.1548218,11.0416667 17.4999998,11.0416667 C17.8137979,11.0416667 18.0735829,11.2729245 18.1182232,11.5743087 L18.1249998,11.6666667 L18.1249998,15 C18.1249998,16.666373 16.8207131,18.0281208 15.1773301,18.1200531 L14.9999998,18.125 L4.99999978,18.125 C3.3336268,18.125 1.97187893,16.8207133 1.87994671,15.1773303 L1.87499978,15 L1.87499978,5 C1.87499978,3.33362727 3.17928662,1.97187917 4.82266946,1.87994693 L4.99999978,1.875 L8.33333333,1.875 Z M14.375,1.875 C16.4460678,1.875 18.125,3.55393219 18.125,5.625 C18.125,7.69606781 16.4460678,9.375 14.375,9.375 C12.3039322,9.375 10.625,7.69606781 10.625,5.625 C10.625,3.55393219 12.3039322,1.875 14.375,1.875 Z M14.375,3.125 C12.9942881,3.125 11.875,4.24428813 11.875,5.625 C11.875,7.00571187 12.9942881,8.125 14.375,8.125 C15.7557119,8.125 16.875,7.00571187 16.875,5.625 C16.875,4.24428813 15.7557119,3.125 14.375,3.125 Z" />
                   </svg>
                 </button>
+
+                {/* More (three dots) */}
+                <div className="relative" ref={moreMenuRef}>
+                  <button
+                    onClick={() => setShowMoreMenu(v => !v)}
+                    className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                    title="More options"
+                  >
+                    <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="currentColor">
+                      <circle cx="5" cy="12" r="1.5" />
+                      <circle cx="12" cy="12" r="1.5" />
+                      <circle cx="19" cy="12" r="1.5" />
+                    </svg>
+                  </button>
+
+                  {showMoreMenu && (
+                    <div className="absolute right-0 top-full mt-1 w-52 bg-white rounded-xl shadow-lg border border-gray-200 py-1 z-50">
+                      <button
+                        onClick={() => { onPinConversation?.(conversation.id); setShowMoreMenu(false) }}
+                        className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3"
+                      >
+                        <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="12" y1="17" x2="12" y2="22" />
+                          <path d="M5 17h14v-1.76a2 2 0 00-1.11-1.79l-1.78-.9A2 2 0 0115 10.76V6h1a2 2 0 000-4H8a2 2 0 000 4h1v4.76a2 2 0 01-1.11 1.79l-1.78.9A2 2 0 005 15.24V17z" />
+                        </svg>
+                        {conversation.pinned ? 'Unpin conversation' : 'Pin conversation'}
+                      </button>
+
+                      <div className="border-t border-gray-100 my-1" />
+
+                      <button
+                        onClick={() => { onBlockContact?.(conversation.id, conversation.phone_number); setShowMoreMenu(false) }}
+                        className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3"
+                      >
+                        <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="10" />
+                          <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+                        </svg>
+                        Block contact
+                      </button>
+
+                      <button
+                        onClick={() => { onDeleteConversation?.(conversation.id); setShowMoreMenu(false) }}
+                        className="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-3"
+                      >
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3 6 5 6 21 6" />
+                          <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
+                          <path d="M10 11v6M14 11v6" />
+                          <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" />
+                        </svg>
+                        Delete conversation
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -333,7 +415,7 @@ export default function ChatWindow({
                     Calling from
                   </label>
                   {findMatchingCallerNumber() !== callHook.selectedCallerNumber && (
-                    <span className="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
+                    <span className="text-xs font-medium text-[#C54A3F] bg-[#C54A3F]/10 px-2 py-0.5 rounded-md">
                       Auto-selected
                     </span>
                   )}

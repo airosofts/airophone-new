@@ -36,6 +36,36 @@ export default function MessageBubble({ message, user }) {
     return formatInTimeZone(date, timezone, 'MMM d h:mm a')
   }
 
+  const renderMessageText = (text) => {
+    if (!text) return null
+    const urlRegex = /https?:\/\/[^\s]+/g
+    const parts = []
+    let lastIndex = 0
+    let match
+    while ((match = urlRegex.exec(text)) !== null) {
+      if (match.index > lastIndex) parts.push({ type: 'text', content: text.slice(lastIndex, match.index) })
+      parts.push({ type: 'url', content: match[0] })
+      lastIndex = match.index + match[0].length
+    }
+    if (lastIndex < text.length) parts.push({ type: 'text', content: text.slice(lastIndex) })
+    return parts.map((part, i) =>
+      part.type === 'url' ? (
+        <a
+          key={i}
+          href={part.content}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={isOutbound ? 'underline text-white/90 hover:text-white break-all' : 'underline text-[#C54A3F] hover:text-[#B73E34] break-all'}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {part.content}
+        </a>
+      ) : (
+        <span key={i}>{part.content}</span>
+      )
+    )
+  }
+
   const getStatusIcon = (status, isOptimistic) => {
     if (isOptimistic || status === 'sending') {
       return (
@@ -89,7 +119,7 @@ export default function MessageBubble({ message, user }) {
           >
             {/* Message Text */}
             <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
-              {message.body}
+              {renderMessageText(message.body)}
             </p>
           </div>
         </div>

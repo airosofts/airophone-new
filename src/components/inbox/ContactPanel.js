@@ -3,6 +3,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { getAvatarColor, getInitials } from '@/lib/avatar-color'
 
 export default function ContactPanel({ conversation, formatPhoneNumber, user }) {
   const [contact, setContact] = useState(null)
@@ -114,7 +115,7 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user }) 
   }
 
   const displayName = contact?.name || formatPhoneNumber(conversation.phone_number)
-  const initials = displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+  const initials = getInitials(displayName, conversation.phone_number)
 
   return (
     <div className="w-full bg-white flex flex-col h-full">
@@ -122,7 +123,10 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user }) 
         <div className="p-6 space-y-6">
           {/* Avatar and Phone */}
           <div className="text-center">
-            <div className="w-24 h-24 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold text-2xl mx-auto mb-3">
+            <div
+              className="w-16 h-16 rounded-full flex items-center justify-center text-white font-semibold text-lg mx-auto mb-3"
+              style={{ backgroundColor: getAvatarColor(conversation.phone_number) }}
+            >
               {initials}
             </div>
             <h4 className="text-lg font-semibold text-gray-900">
@@ -145,7 +149,7 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user }) 
                 />
                 <button
                   onClick={() => handleFieldSave('name')}
-                  className="px-3 py-2 bg-gray-900 text-white rounded-md text-sm hover:bg-gray-800"
+                  className="px-3 py-2 bg-[#C54A3F] text-white rounded-md text-sm hover:bg-[#B73E34]"
                   disabled={loading}
                 >
                   Save
@@ -178,7 +182,7 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user }) 
                 />
                 <button
                   onClick={() => handleFieldSave('email')}
-                  className="px-3 py-2 bg-gray-900 text-white rounded-md text-sm hover:bg-gray-800"
+                  className="px-3 py-2 bg-[#C54A3F] text-white rounded-md text-sm hover:bg-[#B73E34]"
                   disabled={loading}
                 >
                   Save
@@ -211,7 +215,7 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user }) 
               {newNote.trim() && (
                 <button
                   onClick={addNote}
-                  className="mt-2 px-4 py-2 bg-gray-900 text-white rounded-md text-sm hover:bg-gray-800"
+                  className="mt-2 px-4 py-2 bg-[#C54A3F] text-white rounded-md text-sm hover:bg-[#B73E34]"
                 >
                   Add Note
                 </button>

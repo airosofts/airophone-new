@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef, startTransition } from 'react'
+import { getAvatarColor, getInitials } from '@/lib/avatar-color'
 
 export default function ConversationList({
   conversations,
@@ -13,7 +14,9 @@ export default function ConversationList({
   onMarkAsDone,
   onMarkAsOpen,
   onPinConversation,
-  callHook = null
+  onBlockContact,
+  callHook = null,
+  isCreatingNew = false
 }) {
   const [contextMenu, setContextMenu] = useState(null)
   const menuStateRef = useRef({ isOpen: false, conversation: null, position: null })
@@ -105,16 +108,23 @@ export default function ConversationList({
     closeContextMenu()
   }
 
-  const getInitials = (name, phone) => {
-    if (!name || name === phone || name.startsWith('(')) {
-      return phone?.slice(-2) || '??'
+  const handleBlockContact = () => {
+    if (contextMenu?.conversation && onBlockContact) {
+      onBlockContact(contextMenu.conversation.id, contextMenu.conversation.phone_number)
     }
-    const parts = name.trim().split(' ')
-    if (parts.length >= 2) {
-      return (parts[0][0] + parts[1][0]).toUpperCase()
-    }
-    return name.slice(0, 2).toUpperCase()
+    closeContextMenu()
   }
+
+  const handleMoreClick = useCallback((e, conversation) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const rect = e.currentTarget.getBoundingClientRect()
+    const x = Math.min(rect.right - 180, window.innerWidth - 192)
+    const position = { x, y: rect.bottom + 4 }
+    menuStateRef.current = { isOpen: true, conversation, position }
+    setContextMenu({ conversation, position })
+  }, [])
+
 
   const formatTime = (dateString) => {
     if (!dateString) return ''
@@ -186,6 +196,23 @@ export default function ConversationList({
       )}
 
       <div>
+        {/* New conversation row - shown when composing */}
+        {isCreatingNew && (
+          <div className="border-b border-gray-100">
+            <div className="p-3 flex items-center gap-3">
+              <div className="h-10 w-10 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-medium text-gray-900">New conversation</h3>
+                <p className="text-sm text-gray-400 truncate">Send a message...</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {conversations.map((conversation) => {
           const isSelected = selectedConversation?.id === conversation.id
           const hasUnread = conversation.unreadCount > 0
@@ -211,13 +238,16 @@ export default function ConversationList({
               <div className="p-3 flex items-center gap-3">
                 {/* Avatar */}
                 <div className="relative flex-shrink-0">
-                  <div className="h-10 w-10 bg-gray-300 rounded-full flex items-center justify-center text-white text-sm font-medium">
+                  <div
+                    className="h-10 w-10 rounded-full flex items-center justify-center text-white text-sm font-semibold"
+                    style={{ backgroundColor: getAvatarColor(conversation.phone_number) }}
+                  >
                     {initials}
                   </div>
 
                   {/* Unread badge */}
                   {hasUnread && (
-                    <div className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-blue-600 rounded-full border-2 border-white flex items-center justify-center px-1">
+                    <div className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-[#C54A3F] rounded-full border-2 border-white flex items-center justify-center px-1">
                       <span className="text-[10px] font-bold text-white">
                         {conversation.unreadCount > 9 ? '9+' : conversation.unreadCount}
                       </span>
@@ -228,14 +258,17 @@ export default function ConversationList({
                 {/* Content */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      {isPinned && (
+                        <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M17.707 10.708L16.293 9.294 16.293 4 17 4C17.553 4 18 3.552 18 3 18 2.448 17.553 2 17 2L7 2C6.447 2 6 2.448 6 3 6 3.552 6.447 4 7 4L7.707 4 7.707 9.294 6.293 10.708C6.105 10.896 6 11.151 6 11.415L6 13C6 13.552 6.447 14 7 14L11 14 11 21C11 21.552 11.447 22 12 22 12.553 22 13 21.552 13 21L13 14 17 14C17.553 14 18 13.552 18 13L18 11.415C18 11.151 17.895 10.896 17.707 10.708Z" />
+                        </svg>
+                      )}
                       <h3 className={`text-sm truncate ${hasUnread ? 'font-semibold text-gray-900' : 'font-medium text-gray-700'}`}>
                         {displayName}
                       </h3>
-                      {isPinned && (
-                        <i className="fas fa-thumbtack text-gray-400 text-xs flex-shrink-0"></i>
-                      )}
                     </div>
+
                     <span className="text-xs text-gray-500 flex-shrink-0">
                       {formatTime(conversation.lastMessage?.created_at)}
                     </span>
@@ -245,19 +278,6 @@ export default function ConversationList({
                     {truncateMessage(conversation.lastMessage?.body)}
                   </p>
                 </div>
-
-                {/* Call button (hover only on desktop, always on mobile) */}
-                {canCall && (
-                  <button
-                    onClick={(e) => handleCallClick(e, conversation.phone_number)}
-                    className="hidden group-hover:flex md:flex items-center justify-center w-8 h-8 rounded-full hover:bg-gray-200 transition-colors flex-shrink-0"
-                    title="Call"
-                  >
-                    <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                    </svg>
-                  </button>
-                )}
               </div>
             </div>
           )
@@ -276,40 +296,8 @@ export default function ConversationList({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-          {contextMenu && callHook && callHook.selectedCallerNumber && (
-            <button
-              onClick={handleCallFromContext}
-              className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 transition-none"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-              </svg>
-              Call
-            </button>
-          )}
-
           {contextMenu && (
             <>
-              <button
-                onClick={handlePinConversation}
-                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 transition-none"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                </svg>
-                {contextMenu.conversation.pinned ? 'Unpin' : 'Pin'}
-              </button>
-
-              <button
-                onClick={handleMarkAsUnread}
-                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 transition-none"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
-                Mark as unread
-              </button>
-
               {contextMenu.conversation.status === 'closed' ? (
                 <button
                   onClick={handleMarkAsOpen}
@@ -332,7 +320,37 @@ export default function ConversationList({
                 </button>
               )}
 
+              <button
+                onClick={handleMarkAsUnread}
+                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 transition-none"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                Mark as unread
+              </button>
+
+              <button
+                onClick={handlePinConversation}
+                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 transition-none"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                </svg>
+                {contextMenu.conversation.pinned ? 'Unpin conversation' : 'Pin conversation'}
+              </button>
+
               <div className="border-t border-gray-200 my-1"></div>
+
+              <button
+                onClick={handleBlockContact}
+                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 transition-none"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                </svg>
+                Block contact
+              </button>
 
               <button
                 onClick={handleDeleteConversation}
@@ -341,7 +359,7 @@ export default function ConversationList({
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                 </svg>
-                Delete
+                Delete conversation
               </button>
             </>
           )}

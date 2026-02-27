@@ -18,7 +18,8 @@ function normalizePhoneNumber(phone) {
 
 export async function GET(request, { params }) {
   try {
-    const phoneNumber = decodeURIComponent(params.phone)
+    const { phone } = await params
+    const phoneNumber = decodeURIComponent(phone)
     const normalizedPhone = normalizePhoneNumber(phoneNumber)
     
     console.log('Looking up contact by phone:', phoneNumber, 'normalized:', normalizedPhone)

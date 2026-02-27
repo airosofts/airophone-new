@@ -35,9 +35,25 @@ export async function GET(request) {
 
     console.log(`Retrieved ${campaigns?.length || 0} campaigns`)
 
+    // Resolve contact list names for all campaigns
+    const allIds = [...new Set((campaigns || []).flatMap(c => c.contact_list_ids || []))]
+    let contactListMap = {}
+    if (allIds.length > 0) {
+      const { data: lists } = await supabaseAdmin
+        .from('contact_lists')
+        .select('id, name')
+        .in('id', allIds)
+      if (lists) lists.forEach(l => { contactListMap[l.id] = l.name })
+    }
+
+    const campaignsWithNames = (campaigns || []).map(c => ({
+      ...c,
+      contact_list_names: (c.contact_list_ids || []).map(id => contactListMap[id]).filter(Boolean)
+    }))
+
     return NextResponse.json({
       success: true,
-      campaigns: campaigns || []
+      campaigns: campaignsWithNames
     })
 
   } catch (error) {

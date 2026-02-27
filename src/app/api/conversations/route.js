@@ -39,6 +39,14 @@ export async function GET(request) {
       })
     }
 
+    // Fetch blocked phone numbers for this workspace
+    const { data: blockedRows } = await supabaseAdmin
+      .from('blocked_contacts')
+      .select('phone_number')
+      .eq('workspace_id', workspace.workspaceId)
+
+    const blockedNumbers = (blockedRows || []).map(r => r.phone_number)
+
     let query = supabaseAdmin
       .from('conversations')
       .select(`
@@ -56,6 +64,7 @@ export async function GET(request) {
         )
       `)
       .in('from_number', workspacePhoneNumbers)
+
 
     // Filter by specific from_number if provided
     if (fromNumber) {
@@ -77,8 +86,13 @@ export async function GET(request) {
       )
     }
 
+    // Filter out blocked contacts
+    const visibleConversations = blockedNumbers.length > 0
+      ? conversationsData.filter(conv => !blockedNumbers.includes(conv.phone_number))
+      : conversationsData
+
     // Process conversations to get the latest message for each
-    const processedConversations = conversationsData.map(conv => {
+    const processedConversations = visibleConversations.map(conv => {
       // Sort messages by created_at and get the latest one
       const sortedMessages = conv.messages.sort((a, b) => 
         new Date(b.created_at) - new Date(a.created_at)
@@ -94,7 +108,7 @@ export async function GET(request) {
       }
     })
 
-    console.log(`Fetched ${processedConversations.length} conversations for ${fromNumber || 'all numbers'}`)
+    console.log(`Fetched ${processedConversations.length} conversations for ${fromNumber || 'all numbers'} (${blockedNumbers.length} blocked)`)
 
     return NextResponse.json({
       success: true,

@@ -143,8 +143,10 @@ body {
   box-shadow: 0 0 0 2px rgba(197, 74, 63, 0.2);
 }
 
-/* Input focus styles */
-input:focus, textarea:focus, select:focus {
+/* Input focus styles — only apply to bordered inputs, not bare/transparent ones */
+input:not([class*="bg-transparent"]):focus,
+textarea:not([class*="bg-transparent"]):focus,
+select:focus {
   outline: none !important;
   border-color: var(--primary-color) !important;
   box-shadow: 0 0 0 3px rgba(197, 74, 63, 0.1) !important;

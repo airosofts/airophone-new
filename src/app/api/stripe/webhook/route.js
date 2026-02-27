@@ -63,6 +63,22 @@ export async function POST(request) {
         await handleCustomerCreated(event.data.object)
         break
 
+      case 'checkout.session.completed':
+        await handleCheckoutSessionCompleted(event.data.object)
+        break
+
+      case 'customer.subscription.created':
+        await handleSubscriptionCreated(event.data.object)
+        break
+
+      case 'customer.subscription.updated':
+        await handleSubscriptionUpdated(event.data.object)
+        break
+
+      case 'customer.subscription.deleted':
+        await handleSubscriptionDeleted(event.data.object)
+        break
+
       default:
         console.log(`Unhandled event type: ${event.type}`)
     }
@@ -209,6 +225,89 @@ async function handlePaymentMethodDetached(paymentMethod) {
 async function handleCustomerCreated(customer) {
   console.log('Customer created:', customer.id)
   // Additional logic if needed
+}
+
+// Handle checkout session completed
+async function handleCheckoutSessionCompleted(session) {
+  console.log('Checkout session completed:', session.id, 'mode:', session.mode)
+
+  const userId = session.metadata?.user_id
+  if (!userId) {
+    console.log('No user_id in session metadata, skipping')
+    return
+  }
+
+  // If this was a subscription checkout, the subscription is handled by
+  // customer.subscription.created — nothing extra needed here.
+  // If one-time payment, log it.
+  if (session.mode === 'payment') {
+    console.log('One-time payment checkout completed for user:', userId)
+  }
+}
+
+// Handle subscription created
+async function handleSubscriptionCreated(subscription) {
+  console.log('Subscription created:', subscription.id, 'status:', subscription.status)
+
+  const customerId = subscription.customer
+  if (!customerId) return
+
+  // Look up workspace by stripe customer ID
+  const { data: stripeCustomer } = await supabase
+    .from('stripe_customers')
+    .select('user_id')
+    .eq('stripe_customer_id', customerId)
+    .single()
+
+  if (!stripeCustomer) {
+    console.log('No user found for customer:', customerId)
+    return
+  }
+
+  await supabase
+    .from('subscriptions')
+    .upsert({
+      user_id: stripeCustomer.user_id,
+      stripe_subscription_id: subscription.id,
+      stripe_customer_id: customerId,
+      status: subscription.status,
+      price_id: subscription.items?.data?.[0]?.price?.id,
+      current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+      current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+      cancel_at_period_end: subscription.cancel_at_period_end,
+    }, { onConflict: 'stripe_subscription_id' })
+
+  console.log('Subscription stored for user:', stripeCustomer.user_id)
+}
+
+// Handle subscription updated
+async function handleSubscriptionUpdated(subscription) {
+  console.log('Subscription updated:', subscription.id, 'status:', subscription.status)
+
+  await supabase
+    .from('subscriptions')
+    .update({
+      status: subscription.status,
+      price_id: subscription.items?.data?.[0]?.price?.id,
+      current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+      current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+      cancel_at_period_end: subscription.cancel_at_period_end,
+    })
+    .eq('stripe_subscription_id', subscription.id)
+
+  console.log('Subscription updated in DB:', subscription.id)
+}
+
+// Handle subscription deleted/cancelled
+async function handleSubscriptionDeleted(subscription) {
+  console.log('Subscription deleted/cancelled:', subscription.id)
+
+  await supabase
+    .from('subscriptions')
+    .update({ status: 'canceled' })
+    .eq('stripe_subscription_id', subscription.id)
+
+  console.log('Subscription marked as canceled:', subscription.id)
 }
 
 // Disable body parsing for webhooks

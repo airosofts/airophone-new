@@ -134,7 +134,9 @@ export function useRealtimeMessages(conversationId) {
           })
 
           setOptimisticMessages(current =>
-            current.filter(msg => msg.telnyx_message_id !== payload.new.telnyx_message_id)
+            current.filter(msg =>
+              !(msg.isOptimistic && msg.body === payload.new.body && msg.direction === payload.new.direction)
+            )
           )
         }
       )
@@ -181,14 +183,18 @@ export function useRealtimeMessages(conversationId) {
   }, [])
 
   const replaceOptimisticMessage = useCallback((optimisticId, realMessage) => {
-    setOptimisticMessages(current => 
+    setOptimisticMessages(current =>
       current.filter(msg => msg.id !== optimisticId)
     )
-    
+
+    // Add ID synchronously BEFORE setMessages so the realtime INSERT handler
+    // sees it immediately and won't add a duplicate when the DB event fires
+    if (messageIdsRef.current.has(realMessage.id)) return
+    messageIdsRef.current.add(realMessage.id)
+
     setMessages(current => {
       const exists = current.some(msg => msg.id === realMessage.id)
       if (!exists) {
-        messageIdsRef.current.add(realMessage.id)
         const updatedMessages = [...current, realMessage]
         return updatedMessages.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
       }

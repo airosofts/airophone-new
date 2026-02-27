@@ -66,8 +66,8 @@ export default function NewMessageModal({ phoneNumber, formatPhoneNumber, onClos
   }
 
   return (
-    <div className="fixed inset-0 modal-backdrop flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-auto slide-up">
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <h3 className="text-lg font-semibold text-gray-900">New Conversation</h3>
@@ -87,7 +87,7 @@ export default function NewMessageModal({ phoneNumber, formatPhoneNumber, onClos
             <label className="block text-sm font-medium text-gray-700 mb-1">
               From
             </label>
-            <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
+            <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-md">
               <span className="text-sm text-gray-900">
                 {formatPhoneNumber(phoneNumber?.phoneNumber)}
               </span>
@@ -104,7 +104,7 @@ export default function NewMessageModal({ phoneNumber, formatPhoneNumber, onClos
               value={recipient}
               onChange={(e) => setRecipient(e.target.value)}
               placeholder="(555) 123-4567"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus-primary"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F] text-sm"
               required
             />
           </div>
@@ -118,7 +118,7 @@ export default function NewMessageModal({ phoneNumber, formatPhoneNumber, onClos
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               placeholder="Type your message..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus-primary resize-none"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F] text-sm resize-none"
               rows={4}
               required
             />
@@ -139,14 +139,14 @@ export default function NewMessageModal({ phoneNumber, formatPhoneNumber, onClos
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading || !recipient.trim() || !message.trim()}
-              className="flex-1 px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary-hover rounded-lg transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center"
+              className="flex-1 px-4 py-2 text-sm font-medium text-white bg-[#C54A3F] hover:bg-[#B73E34] rounded-md transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center"
             >
               {loading ? (
                 <div className="spinner w-4 h-4 mr-2"></div>
