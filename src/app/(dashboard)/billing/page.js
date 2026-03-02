@@ -273,7 +273,7 @@ export default function BillingPage() {
                               : transaction.status === 'pending' ? 'bg-yellow-50 text-yellow-700'
                               : 'bg-red-50 text-red-700'
                             }`}>
-                              {transaction.status.charAt(0).toUpperCase() + transaction.status.slice(1)}
+                              {transaction.status ? transaction.status.charAt(0).toUpperCase() + transaction.status.slice(1) : 'Unknown'}
                             </span>
                           </td>
                           <td className="px-5 py-3 text-right">
@@ -281,7 +281,7 @@ export default function BillingPage() {
                               transaction.type === 'topup' || transaction.type === 'refund' ? 'text-green-600' : 'text-red-600'
                             }`}>
                               {transaction.type === 'topup' || transaction.type === 'refund' ? '+' : '−'}
-                              ${Math.abs(transaction.amount).toFixed(2)}
+                              {Math.abs(transaction.amount).toLocaleString()} credits
                             </span>
                           </td>
                         </tr>

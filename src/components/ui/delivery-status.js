@@ -121,7 +121,7 @@ export default function DeliveryStatus({ message, onStatusUpdate }) {
                     status === 'delivered' ? 'text-green-600' :
                     status === 'failed' ? 'text-red-600' :
                     status === 'sent' ? 'text-blue-600' : 'text-gray-600'
-                  }`}>{status.charAt(0).toUpperCase() + status.slice(1)}</p>
+                  }`}>{status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Unknown'}</p>
                 </div>
                 <div>
                   <span className="text-gray-500">Sent:</span>

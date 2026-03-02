@@ -102,6 +102,7 @@ export async function POST(request) {
               user_id: userId,
               amount: creditAmount,
               type: 'topup',
+              status: 'completed',
               description: `Credit purchase: ${creditAmount} credits ($${dollarAmount.toFixed(2)})`,
               payment_method_id: payment_method_id,
               stripe_payment_intent_id: paymentIntent.id,
