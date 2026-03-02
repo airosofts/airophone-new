@@ -35,7 +35,20 @@ export default function InboxPage() {
   const selectedPhoneNumber = phoneNumbers.find(p => p.phoneNumber === fromParam) || phoneNumbers[0] || null
 
   const { conversations, loading: conversationsLoading, refetch, setActiveConversation, deleteConversation, updateConversationOptimistic } = useRealtimeConversations(selectedPhoneNumber?.phoneNumber)
-  const { messages, loading: messagesLoading, addOptimisticMessage, replaceOptimisticMessage, removeOptimisticMessage } = useRealtimeMessages(selectedConversation?.id)
+  const { messages: allMessages, loading: messagesLoading, addOptimisticMessage, replaceOptimisticMessage, removeOptimisticMessage } = useRealtimeMessages(selectedConversation?.id)
+
+  // Only show messages that belong to the currently selected phone line
+  const selectedLineNumber = selectedPhoneNumber?.phoneNumber
+  const messages = selectedLineNumber
+    ? allMessages.filter(msg => {
+        if (msg.isOptimistic) return true
+        const normalize = (p) => p ? p.replace(/\D/g, '').replace(/^1/, '') : ''
+        const line = normalize(selectedLineNumber)
+        if (msg.direction === 'outbound') return normalize(msg.from_number) === line
+        if (msg.direction === 'inbound') return normalize(msg.to_number) === line
+        return true
+      })
+    : allMessages
 
   useEffect(() => {
     const initializeSession = async () => {

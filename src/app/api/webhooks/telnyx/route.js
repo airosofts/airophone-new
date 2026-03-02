@@ -24,63 +24,32 @@ async function getOrCreateConversation(fromNumber, toNumber) {
   const normalizedTo = normalizePhoneNumber(toNumber)
 
   try {
-    // For inbound messages, the customer is the 'from' number
-    // So we look for conversation where phone_number matches the customer's number
-    // and from_number matches our business number
-    let { data: conversation, error } = await supabaseAdmin
+    // Strict exact match on both contact number AND our business number
+    // Never fall back to updating an existing conversation's from_number,
+    // as that would move messages from one phone line's inbox to another.
+    const { data: conversation, error } = await supabaseAdmin
       .from('conversations')
       .select('*')
       .eq('phone_number', normalizedFrom)
       .eq('from_number', normalizedTo)
       .single()
 
-    // If no exact match, try to find conversation with just phone number
-    if (error && error.code === 'PGRST116') {
-      let { data: existingConversation } = await supabaseAdmin
-        .from('conversations')
-        .select('*')
-        .eq('phone_number', normalizedFrom)
-        .single()
+    if (!error && conversation) return conversation
 
-      // If conversation exists but from_number is different or null, update it
-      if (existingConversation) {
-        const { data: updatedConversation, error: updateError } = await supabaseAdmin
-          .from('conversations')
-          .update({
-            from_number: normalizedTo
-          })
-          .eq('id', existingConversation.id)
-          .select()
-          .single()
+    // No exact match — create a new conversation for this line+contact pair.
+    // Upsert handles race conditions without overwriting existing records.
+    const { data: newConversation, error: createError } = await supabaseAdmin
+      .from('conversations')
+      .upsert(
+        { phone_number: normalizedFrom, from_number: normalizedTo, name: null },
+        { onConflict: 'phone_number,from_number', ignoreDuplicates: false }
+      )
+      .select()
+      .single()
 
-        if (updateError) {
-          console.error('Error updating conversation:', updateError)
-        }
+    if (createError) throw createError
+    return newConversation
 
-        conversation = updatedConversation || existingConversation
-      } else {
-        // Create new conversation if doesn't exist
-        const { data: newConversation, error: createError } = await supabaseAdmin
-          .from('conversations')
-          .insert({
-            phone_number: normalizedFrom, // Customer's number
-            from_number: normalizedTo,    // Our business number
-            name: null
-          })
-          .select()
-          .single()
-
-        if (createError) {
-          throw createError
-        }
-
-        conversation = newConversation
-      }
-    } else if (error) {
-      throw error
-    }
-
-    return conversation
   } catch (error) {
     console.error('Error in getOrCreateConversation:', error)
     throw error

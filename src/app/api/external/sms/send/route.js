@@ -126,7 +126,36 @@ export async function POST(request) {
     )
   }
 
-  // ── 7. Deduct credits ────────────────────────────────────────────────────
+  // ── 7. Save conversation + message record ────────────────────────────────
+  let messageRecord = null
+  try {
+    const conversation = await getOrCreateConversation(normalizedTo, normalizedFrom)
+
+    const { data: msg } = await supabaseAdmin
+      .from('messages')
+      .insert({
+        conversation_id: conversation.id,
+        telnyx_message_id: result.messageId,
+        direction: 'outbound',
+        from_number: normalizedFrom,
+        to_number: normalizedTo,
+        body: message.trim(),
+        status: 'sent'
+      })
+      .select()
+      .single()
+
+    messageRecord = msg
+
+    await supabaseAdmin
+      .from('conversations')
+      .update({ last_message_at: new Date().toISOString() })
+      .eq('id', conversation.id)
+  } catch (err) {
+    console.error('[external/sms/send] Failed to save conversation/message:', err)
+  }
+
+  // ── 8. Deduct credits ────────────────────────────────────────────────────
   const { data: deductionResult, error: deductionError } = await supabaseAdmin.rpc(
     'deduct_message_cost',
     {
@@ -136,25 +165,23 @@ export async function POST(request) {
       p_cost_per_message: messageRate,
       p_description: `External SMS to ${normalizedTo}`,
       p_campaign_id: null,
-      p_message_id: null,
+      p_message_id: messageRecord?.id ?? null,
       p_recipient_phone: normalizedTo
     }
   )
 
   if (deductionError || !deductionResult?.success) {
-    // SMS was sent but credit deduction failed — log it but don't fail the response.
-    // The caller's message was delivered; billing reconciliation can be done separately.
     console.error('[external/sms/send] Credit deduction failed after send:', deductionError || deductionResult)
   }
 
-  // ── 8. Log to message_transactions ──────────────────────────────────────
+  // ── 9. Log to message_transactions ───────────────────────────────────────
   await supabaseAdmin
     .from('message_transactions')
     .insert({
       workspace_id: workspaceId,
       user_id: userId,
       campaign_id: null,
-      message_id: null,
+      message_id: messageRecord?.id ?? null,
       recipient_phone: normalizedTo,
       cost_per_message: messageRate,
       total_cost: messageRate,
@@ -164,7 +191,7 @@ export async function POST(request) {
     .then(() => {})
     .catch((err) => console.error('[external/sms/send] Transaction log failed:', err))
 
-  // ── 9. Return success ────────────────────────────────────────────────────
+  // ── 10. Return success ───────────────────────────────────────────────────
   const creditsRemaining = deductionResult?.new_balance ?? null
 
   return NextResponse.json({
@@ -172,4 +199,31 @@ export async function POST(request) {
     messageId: result.messageId,
     creditsRemaining: creditsRemaining !== null ? Math.floor(creditsRemaining) : null
   })
+}
+
+// Get existing conversation or create a new one (strict match on from+to pair)
+async function getOrCreateConversation(toNumber, fromNumber) {
+  // Try exact match on both recipient AND sender
+  const { data: exact, error: exactErr } = await supabaseAdmin
+    .from('conversations')
+    .select('*')
+    .eq('phone_number', toNumber)
+    .eq('from_number', fromNumber)
+    .single()
+
+  if (!exactErr && exact) return exact
+
+  // No match — create a new conversation for this sender-recipient pair
+  // Use upsert so concurrent requests don't create duplicates
+  const { data: created, error: createErr } = await supabaseAdmin
+    .from('conversations')
+    .upsert(
+      { phone_number: toNumber, from_number: fromNumber, name: null },
+      { onConflict: 'phone_number,from_number', ignoreDuplicates: false }
+    )
+    .select()
+    .single()
+
+  if (createErr) throw createErr
+  return created
 }
