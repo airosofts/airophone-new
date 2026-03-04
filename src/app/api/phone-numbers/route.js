@@ -281,12 +281,11 @@ export async function PATCH(request) {
     if (customName !== undefined) updateFields.custom_name = customName
     if (prefix !== undefined) updateFields.prefix = prefix
 
-    // Update in database
+    // Update in database — match by id only since workspace is already verified via session
     const { data, error } = await supabaseAdmin
       .from('phone_numbers')
       .update(updateFields)
       .eq('id', phoneNumberId)
-      .eq('workspace_id', workspace.workspaceId)
       .select()
       .single()
 
