@@ -41,16 +41,18 @@ export default function BillingPage() {
     const currentUser = getCurrentUser()
     setUser(currentUser)
     if (currentUser?.userId) {
-      fetchWalletData(currentUser.userId)
-      fetchTransactions(currentUser.userId)
+      fetchWalletData(currentUser.userId, currentUser.workspaceId)
+      fetchTransactions(currentUser.userId, currentUser.workspaceId)
       fetchSavedCards(currentUser.userId)
     }
   }, [])
 
-  const fetchWalletData = async (userId) => {
+  const fetchWalletData = async (userId, workspaceId) => {
     try {
       setLoading(true)
-      const response = await fetch('/api/wallet', { headers: { 'x-user-id': userId } })
+      const headers = { 'x-user-id': userId }
+      if (workspaceId) headers['x-workspace-id'] = workspaceId
+      const response = await fetch('/api/wallet', { headers })
       const data = await response.json()
       if (data.success) setWalletBalance(data.balance)
     } catch (error) {
@@ -60,9 +62,11 @@ export default function BillingPage() {
     }
   }
 
-  const fetchTransactions = async (userId) => {
+  const fetchTransactions = async (userId, workspaceId) => {
     try {
-      const response = await fetch('/api/transactions', { headers: { 'x-user-id': userId } })
+      const headers = { 'x-user-id': userId }
+      if (workspaceId) headers['x-workspace-id'] = workspaceId
+      const response = await fetch('/api/transactions', { headers })
       const data = await response.json()
       if (data.success) setTransactions(data.transactions)
     } catch (error) {
@@ -341,8 +345,8 @@ export default function BillingPage() {
           onSuccess={() => {
             setShowTopUpModal(false)
             if (user?.userId) {
-              fetchWalletData(user.userId)
-              fetchTransactions(user.userId)
+              fetchWalletData(user.userId, user.workspaceId)
+              fetchTransactions(user.userId, user.workspaceId)
             }
           }}
           onError={(error) => setErrorModal(error)}
@@ -443,9 +447,11 @@ function TopUpModal({ onClose, savedCards, user, onSuccess, onError }) {
 
     setLoading(true)
     try {
+      const topupHeaders = { 'Content-Type': 'application/json', 'x-user-id': user?.userId || '' }
+      if (user?.workspaceId) topupHeaders['x-workspace-id'] = user.workspaceId
       const response = await fetch('/api/wallet/topup', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-user-id': user?.userId || '' },
+        headers: topupHeaders,
         body: JSON.stringify({ credits: creditAmount, amount: dollarAmount, payment_method_id: selectedCard }),
       })
       const data = await response.json()

@@ -8,29 +8,32 @@ const supabase = createClient(
 
 export async function GET(request) {
   try {
-    // Get user ID from header
+    const workspaceId = request.headers.get('x-workspace-id')
     const userId = request.headers.get('x-user-id')
 
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized - No user ID provided' }, { status: 401 })
+    if (!workspaceId && !userId) {
+      return NextResponse.json({ error: 'Unauthorized - No workspace or user ID provided' }, { status: 401 })
     }
 
     // Get query parameters for pagination and filtering
     const { searchParams } = new URL(request.url)
     const limit = parseInt(searchParams.get('limit') || '100')
     const offset = parseInt(searchParams.get('offset') || '0')
-    const type = searchParams.get('type') // topup, deduction, refund
     const status = searchParams.get('status') // pending, completed, failed
 
-    // Query wallet_transactions instead of transactions
-    // Only show topup transactions (credit purchases), not per-message deductions
+    // Query by workspace_id to show all members' topup transactions for the workspace
     let query = supabase
       .from('wallet_transactions')
       .select('*', { count: 'exact' })
-      .eq('user_id', userId)
       .eq('type', 'topup')
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1)
+
+    if (workspaceId) {
+      query = query.eq('workspace_id', workspaceId)
+    } else {
+      query = query.eq('user_id', userId)
+    }
 
     // Apply status filter if provided
     if (status) {

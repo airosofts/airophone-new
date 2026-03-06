@@ -8,27 +8,37 @@ const supabase = createClient(
 
 export async function GET(request) {
   try {
-    // Get user ID from header (sent from client)
+    const workspaceId = request.headers.get('x-workspace-id')
     const userId = request.headers.get('x-user-id')
 
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized - No user ID provided' }, { status: 401 })
+    if (!workspaceId && !userId) {
+      return NextResponse.json({ error: 'Unauthorized - No workspace or user ID provided' }, { status: 401 })
     }
 
-    // Get wallet data - now returning credits instead of balance
-    const { data: wallet, error } = await supabase
+    // Look up wallet by workspace_id (shared across all members) or fall back to user_id
+    let query = supabase
       .from('wallets')
       .select('credits, balance, currency, created_at')
-      .eq('user_id', userId)
-      .single()
+
+    if (workspaceId) {
+      query = query.eq('workspace_id', workspaceId)
+    } else {
+      query = query.eq('user_id', userId)
+    }
+
+    const { data: wallet, error } = await query.single()
 
     if (error) {
       console.error('Wallet error:', error)
       // If wallet doesn't exist, create one
       if (error.code === 'PGRST116') {
-        const { data: newWallet, error: createError } = await supabase
+        const insertData = { credits: 0.00, balance: 0.00, currency: 'USD' }
+        if (workspaceId) insertData.workspace_id = workspaceId
+        if (userId) insertData.user_id = userId
+
+        const { error: createError } = await supabase
           .from('wallets')
-          .insert({ user_id: userId, credits: 0.00, balance: 0.00, currency: 'USD' })
+          .insert(insertData)
           .select()
           .single()
 
@@ -36,7 +46,7 @@ export async function GET(request) {
 
         return NextResponse.json({
           success: true,
-          balance: 0.00, // Return credits as balance for compatibility
+          balance: 0.00,
           credits: 0.00,
           currency: 'USD'
         })
@@ -46,7 +56,7 @@ export async function GET(request) {
 
     return NextResponse.json({
       success: true,
-      balance: parseFloat(wallet.credits || wallet.balance || 0), // Return credits as balance for frontend compatibility
+      balance: parseFloat(wallet.credits || wallet.balance || 0),
       credits: parseFloat(wallet.credits || 0),
       currency: wallet.currency
     })
