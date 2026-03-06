@@ -74,7 +74,7 @@ export async function POST(request) {
       }
     }
 
-    if (walletCredits < messageRate) {
+    if (walletCredits < 1) {
       return NextResponse.json(
         {
           error: 'Insufficient credits',
@@ -185,7 +185,7 @@ export async function POST(request) {
         p_user_id: user.userId,
         p_workspace_id: workspace.workspaceId,
         p_message_count: 1,
-        p_cost_per_message: messageRate,
+        p_cost_per_message: 1,
         p_description: `SMS to ${normalizedTo}`,
         p_campaign_id: null,
         p_message_id: messageRecord?.id,

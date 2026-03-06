@@ -69,7 +69,7 @@ export async function POST(request, { params }) {
         p_workspace_id: workspace.workspaceId || null,
         p_user_id: user.userId,
         p_message_count: messageCount,
-        p_cost_per_message: messageRate
+        p_cost_per_message: 1
       }
     )
 
@@ -231,7 +231,7 @@ async function processCampaignMessages(campaign, contacts, userId, workspaceId, 
             p_user_id: userId,
             p_workspace_id: workspaceId,
             p_message_count: 1,
-            p_cost_per_message: messageRate,
+            p_cost_per_message: 1,
             p_description: `Campaign: ${campaign.name || campaign.id} - SMS to ${normalizedContactNumber}`,
             p_campaign_id: campaign.id,
             p_message_id: messageRecord?.id,
