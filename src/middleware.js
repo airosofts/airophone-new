@@ -14,6 +14,7 @@ export function middleware(request) {
   if (protectedRoutes.some(route => pathname.startsWith(route))) {
     // In a localStorage world, you might need client-side checks
     // This middleware becomes less critical
+    //ok
     return NextResponse.next()
   }
 
