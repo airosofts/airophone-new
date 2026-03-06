@@ -10,9 +10,8 @@ const supabase = createClient(
 
 export async function POST(request) {
   try {
-    // Get user and workspace IDs from headers
+    // Get user ID from header
     const userId = request.headers.get('x-user-id')
-    const workspaceId = request.headers.get('x-workspace-id')
 
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized - No user ID provided' }, { status: 401 })
@@ -85,39 +84,30 @@ export async function POST(request) {
       } catch (funcError) {
         // Fallback: directly update the credits column
         console.log('Using direct update method')
-        // Upsert by workspace_id (shared wallet) or fall back to user_id
-        const upsertData = {
-          credits: supabase.raw(`credits + ${creditAmount}`),
-          updated_at: new Date().toISOString()
-        }
-        if (workspaceId) {
-          upsertData.workspace_id = workspaceId
-        } else {
-          upsertData.user_id = userId
-        }
-        const upsertConflict = workspaceId ? 'workspace_id' : 'user_id'
-
         const { error: updateError } = await supabase
           .from('wallets')
-          .upsert(upsertData, { onConflict: upsertConflict })
+          .upsert({
+            user_id: userId,
+            credits: supabase.raw(`credits + ${creditAmount}`),
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'user_id'
+          })
 
         if (!updateError) {
           // Create transaction record
-          const txInsert = {
-            user_id: userId,
-            amount: creditAmount,
-            type: 'topup',
-            status: 'completed',
-            description: `Credit purchase: ${creditAmount} credits ($${dollarAmount.toFixed(2)})`,
-            payment_method_id: payment_method_id,
-            stripe_payment_intent_id: paymentIntent.id,
-            stripe_charge_id: paymentIntent.latest_charge
-          }
-          if (workspaceId) txInsert.workspace_id = workspaceId
-
           const { data: txData, error: txError } = await supabase
             .from('wallet_transactions')
-            .insert(txInsert)
+            .insert({
+              user_id: userId,
+              amount: creditAmount,
+              type: 'topup',
+              status: 'completed',
+              description: `Credit purchase: ${creditAmount} credits ($${dollarAmount.toFixed(2)})`,
+              payment_method_id: payment_method_id,
+              stripe_payment_intent_id: paymentIntent.id,
+              stripe_charge_id: paymentIntent.latest_charge
+            })
             .select('id')
             .single()
 
@@ -139,7 +129,7 @@ export async function POST(request) {
         transaction_id: data,
         credits_purchased: creditAmount,
         amount_paid: dollarAmount,
-        new_balance: await getWalletBalance(userId, workspaceId)
+        new_balance: await getWalletBalance(userId)
       })
     } else {
       return NextResponse.json(
@@ -157,12 +147,12 @@ export async function POST(request) {
 }
 
 // Helper function to get wallet credits
-async function getWalletBalance(userId, workspaceId) {
-  const query = supabase.from('wallets').select('credits')
-  const { data } = await (workspaceId
-    ? query.eq('workspace_id', workspaceId)
-    : query.eq('user_id', userId)
-  ).single()
+async function getWalletBalance(userId) {
+  const { data } = await supabase
+    .from('wallets')
+    .select('credits')
+    .eq('user_id', userId)
+    .single()
 
   return data ? parseFloat(data.credits) : 0.00
 }

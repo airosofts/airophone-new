@@ -62,14 +62,13 @@ export async function POST(request, { params }) {
     const messageCount = contacts.length
     const messageRate = await getWorkspaceMessageRate(workspace.workspaceId)
 
-    // Check if user can afford the message costs (workspace shared wallet, falls back to user wallet)
+    // Check if user can afford the message costs (actual wallet balance)
     const { data: affordCheck, error: affordError } = await supabaseAdmin.rpc(
       'can_afford_message_cost_v2',
       {
-        p_workspace_id: workspace.workspaceId || null,
         p_user_id: user.userId,
         p_message_count: messageCount,
-        p_cost_per_message: 1
+        p_cost_per_message: messageRate
       }
     )
 
@@ -231,7 +230,7 @@ async function processCampaignMessages(campaign, contacts, userId, workspaceId, 
             p_user_id: userId,
             p_workspace_id: workspaceId,
             p_message_count: 1,
-            p_cost_per_message: 1,
+            p_cost_per_message: messageRate,
             p_description: `Campaign: ${campaign.name || campaign.id} - SMS to ${normalizedContactNumber}`,
             p_campaign_id: campaign.id,
             p_message_id: messageRecord?.id,

@@ -20,12 +20,12 @@ export async function GET(request) {
     return NextResponse.json({ error: 'Unauthorized — invalid or missing API key' }, { status: 401 })
   }
 
-  const { workspaceId } = auth
+  const { userId, workspaceId } = auth
 
   const { data: wallet, error } = await supabaseAdmin
     .from('wallets')
     .select('credits')
-    .eq('workspace_id', workspaceId)
+    .eq('user_id', userId)
     .single()
 
   if (error) {

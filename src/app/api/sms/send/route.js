@@ -31,55 +31,34 @@ export async function POST(request) {
     // Get current message rate for this workspace based on tiered pricing
     const messageRate = await getWorkspaceMessageRate(workspace.workspaceId)
 
-    // Direct wallet balance check — workspace shared wallet with user fallback
-    let walletCredits = 0
-    let walletId = null
-
-    // 1. Try workspace wallet
-    if (workspace.workspaceId) {
-      const { data: wsWallet } = await supabaseAdmin
-        .from('wallets')
-        .select('id, credits')
-        .eq('workspace_id', workspace.workspaceId)
-        .single()
-      if (wsWallet) { walletId = wsWallet.id; walletCredits = parseFloat(wsWallet.credits) }
-    }
-
-    // 2. Fall back: user's direct wallet
-    if (!walletId && user.userId) {
-      const { data: userWallet } = await supabaseAdmin
-        .from('wallets')
-        .select('id, credits')
-        .eq('user_id', user.userId)
-        .single()
-      if (userWallet) { walletId = userWallet.id; walletCredits = parseFloat(userWallet.credits) }
-    }
-
-    // 3. Fall back: find workspace via membership, then get that workspace's wallet
-    if (!walletId && user.userId) {
-      const { data: membership } = await supabaseAdmin
-        .from('workspace_members')
-        .select('workspace_id')
-        .eq('user_id', user.userId)
-        .eq('is_active', true)
-        .limit(1)
-        .single()
-      if (membership?.workspace_id) {
-        const { data: memberWallet } = await supabaseAdmin
-          .from('wallets')
-          .select('id, credits')
-          .eq('workspace_id', membership.workspace_id)
-          .single()
-        if (memberWallet) { walletId = memberWallet.id; walletCredits = parseFloat(memberWallet.credits) }
+    // Check if user can afford the message cost (actual wallet balance)
+    const { data: affordCheck, error: affordError } = await supabaseAdmin.rpc(
+      'can_afford_message_cost_v2',
+      {
+        p_user_id: user.userId,
+        p_message_count: 1,
+        p_cost_per_message: messageRate
       }
+    )
+
+    if (affordError) {
+      console.error('Error checking wallet balance:', affordError)
+      return NextResponse.json(
+        { error: 'Failed to verify balance' },
+        { status: 500 }
+      )
     }
 
-    if (walletCredits < 1) {
+    if (!affordCheck?.can_afford) {
       return NextResponse.json(
         {
           error: 'Insufficient credits',
-          message: `Insufficient credits. Current: ${Math.floor(walletCredits)}, Required: 1 credit.`,
-          details: { currentBalance: walletCredits, requiredAmount: messageRate }
+          message: `Insufficient credits. Current credits: ${Math.floor(affordCheck?.current_balance || 0)}, Required: ${Math.floor(affordCheck?.required_amount || 1)} credit. Please top up your wallet to continue.`,
+          details: {
+            currentBalance: affordCheck?.current_balance || 0,
+            requiredAmount: affordCheck?.required_amount || 1,
+            shortage: affordCheck?.shortage || 0
+          }
         },
         { status: 402 }
       )
@@ -185,7 +164,7 @@ export async function POST(request) {
         p_user_id: user.userId,
         p_workspace_id: workspace.workspaceId,
         p_message_count: 1,
-        p_cost_per_message: 1,
+        p_cost_per_message: messageRate,
         p_description: `SMS to ${normalizedTo}`,
         p_campaign_id: null,
         p_message_id: messageRecord?.id,
