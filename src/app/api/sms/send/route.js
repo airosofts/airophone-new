@@ -31,11 +31,11 @@ export async function POST(request) {
     // Get current message rate for this workspace based on tiered pricing
     const messageRate = await getWorkspaceMessageRate(workspace.workspaceId)
 
-    // Check if user can afford the message cost (actual wallet balance)
+    // Check if user can afford the message cost (workspace shared wallet)
     const { data: affordCheck, error: affordError } = await supabaseAdmin.rpc(
       'can_afford_message_cost_v2',
       {
-        p_user_id: user.userId,
+        p_workspace_id: workspace.workspaceId,
         p_message_count: 1,
         p_cost_per_message: messageRate
       }
