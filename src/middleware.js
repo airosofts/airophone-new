@@ -8,7 +8,7 @@ export function middleware(request) {
   if (publicRoutes.some(route => pathname.startsWith(route))) {
     return NextResponse.next()
   }
-
+//ok
   // Protected routes
   const protectedRoutes = ['/', '/dashboard', '/inbox', '/contacts', '/campaigns']
   if (protectedRoutes.some(route => pathname.startsWith(route))) {
