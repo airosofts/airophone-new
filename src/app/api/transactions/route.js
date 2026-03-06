@@ -6,33 +6,53 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 )
 
+// Get the wallet owner's user_id for a given user (shared workspace wallet)
+async function getWalletUserId(userId) {
+  // Find user's workspace
+  const { data: membership } = await supabase
+    .from('workspace_members')
+    .select('workspace_id')
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .limit(1)
+    .single()
+
+  if (!membership?.workspace_id) return userId
+
+  // Find the wallet for this workspace to get its owner user_id
+  const { data: wallet } = await supabase
+    .from('wallets')
+    .select('user_id')
+    .eq('workspace_id', membership.workspace_id)
+    .single()
+
+  return wallet?.user_id || userId
+}
+
 export async function GET(request) {
   try {
-    // Get user ID from header
     const userId = request.headers.get('x-user-id')
 
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized - No user ID provided' }, { status: 401 })
     }
 
-    // Get query parameters for pagination and filtering
     const { searchParams } = new URL(request.url)
     const limit = parseInt(searchParams.get('limit') || '100')
     const offset = parseInt(searchParams.get('offset') || '0')
-    const type = searchParams.get('type') // topup, deduction, refund
-    const status = searchParams.get('status') // pending, completed, failed
+    const status = searchParams.get('status')
 
-    // Query wallet_transactions instead of transactions
-    // Only show topup transactions (credit purchases), not per-message deductions
+    // Resolve wallet owner's user_id (shared workspace wallet)
+    const walletUserId = await getWalletUserId(userId)
+
     let query = supabase
       .from('wallet_transactions')
       .select('*', { count: 'exact' })
-      .eq('user_id', userId)
+      .eq('user_id', walletUserId)
       .eq('type', 'topup')
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1)
 
-    // Apply status filter if provided
     if (status) {
       query = query.eq('status', status)
     }

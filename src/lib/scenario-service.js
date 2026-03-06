@@ -276,19 +276,19 @@ Current conversation:`
 
 async function deductScenarioCredits(workspaceId, messageId, recipientPhone) {
   try {
-    // Get workspace owner's user_id
-    const { data: workspace, error: wsError } = await supabaseAdmin
-      .from('workspaces')
-      .select('created_by')
-      .eq('id', workspaceId)
+    // Get the wallet's user_id via workspace_id (shared workspace wallet)
+    const { data: wallet, error: wsError } = await supabaseAdmin
+      .from('wallets')
+      .select('user_id')
+      .eq('workspace_id', workspaceId)
       .single()
 
-    if (wsError || !workspace?.created_by) {
-      console.error('Could not find workspace owner for credit deduction:', wsError)
+    if (wsError || !wallet?.user_id) {
+      console.error('Could not find workspace wallet for credit deduction:', wsError)
       return
     }
 
-    const userId = workspace.created_by
+    const userId = wallet.user_id
     const messageRate = await getWorkspaceMessageRate(workspaceId)
     const totalCost = messageRate * 2
 

@@ -47,6 +47,10 @@ export default function BillingPage() {
     }
   }, [])
 
+  // Derive workspace info from session
+  const workspaceName = user?.workspaceName || null
+  const workspaceRole = user?.workspaceRole || null
+
   const fetchWalletData = async (userId) => {
     try {
       setLoading(true)
@@ -132,7 +136,18 @@ export default function BillingPage() {
           <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
             <div>
               <h3 className="text-sm font-semibold text-gray-900">Available Credits</h3>
-              <p className="text-xs text-gray-400 mt-0.5">Used for sending SMS messages</p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <p className="text-xs text-gray-400">Used for sending SMS messages</p>
+                {workspaceName && (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-500">
+                    <i className="fas fa-building text-[9px]"></i>
+                    {workspaceName}
+                    {workspaceRole && workspaceRole !== 'owner' && (
+                      <span className="text-gray-400 capitalize"> · {workspaceRole}</span>
+                    )}
+                  </span>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <button

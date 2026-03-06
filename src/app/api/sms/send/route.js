@@ -5,6 +5,20 @@ import telnyx from '@/lib/telnyx'
 import { getUserFromRequest, getWorkspaceFromRequest } from '@/lib/session-helper'
 import { getWorkspaceMessageRate } from '@/lib/pricing'
 
+async function resolveWalletOwnerId(userId, workspaceId) {
+  // If workspaceId provided, look up workspace owner
+  if (workspaceId) {
+    const { data: workspace } = await supabaseAdmin
+      .from('workspaces')
+      .select('created_by')
+      .eq('id', workspaceId)
+      .single()
+    if (workspace?.created_by) return workspace.created_by
+  }
+  // Fall back to self
+  return userId
+}
+
 export async function POST(request) {
   try {
     const user = getUserFromRequest(request)
@@ -31,11 +45,14 @@ export async function POST(request) {
     // Get current message rate for this workspace based on tiered pricing
     const messageRate = await getWorkspaceMessageRate(workspace.workspaceId)
 
+    // Use workspace owner's wallet for shared credits
+    const walletOwnerId = await resolveWalletOwnerId(user.userId, workspace.workspaceId)
+
     // Check if user can afford the message cost (actual wallet balance)
     const { data: affordCheck, error: affordError } = await supabaseAdmin.rpc(
       'can_afford_message_cost_v2',
       {
-        p_user_id: user.userId,
+        p_user_id: walletOwnerId,
         p_message_count: 1,
         p_cost_per_message: messageRate
       }
@@ -157,11 +174,11 @@ export async function POST(request) {
       )
     }
 
-    // Deduct message cost from wallet immediately
+    // Deduct message cost from workspace owner's wallet (shared credits)
     const { data: deductionResult, error: deductionError } = await supabaseAdmin.rpc(
       'deduct_message_cost',
       {
-        p_user_id: user.userId,
+        p_user_id: walletOwnerId,
         p_workspace_id: workspace.workspaceId,
         p_message_count: 1,
         p_cost_per_message: messageRate,
@@ -183,7 +200,7 @@ export async function POST(request) {
       .from('message_transactions')
       .insert({
         workspace_id: workspace.workspaceId,
-        user_id: user.userId,
+        user_id: walletOwnerId,
         campaign_id: null,
         message_id: messageRecord?.id,
         recipient_phone: normalizedTo,
