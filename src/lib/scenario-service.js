@@ -52,27 +52,34 @@ export async function findMatchingScenario(recipientNumber, senderNumber) {
       return null
     }
 
-    // Check if any scenario has contact restrictions
+    // Priority 1: Explicit assignment — scenario has this specific contact listed
     for (const item of scenarioPhoneNumbers) {
       const scenario = item.scenarios
 
-      // Check if scenario has contact restrictions
-      const { data: contactRestrictions } = await supabaseAdmin
+      const { data: explicitMatch } = await supabaseAdmin
         .from('scenario_contacts')
-        .select('recipient_phone')
+        .select('id')
         .eq('scenario_id', scenario.id)
+        .eq('recipient_phone', senderNumber)
+        .limit(1)
+        .single()
 
-      // If no restrictions, scenario applies
-      if (!contactRestrictions || contactRestrictions.length === 0) {
+      if (explicitMatch) {
         return scenario
       }
+    }
 
-      // If restrictions exist, check if sender matches
-      const isAllowed = contactRestrictions.some(
-        restriction => restriction.recipient_phone === senderNumber
-      )
+    // Priority 2: Unrestricted scenario — no contacts in scenario_contacts at all
+    for (const item of scenarioPhoneNumbers) {
+      const scenario = item.scenarios
 
-      if (isAllowed) {
+      const { data: anyContacts } = await supabaseAdmin
+        .from('scenario_contacts')
+        .select('id')
+        .eq('scenario_id', scenario.id)
+        .limit(1)
+
+      if (!anyContacts || anyContacts.length === 0) {
         return scenario
       }
     }
@@ -202,6 +209,34 @@ Current conversation:`
       await logScenarioExecution(executionLog)
 
       return { success: true, humanNeeded: true }
+    }
+
+    // Apply random reply delay if configured (humanize AI responses)
+    console.log(`[AI delay] scenario.workspace_id = "${scenario.workspace_id}"`)
+    const { data: aiSettings, error: aiSettingsError } = await supabaseAdmin
+      .from('workspace_ai_settings')
+      .select('ai_reply_delay_min, ai_reply_delay_max')
+      .eq('workspace_id', scenario.workspace_id)
+      .single()
+
+    if (aiSettingsError && aiSettingsError.code !== 'PGRST116') {
+      console.error('AI settings lookup error (table may not exist — run SQL migration):', aiSettingsError.message)
+    }
+
+    if (aiSettings) {
+      const min = Math.max(0, aiSettings.ai_reply_delay_min || 0)
+      const max = Math.max(0, aiSettings.ai_reply_delay_max || 0)
+      console.log(`AI delay settings for workspace ${scenario.workspace_id}: min=${min}s max=${max}s`)
+      if (max > 0) {
+        const range = max >= min ? max - min : 0
+        const delayMs = (Math.floor(Math.random() * (range + 1)) + min) * 1000
+        console.log(`AI reply delay: waiting ${delayMs}ms before sending`)
+        await new Promise(resolve => setTimeout(resolve, delayMs))
+      } else {
+        console.log('AI delay: max=0, sending immediately')
+      }
+    } else {
+      console.log(`AI delay: no settings found for workspace ${scenario.workspace_id}, sending immediately`)
     }
 
     // Send reply via Telnyx

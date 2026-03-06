@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
-import { apiGet, apiPost, apiDelete } from '@/lib/api-client'
+import { apiGet, apiPost, apiDelete, fetchWithWorkspace } from '@/lib/api-client'
 import { validateAndUpgradeSession } from '@/lib/session-validator'
 import ConversationList from '@/components/inbox/ConversationList'
 import ChatWindow from '@/components/inbox/ChatWindow'
@@ -24,6 +24,7 @@ export default function InboxPage() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const [mobileView, setMobileView] = useState('list') // 'list' | 'chat' | 'contact'
+  const [assignScenarioModal, setAssignScenarioModal] = useState(null) // { conversationId, phoneNumber }
 
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -289,6 +290,10 @@ export default function InboxPage() {
     }
   }
 
+  const handleAssignScenario = (conversationId, phoneNumber) => {
+    setAssignScenarioModal({ conversationId, phoneNumber })
+  }
+
   const filteredConversations = conversations
     .filter(conv => {
       switch (filter) {
@@ -418,6 +423,7 @@ export default function InboxPage() {
               onMarkAsOpen={handleMarkAsOpen}
               onPinConversation={handlePinConversation}
               onBlockContact={handleBlockContact}
+              onAssignScenario={handleAssignScenario}
               callHook={callHook}
               isCreatingNew={isCreatingNewConversation}
             />
@@ -464,6 +470,7 @@ export default function InboxPage() {
                 onPinConversation={handlePinConversation}
                 onBlockContact={handleBlockContact}
                 onDeleteConversation={handleDeleteConversation}
+                onAssignScenario={handleAssignScenario}
               />
             </div>
 
@@ -518,6 +525,126 @@ export default function InboxPage() {
         />
       )}
 
+      {assignScenarioModal && (
+        <AssignScenarioModal
+          conversationId={assignScenarioModal.conversationId}
+          phoneNumber={assignScenarioModal.phoneNumber}
+          onClose={() => setAssignScenarioModal(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function AssignScenarioModal({ conversationId, phoneNumber, onClose }) {
+  const [scenarios, setScenarios] = useState([])
+  const [currentScenarioId, setCurrentScenarioId] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [selected, setSelected] = useState(null) // null = no change yet
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true)
+      try {
+        // Fetch active scenarios for workspace (needs workspace auth headers)
+        const [scenariosRes, assignmentRes] = await Promise.all([
+          fetchWithWorkspace('/api/scenarios'),
+          fetchWithWorkspace(`/api/conversations/assign-scenario?conversationId=${conversationId}`)
+        ])
+        const [scenariosData, assignmentData] = await Promise.all([
+          scenariosRes.json(),
+          assignmentRes.json()
+        ])
+        if (scenariosData.success) setScenarios(scenariosData.scenarios?.filter(s => s.is_active) || [])
+        if (assignmentData.success) {
+          const id = assignmentData.assignedScenario?.id || null
+          setCurrentScenarioId(id)
+          setSelected(id)
+        }
+      } catch (e) {
+        console.error('Error loading scenarios:', e)
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [conversationId])
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      const res = await fetchWithWorkspace('/api/conversations/assign-scenario', {
+        method: 'POST',
+        body: JSON.stringify({ conversationId, scenarioId: selected })
+      })
+      const data = await res.json()
+      if (data.success) {
+        onClose()
+      }
+    } catch (e) {
+      console.error('Error assigning scenario:', e)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const hasChange = selected !== currentScenarioId
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-sm">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">Assign Scenario</h3>
+            <p className="text-xs text-gray-400 mt-0.5">{phoneNumber}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1">
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        <div className="px-5 py-4">
+          {loading ? (
+            <div className="py-6 text-center text-sm text-gray-400">
+              <i className="fas fa-spinner fa-spin mr-2"></i>Loading scenarios…
+            </div>
+          ) : scenarios.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-4">No active scenarios found.</p>
+          ) : (
+            <div className="space-y-2">
+              {/* None option */}
+              <label className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${selected === null ? 'border-[#C54A3F] bg-red-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                <input type="radio" name="scenario" value="" checked={selected === null} onChange={() => setSelected(null)} className="accent-[#C54A3F]" />
+                <div>
+                  <p className="text-sm font-medium text-gray-700">None</p>
+                  <p className="text-xs text-gray-400">Use default scenario matching</p>
+                </div>
+              </label>
+              {scenarios.map(s => (
+                <label key={s.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${selected === s.id ? 'border-[#C54A3F] bg-red-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                  <input type="radio" name="scenario" value={s.id} checked={selected === s.id} onChange={() => setSelected(s.id)} className="accent-[#C54A3F]" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{s.name}</p>
+                    {s.instructions && <p className="text-xs text-gray-400 truncate max-w-[200px]">{s.instructions}</p>}
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 py-3 border-t border-gray-100 flex justify-end gap-2">
+          <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">Cancel</button>
+          <button
+            onClick={handleSave}
+            disabled={saving || !hasChange || loading}
+            className="px-4 py-1.5 text-sm font-medium text-white bg-[#C54A3F] hover:bg-[#B73E34] rounded-md disabled:opacity-50"
+          >
+            {saving ? <><i className="fas fa-spinner fa-spin mr-1.5"></i>Saving…</> : 'Assign'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

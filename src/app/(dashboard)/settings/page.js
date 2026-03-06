@@ -5,15 +5,17 @@ import ManageNumbers from '@/components/settings/ManageNumbers'
 import MessageTemplates from '@/components/settings/MessageTemplates'
 import ApiKeys from '@/components/settings/ApiKeys'
 import Blocklist from '@/components/settings/Blocklist'
+import AiSettings from '@/components/settings/AiSettings'
 
 const sections = [
   {
     label: 'Workspace',
     items: [
-      { id: 'numbers',   name: 'Phone Numbers',      icon: 'fa-sim-card' },
-      { id: 'templates', name: 'Message Templates',   icon: 'fa-layer-group' },
-      { id: 'apikeys',   name: 'API Keys',            icon: 'fa-plug' },
-      { id: 'blocklist', name: 'Blocklist',           icon: 'fa-ban' },
+      { id: 'numbers',    name: 'Phone Numbers',     icon: 'fa-sim-card' },
+      { id: 'templates',  name: 'Message Templates', icon: 'fa-layer-group' },
+      { id: 'apikeys',    name: 'API Keys',           icon: 'fa-plug' },
+      { id: 'blocklist',  name: 'Blocklist',          icon: 'fa-ban' },
+      { id: 'ai',         name: 'AI Settings',        icon: 'fa-robot' },
     ],
   },
   {
@@ -83,6 +85,7 @@ export default function SettingsPage() {
         {activeTab === 'templates' && <MessageTemplates />}
         {activeTab === 'apikeys'   && <ApiKeys />}
         {activeTab === 'blocklist' && <Blocklist />}
+        {activeTab === 'ai'        && <AiSettings />}
 
         {['profile', 'notifications', 'security'].includes(activeTab) && (
           <div className="bg-white border border-gray-200 rounded-lg">

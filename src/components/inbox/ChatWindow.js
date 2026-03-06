@@ -31,7 +31,8 @@ export default function ChatWindow({
   onMarkAsOpen,
   onPinConversation,
   onBlockContact,
-  onDeleteConversation
+  onDeleteConversation,
+  onAssignScenario
 }) {
   const [newMessage, setNewMessage] = useState('')
   const [sending, setSending] = useState(false)
@@ -364,31 +365,39 @@ export default function ChatWindow({
                   </button>
 
                   {showMoreMenu && (
-                    <div className="absolute right-0 top-full mt-1 w-52 bg-white rounded-xl shadow-lg border border-gray-200 py-1 z-50">
+                    <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                      {onAssignScenario && (
+                        <button
+                          onClick={() => { onAssignScenario(conversation.id, conversation.phone_number); setShowMoreMenu(false) }}
+                          className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3"
+                        >
+                          <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="2" y="3" width="20" height="14" rx="2"/>
+                            <path d="M8 21h8M12 17v4"/>
+                          </svg>
+                          Assign scenario
+                        </button>
+                      )}
                       <button
                         onClick={() => { onPinConversation?.(conversation.id); setShowMoreMenu(false) }}
                         className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3"
                       >
                         <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-                          <line x1="12" y1="17" x2="12" y2="22" />
-                          <path d="M5 17h14v-1.76a2 2 0 00-1.11-1.79l-1.78-.9A2 2 0 0115 10.76V6h1a2 2 0 000-4H8a2 2 0 000 4h1v4.76a2 2 0 01-1.11 1.79l-1.78.9A2 2 0 005 15.24V17z" />
+                          <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
                         </svg>
-                        {conversation.pinned ? 'Unpin conversation' : 'Pin conversation'}
+                        {conversation.pinned ? 'Unpin' : 'Pin'} conversation
                       </button>
-
-                      <div className="border-t border-gray-100 my-1" />
-
                       <button
                         onClick={() => { onBlockContact?.(conversation.id, conversation.phone_number); setShowMoreMenu(false) }}
                         className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3"
                       >
                         <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="12" cy="12" r="10" />
-                          <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+                          <circle cx="12" cy="12" r="10"/>
+                          <path d="M4.93 4.93l14.14 14.14"/>
                         </svg>
                         Block contact
                       </button>
-
+                      <div className="my-1 border-t border-gray-100" />
                       <button
                         onClick={() => { onDeleteConversation?.(conversation.id); setShowMoreMenu(false) }}
                         className="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-3"
