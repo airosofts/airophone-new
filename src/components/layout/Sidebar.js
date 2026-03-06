@@ -59,6 +59,7 @@ export default function Sidebar({ user, currentPath, onClose }) {
     { name: 'Inbox', href: '/inbox', icon: 'fa-inbox' },
     { name: 'Contacts', href: '/contacts', icon: 'fa-address-book' },
     { name: 'Campaigns', href: '/campaigns', icon: 'fa-bullhorn' },
+    { name: 'Scenarios', href: '/scenarios', icon: 'fa-robot' },
     { name: 'Credits', href: '/billing', icon: 'fa-coins' },
     { name: 'Settings', href: '/settings', icon: 'fa-cog' },
   ]
