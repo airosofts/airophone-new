@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase-server'
 import { getAIResponse } from '@/lib/openai'
 import telnyx from '@/lib/telnyx'
+import { getWorkspaceMessageRate } from '@/lib/pricing'
 import {
   isWithinBusinessHours,
   updateFollowupState,
@@ -248,6 +249,9 @@ Current conversation:`
 
     await logScenarioExecution(executionLog)
 
+    // Deduct 2 credits for AI scenario reply
+    await deductScenarioCredits(scenario.workspace_id, replyMessage?.id, message.from_number)
+
     // Update follow-up state (AI sent a message)
     await updateFollowupState(conversation.id, scenario.id, 'ai')
 
@@ -267,6 +271,65 @@ Current conversation:`
     executionLog.processing_time_ms = Date.now() - startTime
     await logScenarioExecution(executionLog)
     return { success: false, error: error.message }
+  }
+}
+
+async function deductScenarioCredits(workspaceId, messageId, recipientPhone) {
+  try {
+    // Get workspace owner's user_id
+    const { data: workspace, error: wsError } = await supabaseAdmin
+      .from('workspaces')
+      .select('created_by')
+      .eq('id', workspaceId)
+      .single()
+
+    if (wsError || !workspace?.created_by) {
+      console.error('Could not find workspace owner for credit deduction:', wsError)
+      return
+    }
+
+    const userId = workspace.created_by
+    const messageRate = await getWorkspaceMessageRate(workspaceId)
+    const totalCost = messageRate * 2
+
+    // Deduct 2 credits (AI reply counts as 2 messages)
+    const { data: deductionResult, error: deductionError } = await supabaseAdmin.rpc(
+      'deduct_message_cost',
+      {
+        p_user_id: userId,
+        p_workspace_id: workspaceId,
+        p_message_count: 2,
+        p_cost_per_message: messageRate,
+        p_description: `AI scenario reply to ${recipientPhone}`,
+        p_campaign_id: null,
+        p_message_id: messageId,
+        p_recipient_phone: recipientPhone
+      }
+    )
+
+    if (deductionError || !deductionResult?.success) {
+      console.error('Error deducting AI scenario credits:', deductionError || deductionResult)
+      return
+    }
+
+    // Log to message_transactions
+    await supabaseAdmin
+      .from('message_transactions')
+      .insert({
+        workspace_id: workspaceId,
+        user_id: userId,
+        campaign_id: null,
+        message_id: messageId,
+        recipient_phone: recipientPhone,
+        cost_per_message: messageRate,
+        total_cost: totalCost,
+        message_type: 'ai_scenario',
+        status: 'sent'
+      })
+
+    console.log(`Deducted 2 credits for AI scenario reply to ${recipientPhone}`)
+  } catch (error) {
+    console.error('Error in deductScenarioCredits:', error)
   }
 }
 
