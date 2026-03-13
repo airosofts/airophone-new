@@ -26,6 +26,7 @@ export default function ChatWindow({
   onBackToList,
   mobileView,
   // Action handlers
+  onMarkAsRead,
   onMarkAsUnread,
   onMarkAsDone,
   onMarkAsOpen,
@@ -260,7 +261,9 @@ export default function ChatWindow({
     }
   }
 
-  const displayName = conversation.name || formatPhoneNumber(conversation.phone_number)
+  const displayName = (conversation.contact_first_name || conversation.contact_last_name)
+    ? [conversation.contact_first_name, conversation.contact_last_name].filter(Boolean).join(' ')
+    : (conversation.name || formatPhoneNumber(conversation.phone_number))
   const initials = getInitials(displayName, conversation.phone_number)
   const isOnCall = callHook?.getCurrentCallNumber && callHook.getCurrentCallNumber() === conversation.phone_number
 
@@ -460,6 +463,7 @@ export default function ChatWindow({
                 rows={1}
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
+                onClick={() => onMarkAsRead?.(conversation.id)}
                 onKeyDown={handleKeyDown}
                 onInput={handleTextareaInput}
                 placeholder="Type a message..."

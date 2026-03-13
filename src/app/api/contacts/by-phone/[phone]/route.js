@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
+import { getWorkspaceFromRequest } from '@/lib/session-helper'
 
 function normalizePhoneNumber(phone) {
   if (!phone) return null
@@ -21,18 +22,21 @@ export async function GET(request, { params }) {
     const { phone } = await params
     const phoneNumber = decodeURIComponent(phone)
     const normalizedPhone = normalizePhoneNumber(phoneNumber)
-    
+    const workspace = getWorkspaceFromRequest(request)
+
     console.log('Looking up contact by phone:', phoneNumber, 'normalized:', normalizedPhone)
 
-    // Try to find contact with normalized phone number
-    const { data: contact, error } = await supabaseAdmin
+    let query = supabaseAdmin
       .from('contacts')
-      .select(`
-        *,
-        contact_lists!left(name)
-      `)
+      .select(`*, contact_lists!left(name)`)
       .eq('phone_number', normalizedPhone)
-      .single()
+
+    // Filter by workspace when context is available
+    if (workspace?.workspaceId) {
+      query = query.eq('workspace_id', workspace.workspaceId)
+    }
+
+    const { data: contact, error } = await query.single()
 
     if (error && error.code !== 'PGRST116') {
       console.error('Database error finding contact:', error)

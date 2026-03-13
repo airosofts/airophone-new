@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
-import { apiGet, apiPost, apiDelete, fetchWithWorkspace } from '@/lib/api-client'
+import { apiGet, apiPost, fetchWithWorkspace } from '@/lib/api-client'
 import { validateAndUpgradeSession } from '@/lib/session-validator'
 import ConversationList from '@/components/inbox/ConversationList'
 import ChatWindow from '@/components/inbox/ChatWindow'
@@ -19,7 +19,7 @@ export default function InboxPage() {
   const [phoneNumbers, setPhoneNumbers] = useState([])
   const [selectedConversation, setSelectedConversation] = useState(null)
   const [isCreatingNewConversation, setIsCreatingNewConversation] = useState(false)
-  const [showContactPanel, setShowContactPanel] = useState(false)
+
   const [filter, setFilter] = useState('all')
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -88,7 +88,9 @@ export default function InboxPage() {
     initializeSession()
 
     if (typeof Audio !== 'undefined') {
-      audioRef.current = new Audio('/notification.mp3')
+      const audio = new Audio('/message.mp3')
+      audio.volume = 0.3
+      audioRef.current = audio
     }
   }, [])
 
@@ -104,48 +106,65 @@ export default function InboxPage() {
     }
   }, [phoneNumbers, callHook])
 
+  // Play notification sound on new inbound messages (any conversation)
+  const lastConvTimestampRef = useRef(null)
   useEffect(() => {
-    if (messages.length > 0) {
-      const lastMessage = messages[messages.length - 1]
-      if (lastMessage.direction === 'inbound' && lastMessage.created_at && !lastMessage.isOptimistic) {
-        const messageTime = new Date(lastMessage.created_at)
-        const now = new Date()
-        if (now - messageTime < 30000) {
-          if (audioRef.current) {
-            audioRef.current.play().catch(console.error)
-          }
+    if (!conversations.length) return
+    // Find the most recent inbound lastMessage timestamp across all conversations
+    let newestInbound = null
+    for (const conv of conversations) {
+      if (conv.lastMessage?.direction === 'inbound' && conv.lastMessage?.created_at) {
+        if (!newestInbound || conv.lastMessage.created_at > newestInbound) {
+          newestInbound = conv.lastMessage.created_at
         }
       }
     }
-  }, [messages])
+    if (!newestInbound) return
+    // On first load, just record the timestamp without playing
+    if (lastConvTimestampRef.current === null) {
+      lastConvTimestampRef.current = newestInbound
+      return
+    }
+    // Play sound if there's a newer inbound message
+    if (newestInbound > lastConvTimestampRef.current) {
+      lastConvTimestampRef.current = newestInbound
+      if (audioRef.current) {
+        audioRef.current.volume = 0.10
+        audioRef.current.currentTime = 0
+        audioRef.current.play().catch(err => console.warn('Sound play failed:', err.message))
+      }
+    }
+  }, [conversations])
 
-  const handleConversationSelect = async (conversation) => {
+  const handleConversationSelect = (conversation) => {
     setActiveConversation(conversation.id)
     setSelectedConversation(conversation)
     setIsCreatingNewConversation(false)
-    setShowContactPanel(false)
     setMobileView('chat') // Switch to chat view on mobile
+    // Refresh conversation names from contacts (in background, no reorder)
+    refetch(false)
+  }
 
-    if (user && user.userId) {
-      try {
-        updateConversationOptimistic(conversation.id, { unreadCount: 0 })
+  const handleMarkAsRead = async (conversationId) => {
+    if (!user?.userId) return
+    const conversation = conversations.find(c => c.id === conversationId)
+    if (!conversation || conversation.unreadCount === 0) return
 
-        const response = await fetch('/api/conversations/mark-read', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            conversationId: conversation.id,
-            userId: user.userId
-          }),
-        })
+    try {
+      updateConversationOptimistic(conversationId, { unreadCount: 0 })
 
-        if (!response.ok) {
-          updateConversationOptimistic(conversation.id, { unreadCount: conversation.unreadCount })
-        }
-      } catch (error) {
-        console.error('Error marking messages as read:', error)
-        updateConversationOptimistic(conversation.id, { unreadCount: conversation.unreadCount })
+      const response = await fetch('/api/conversations/mark-read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId, userId: user.userId }),
+      })
+
+      if (!response.ok) {
+        updateConversationOptimistic(conversationId, { unreadCount: conversation.unreadCount })
       }
+    } catch (error) {
+      console.error('Error marking messages as read:', error)
+      updateConversationOptimistic(conversationId, { unreadCount: conversation?.unreadCount })
     }
   }
 
@@ -153,7 +172,6 @@ export default function InboxPage() {
     setActiveConversation(null)
     setSelectedConversation(null)
     setIsCreatingNewConversation(false)
-    setShowContactPanel(false)
     setMobileView('list') // Go back to list on mobile
   }
 
@@ -418,6 +436,7 @@ export default function InboxPage() {
               onConversationSelect={handleConversationSelect}
               formatPhoneNumber={formatPhoneNumber}
               onDeleteConversation={handleDeleteConversation}
+              onMarkAsRead={handleMarkAsRead}
               onMarkAsUnread={handleMarkAsUnread}
               onMarkAsDone={handleMarkAsDone}
               onMarkAsOpen={handleMarkAsOpen}
@@ -464,6 +483,7 @@ export default function InboxPage() {
                 callHook={callHook}
                 onBackToList={() => setMobileView('list')}
                 mobileView={mobileView}
+                onMarkAsRead={handleMarkAsRead}
                 onMarkAsUnread={handleMarkAsUnread}
                 onMarkAsDone={handleMarkAsDone}
                 onMarkAsOpen={handleMarkAsOpen}
@@ -475,11 +495,25 @@ export default function InboxPage() {
             </div>
 
             {/* Contact Panel - Always visible on desktop, hidden on mobile */}
-            <div className="hidden lg:block w-80 border-l border-gray-200 bg-white overflow-y-auto">
+            <div className="hidden lg:block w-[340px] border-l border-gray-200 bg-white overflow-y-auto">
               <ContactPanel
                 conversation={activeConversation}
                 formatPhoneNumber={formatPhoneNumber}
                 user={user}
+                onContactUpdated={(updatedContact) => {
+                  if (updatedContact && activeConversation) {
+                    const firstName = updatedContact.first_name || null
+                    const lastName = updatedContact.last_name || null
+                    const personalName = [firstName, lastName].filter(Boolean).join(' ')
+                    const contactName = personalName || updatedContact.business_name || null
+                    updateConversationOptimistic(activeConversation.id, {
+                      contact_first_name: firstName,
+                      contact_last_name: lastName,
+                      name: contactName || activeConversation.name,
+                    })
+                  }
+                  refetch(true)
+                }}
               />
             </div>
           </>

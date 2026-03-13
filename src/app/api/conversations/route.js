@@ -2,6 +2,14 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
 import { getUserFromRequest, getWorkspaceFromRequest } from '@/lib/session-helper'
 
+function normalizePhone(phone) {
+  if (!phone) return null
+  const digits = phone.replace(/\D/g, '')
+  if (digits.length === 10) return `+1${digits}`
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`
+  return phone.startsWith('+') ? phone : `+1${digits}`
+}
+
 export async function GET(request) {
   try {
     const user = getUserFromRequest(request)
@@ -91,24 +99,73 @@ export async function GET(request) {
       ? conversationsData.filter(conv => !blockedNumbers.includes(conv.phone_number))
       : conversationsData
 
+    // Fetch contacts matching conversation phone numbers (avoids Supabase 1000-row limit)
+    let contactMap = {}
+    if (visibleConversations.length > 0) {
+      const rawPhones = visibleConversations.map(c => c.phone_number).filter(Boolean)
+      const normalizedPhones = rawPhones.map(p => normalizePhone(p)).filter(Boolean)
+      const phonesToQuery = [...new Set([...rawPhones, ...normalizedPhones])]
+
+      // Query in batches of 100 to stay within URL length limits
+      const batchSize = 100
+      for (let i = 0; i < phonesToQuery.length; i += batchSize) {
+        const batch = phonesToQuery.slice(i, i + batchSize)
+        const { data: contactRows, error: contactError } = await supabaseAdmin
+          .from('contacts')
+          .select('phone_number, first_name, last_name, business_name')
+          .eq('workspace_id', workspace.workspaceId)
+          .in('phone_number', batch)
+
+        if (contactError) {
+          console.error('[ContactMap] Batch error:', contactError)
+          continue
+        }
+
+        if (contactRows) {
+          for (const c of contactRows) {
+            const entry = {
+              first_name: c.first_name || null,
+              last_name: c.last_name || null,
+              business_name: c.business_name || null
+            }
+            if (c.phone_number) contactMap[c.phone_number] = entry
+            const normalized = normalizePhone(c.phone_number)
+            if (normalized && normalized !== c.phone_number) contactMap[normalized] = entry
+          }
+        }
+      }
+      console.log(`[ContactMap] Found ${Object.keys(contactMap).length} contact entries for ${phonesToQuery.length} phones`)
+    }
+
     // Process conversations to get the latest message for each
     const processedConversations = visibleConversations.map(conv => {
-      // Sort messages by created_at and get the latest one
-      const sortedMessages = conv.messages.sort((a, b) => 
+      const sortedMessages = conv.messages.sort((a, b) =>
         new Date(b.created_at) - new Date(a.created_at)
       )
-      
+
+      // Try exact match, then normalized match
+      const contact = contactMap[conv.phone_number] || contactMap[normalizePhone(conv.phone_number)]
+      const contactFirstName = contact?.first_name || null
+      const contactLastName = contact?.last_name || null
+      const contactBusinessName = contact?.business_name || null
+      const contactName = contact
+        ? ([contactFirstName, contactLastName].filter(Boolean).join(' ') || contactBusinessName || null)
+        : null
+
       return {
         ...conv,
+        contact_first_name: contactFirstName,
+        contact_last_name: contactLastName,
+        name: contactName || conv.name || null,
         lastMessage: sortedMessages[0] || null,
-        unreadCount: sortedMessages.filter(msg => 
+        unreadCount: sortedMessages.filter(msg =>
           msg.direction === 'inbound' && !msg.read_at
         ).length,
-        messages: undefined // Remove full messages array to keep response clean
+        messages: undefined
       }
     })
 
-    console.log(`Fetched ${processedConversations.length} conversations for ${fromNumber || 'all numbers'} (${blockedNumbers.length} blocked)`)
+    console.log(`Fetched ${processedConversations.length} conversations for ${fromNumber || 'all numbers'}`)
 
     return NextResponse.json({
       success: true,

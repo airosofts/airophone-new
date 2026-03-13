@@ -391,9 +391,17 @@ export function useRealtimeConversations(fromNumber) {
         (payload) => {
           setConversations(current => current.map(conv => {
             if (conv.id === payload.new.id) {
+              // Preserve computed contact fields (not in DB) — the raw DB row
+              // has `name` set to business_name but the API computes a display
+              // name from the linked contact's first/last name.
+              const { name: _dbName, ...dbFields } = payload.new
               return {
                 ...conv,
-                ...payload.new
+                ...dbFields,
+                // Only overwrite name if we don't have contact first/last names
+                name: (conv.contact_first_name || conv.contact_last_name)
+                  ? conv.name
+                  : (payload.new.name || conv.name)
               }
             }
             return conv

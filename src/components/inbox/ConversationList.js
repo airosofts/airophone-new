@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef, startTransition } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { getAvatarColor, getInitials } from '@/lib/avatar-color'
 
 export default function ConversationList({
@@ -10,6 +10,7 @@ export default function ConversationList({
   onConversationSelect,
   formatPhoneNumber,
   onDeleteConversation,
+  onMarkAsRead,
   onMarkAsUnread,
   onMarkAsDone,
   onMarkAsOpen,
@@ -21,6 +22,24 @@ export default function ConversationList({
 }) {
   const [contextMenu, setContextMenu] = useState(null)
   const menuStateRef = useRef({ isOpen: false, conversation: null, position: null })
+  const [hoveredConv, setHoveredConv] = useState(null)
+  const [hoverRect, setHoverRect] = useState(null)
+  const actionBarRef = useRef(null)
+  const hoverClearTimer = useRef(null)
+
+  const clearHover = () => {
+    hoverClearTimer.current = setTimeout(() => {
+      setHoveredConv(null)
+      setHoverRect(null)
+    }, 150)
+  }
+
+  const cancelClearHover = () => {
+    if (hoverClearTimer.current) {
+      clearTimeout(hoverClearTimer.current)
+      hoverClearTimer.current = null
+    }
+  }
 
   const closeContextMenu = useCallback(() => {
     menuStateRef.current = { isOpen: false, conversation: null, position: null }
@@ -61,17 +80,6 @@ export default function ConversationList({
     } catch (error) {
       console.error('Error initiating call:', error)
     }
-  }
-
-  const handleCallFromContext = async () => {
-    if (!contextMenu?.conversation || !callHook) return
-
-    try {
-      await handleCallClick({ stopPropagation: () => {} }, contextMenu.conversation.phone_number)
-    } catch (error) {
-      console.error('Error calling from context menu:', error)
-    }
-    closeContextMenu()
   }
 
   const handleDeleteConversation = () => {
@@ -224,10 +232,10 @@ export default function ConversationList({
         {conversations.map((conversation) => {
           const isSelected = selectedConversation?.id === conversation.id
           const hasUnread = conversation.unreadCount > 0
-          const displayName = conversation.name || formatPhoneNumber(conversation.phone_number)
+          const displayName = (conversation.contact_first_name || conversation.contact_last_name)
+            ? [conversation.contact_first_name, conversation.contact_last_name].filter(Boolean).join(' ')
+            : (conversation.name || formatPhoneNumber(conversation.phone_number))
           const initials = getInitials(displayName, conversation.phone_number)
-          const isCurrentCall = callHook?.getCurrentCallNumber && callHook.getCurrentCallNumber() === conversation.phone_number
-          const canCall = callHook && callHook.selectedCallerNumber && !callHook.isCallActive
           const isPinned = conversation.pinned
 
           return (
@@ -237,6 +245,15 @@ export default function ConversationList({
               onClick={() => {
                 closeContextMenu()
                 onConversationSelect(conversation)
+              }}
+              onMouseEnter={(e) => {
+                cancelClearHover()
+                const rect = e.currentTarget.getBoundingClientRect()
+                setHoveredConv(conversation)
+                setHoverRect(rect)
+              }}
+              onMouseLeave={() => {
+                clearHover()
               }}
               className={`cursor-pointer border-b border-gray-100 hover:bg-gray-50 transition-none ${
                 isSelected ? 'bg-gray-50' : ''
@@ -276,7 +293,6 @@ export default function ConversationList({
                         {displayName}
                       </h3>
                     </div>
-
                     <span className="text-xs text-gray-500 flex-shrink-0">
                       {formatTime(conversation.lastMessage?.created_at)}
                     </span>
@@ -291,6 +307,98 @@ export default function ConversationList({
           )
         })}
       </div>
+
+      {/* Fixed-position hover action bar - renders outside scroll container */}
+      {hoveredConv && hoverRect && (
+        <div
+          ref={actionBarRef}
+          style={{
+            position: 'fixed',
+            top: hoverRect.top + hoverRect.height / 2,
+            left: hoverRect.right - 8,
+            transform: 'translateY(-50%)',
+            zIndex: 60,
+          }}
+          onMouseEnter={() => {
+            cancelClearHover()
+          }}
+          onMouseLeave={() => {
+            setHoveredConv(null)
+            setHoverRect(null)
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center gap-0.5 bg-white border border-gray-200 rounded-lg shadow-lg px-1 py-1">
+            {/* Call button */}
+            {callHook && callHook.selectedCallerNumber && (
+              <button
+                title={callHook.isCallActive ? 'Call in progress' : 'Call'}
+                disabled={callHook.isCallActive}
+                onClick={(e) => handleCallClick(e, hoveredConv.phone_number)}
+                className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.01 2.18 2 2 0 012 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 14.92v2z" />
+                </svg>
+              </button>
+            )}
+
+            {/* Mark as done / open */}
+            <button
+              title={hoveredConv.status === 'closed' ? 'Mark as open' : 'Mark as done'}
+              onClick={(e) => {
+                e.stopPropagation()
+                if (hoveredConv.status === 'closed') {
+                  onMarkAsOpen?.(hoveredConv.id)
+                } else {
+                  onMarkAsDone?.(hoveredConv.id)
+                }
+              }}
+              className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            </button>
+
+            {/* Mark as read / unread */}
+            <button
+              title={hoveredConv.unreadCount > 0 ? 'Mark as read' : 'Mark as unread'}
+              onClick={(e) => {
+                e.stopPropagation()
+                if (hoveredConv.unreadCount > 0) {
+                  onMarkAsRead?.(hoveredConv.id)
+                } else {
+                  onMarkAsUnread?.(hoveredConv.id)
+                }
+              }}
+              className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M8.33333333,1.875 C8.6785113,1.875 8.95833333,2.15482203 8.95833333,2.5 C8.95833333,2.81379815 8.72707546,3.07358314 8.42569125,3.1182234 L8.33333333,3.125 L4.99999978,3.125 C4.01378052,3.125 3.20539387,3.88642392 3.13064099,4.85347034 L3.12499978,5 L3.12499978,15 C3.12499978,15.9862194 3.88642349,16.7946059 4.85347009,16.8693588 L4.99999978,16.875 L14.9999998,16.875 C15.9862192,16.875 16.7946057,16.1135763 16.8693586,15.1465297 L16.8749998,15 L16.8749998,11.6666667 C16.8749998,11.3214887 17.1548218,11.0416667 17.4999998,11.0416667 C17.8137979,11.0416667 18.0735829,11.2729245 18.1182232,11.5743087 L18.1249998,11.6666667 L18.1249998,15 C18.1249998,16.666373 16.8207131,18.0281208 15.1773301,18.1200531 L14.9999998,18.125 L4.99999978,18.125 C3.3336268,18.125 1.97187893,16.8207133 1.87994671,15.1773303 L1.87499978,15 L1.87499978,5 C1.87499978,3.33362727 3.17928662,1.97187917 4.82266946,1.87994693 L4.99999978,1.875 L8.33333333,1.875 Z M14.375,1.875 C16.4460678,1.875 18.125,3.55393219 18.125,5.625 C18.125,7.69606781 16.4460678,9.375 14.375,9.375 C12.3039322,9.375 10.625,7.69606781 10.625,5.625 C10.625,3.55393219 12.3039322,1.875 14.375,1.875 Z M14.375,3.125 C12.9942881,3.125 11.875,4.24428813 11.875,5.625 C11.875,7.00571187 12.9942881,8.125 14.375,8.125 C15.7557119,8.125 16.875,7.00571187 16.875,5.625 C16.875,4.24428813 15.7557119,3.125 14.375,3.125 Z" />
+              </svg>
+            </button>
+
+            {/* More (opens context menu) */}
+            <button
+              title="More actions"
+              onClick={(e) => {
+                e.stopPropagation()
+                handleMoreClick(e, hoveredConv)
+                setHoveredConv(null)
+                setHoverRect(null)
+              }}
+              className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="currentColor">
+                <circle cx="5" cy="12" r="1.5" />
+                <circle cx="12" cy="12" r="1.5" />
+                <circle cx="19" cy="12" r="1.5" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Context Menu - Always rendered, just toggled with CSS for INSTANT display */}
       <div

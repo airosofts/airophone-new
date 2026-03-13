@@ -23,13 +23,13 @@ export async function POST(request) {
 
     const formData = await request.formData()
     const file = formData.get('file')
-    const contactListId = formData.get('contact_list_id')
+    const contactListId = formData.get('contact_list_id') || null
 
-    console.log('Form data:', { 
-      fileName: file?.name, 
+    console.log('Form data:', {
+      fileName: file?.name,
       fileType: file?.type,
       fileSize: file?.size,
-      contactListId 
+      contactListId
     })
 
     if (!file) {
@@ -39,29 +39,25 @@ export async function POST(request) {
       )
     }
 
-    if (!contactListId) {
-      return NextResponse.json(
-        { error: 'Contact list ID is required' },
-        { status: 400 }
-      )
+    // Verify contact list exists if provided
+    let contactList = null
+    if (contactListId) {
+      const { data: listData, error: listError } = await supabaseAdmin
+        .from('contact_lists')
+        .select('id, name')
+        .eq('id', contactListId)
+        .single()
+
+      if (listError || !listData) {
+        console.error('Contact list not found:', listError)
+        return NextResponse.json(
+          { error: 'Contact list not found' },
+          { status: 404 }
+        )
+      }
+      contactList = listData
+      console.log('Contact list found:', contactList.name)
     }
-
-    // Verify contact list exists
-    const { data: contactList, error: listError } = await supabaseAdmin
-      .from('contact_lists')
-      .select('id, name')
-      .eq('id', contactListId)
-      .single()
-
-    if (listError || !contactList) {
-      console.error('Contact list not found:', listError)
-      return NextResponse.json(
-        { error: 'Contact list not found' },
-        { status: 404 }
-      )
-    }
-
-    console.log('Contact list found:', contactList.name)
 
     // Read and parse CSV
     const csvText = await file.text()
@@ -90,22 +86,40 @@ export async function POST(request) {
     const headers = parseCSVLine(headerLine).map(h => h.toLowerCase().trim())
     console.log('Parsed headers:', headers)
 
-    // Find required columns (look for business_name or name)
-    const businessNameIndex = headers.findIndex(h => h.includes('business') && h.includes('name'))
-    const nameIndex = businessNameIndex !== -1 ? businessNameIndex : headers.findIndex(h => h.includes('name'))
-    const phoneIndex = headers.findIndex(h => h.includes('phone'))
+    // Find name columns — support first_name/last_name OR business_name/company/name
+    const firstNameIndex = headers.findIndex(h => h === 'firstname' || h === 'first_name' || h === 'first name')
+    const lastNameIndex = headers.findIndex(h => h === 'lastname' || h === 'last_name' || h === 'last name')
+    const businessNameIndex = headers.findIndex(h =>
+      (h.includes('business') && h.includes('name')) || h === 'company' || h === 'company name'
+    )
+    const genericNameIndex = businessNameIndex !== -1 ? businessNameIndex
+      : (firstNameIndex === -1 && lastNameIndex === -1 ? headers.findIndex(h => h.includes('name')) : -1)
 
-    console.log('Column indices - business_name:', nameIndex, 'phone:', phoneIndex)
+    // Find phone column — support phone_number_1, phone_1, phone, etc.
+    const phoneIndex = headers.findIndex(h => h === 'phone_number_1' || h === 'phone_number' || h === 'phone_1')
+      !== -1 ? headers.findIndex(h => h === 'phone_number_1' || h === 'phone_number' || h === 'phone_1')
+      : headers.findIndex(h => h.includes('phone'))
 
-    if (nameIndex === -1 || phoneIndex === -1) {
+    console.log('Column indices - firstName:', firstNameIndex, 'lastName:', lastNameIndex,
+      'businessName:', businessNameIndex, 'genericName:', genericNameIndex, 'phone:', phoneIndex)
+
+    if (phoneIndex === -1) {
       return NextResponse.json(
-        { error: 'CSV must contain "business_name" (or "name") and "phone" columns' },
+        { error: 'CSV must contain a phone number column (phone, phone_number, phone_number_1)' },
+        { status: 400 }
+      )
+    }
+
+    const hasNameColumn = firstNameIndex !== -1 || lastNameIndex !== -1 || businessNameIndex !== -1 || genericNameIndex !== -1
+    if (!hasNameColumn) {
+      return NextResponse.json(
+        { error: 'CSV must contain a name column (first_name, last_name, business_name, company, or name)' },
         { status: 400 }
       )
     }
 
     // Find optional columns
-    const emailIndex = headers.findIndex(h => h.includes('email'))
+    const emailIndex = headers.findIndex(h => h === 'email_1' || h === 'email')
     const cityIndex = headers.findIndex(h => h.includes('city'))
     const stateIndex = headers.findIndex(h => h.includes('state'))
     const countryIndex = headers.findIndex(h => h.includes('country'))
@@ -119,11 +133,21 @@ export async function POST(request) {
         const values = parseCSVLine(lines[i])
         console.log(`Row ${i}:`, values)
 
-        const business_name = values[nameIndex]?.trim()
+        const first_name = firstNameIndex !== -1 ? values[firstNameIndex]?.trim() || null : null
+        const last_name = lastNameIndex !== -1 ? values[lastNameIndex]?.trim() || null : null
+        const business_name = businessNameIndex !== -1
+          ? values[businessNameIndex]?.trim() || null
+          : genericNameIndex !== -1 ? values[genericNameIndex]?.trim() || null : null
+
         const phone_number = values[phoneIndex]?.trim()
 
-        if (!business_name || !phone_number) {
-          errors.push(`Row ${i + 1}: Missing business_name or phone number`)
+        if (!phone_number) {
+          errors.push(`Row ${i + 1}: Missing phone number`)
+          continue
+        }
+
+        if (!first_name && !last_name && !business_name) {
+          errors.push(`Row ${i + 1}: Missing name (first_name, last_name, or business_name)`)
           continue
         }
 
@@ -142,13 +166,15 @@ export async function POST(request) {
         }
 
         const contact = {
-          business_name: business_name,
+          first_name,
+          last_name,
+          business_name,
           phone_number: formattedPhone,
           email: emailIndex !== -1 ? (values[emailIndex]?.trim() || null) : null,
           city: cityIndex !== -1 ? (values[cityIndex]?.trim() || null) : null,
           state: stateIndex !== -1 ? (values[stateIndex]?.trim() || null) : null,
           country: countryIndex !== -1 ? (values[countryIndex]?.trim() || null) : null,
-          contact_list_id: contactListId,
+          contact_list_id: contactListId || null,
           workspace_id: workspace.workspaceId,
           created_by: user.userId
         }
@@ -234,7 +260,7 @@ export async function POST(request) {
       duplicates: duplicateCount,
       total: contacts.length,
       errors: errors.length,
-      message: `Successfully imported ${importedCount} contacts to "${contactList.name}"`
+      message: `Successfully imported ${importedCount} contacts${contactList ? ` to "${contactList.name}"` : ''}`
     }
 
     if (duplicateCount > 0) {

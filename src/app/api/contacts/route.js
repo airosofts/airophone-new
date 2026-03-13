@@ -34,7 +34,7 @@ export async function GET(request) {
     }
 
     if (q) {
-      query = query.or(`business_name.ilike.%${q}%,phone_number.ilike.%${q}%`)
+      query = query.or(`business_name.ilike.%${q}%,phone_number.ilike.%${q}%,first_name.ilike.%${q}%,last_name.ilike.%${q}%`)
       query = query.limit(10)
     }
 
@@ -77,19 +77,30 @@ export async function POST(request) {
 
     const body = await request.json()
 
-    const { business_name, phone_number, email, city, state, country, contact_list_id } = body
+    const { first_name, last_name, business_name, phone_number, email, role, custom_fields, city, state, country, contact_list_id } = body
 
-    if (!business_name?.trim() || !phone_number?.trim()) {
+    if (!phone_number?.trim()) {
       return NextResponse.json(
-        { error: 'Business name and phone number are required' },
+        { error: 'Phone number is required' },
+        { status: 400 }
+      )
+    }
+
+    if (!first_name?.trim() && !last_name?.trim() && !business_name?.trim()) {
+      return NextResponse.json(
+        { error: 'At least one of first name, last name, or company name is required' },
         { status: 400 }
       )
     }
 
     const contactData = {
-      business_name: business_name.trim(),
+      first_name: first_name?.trim() || null,
+      last_name: last_name?.trim() || null,
+      business_name: business_name?.trim() || null,
       phone_number: phone_number.trim(),
       email: email?.trim() || null,
+      role: role?.trim() || null,
+      custom_fields: custom_fields ?? null,
       city: city?.trim() || null,
       state: state?.trim() || null,
       country: country?.trim() || null,
@@ -149,12 +160,16 @@ export async function PUT(request) {
       )
     }
 
-    const { business_name, phone_number, email, city, state, country } = body
+    const { first_name, last_name, business_name, phone_number, email, role, custom_fields, city, state, country } = body
 
     const updateData = {}
-    if (business_name !== undefined) updateData.business_name = business_name.trim()
+    if (first_name !== undefined) updateData.first_name = first_name?.trim() || null
+    if (last_name !== undefined) updateData.last_name = last_name?.trim() || null
+    if (business_name !== undefined) updateData.business_name = business_name?.trim() || null
     if (phone_number !== undefined) updateData.phone_number = phone_number.trim()
     if (email !== undefined) updateData.email = email?.trim() || null
+    if (role !== undefined) updateData.role = role?.trim() || null
+    if (custom_fields !== undefined) updateData.custom_fields = custom_fields
     if (city !== undefined) updateData.city = city?.trim() || null
     if (state !== undefined) updateData.state = state?.trim() || null
     if (country !== undefined) updateData.country = country?.trim() || null

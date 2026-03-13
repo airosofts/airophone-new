@@ -6,331 +6,499 @@ import { useState, useEffect } from 'react'
 import { getAvatarColor, getInitials } from '@/lib/avatar-color'
 import { fetchWithWorkspace } from '@/lib/api-client'
 
-export default function ContactPanel({ conversation, formatPhoneNumber, user }) {
-  const [contact, setContact] = useState(null)
-  const [notes, setNotes] = useState([])
-  const [newNote, setNewNote] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [editing, setEditing] = useState({})
+const FIELD_TYPES = [
+  { type: 'text',     label: 'Text' },
+  { type: 'number',   label: 'Number' },
+  { type: 'checkbox', label: 'Checkbox' },
+  { type: 'date',     label: 'Date' },
+  { type: 'url',      label: 'URL' },
+  { type: 'address',  label: 'Address' },
+  { type: 'tags',     label: 'Tags' },
+]
+
+function Icon({ type, className = 'w-4 h-4 text-gray-400' }) {
+  const p = { className, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: '1.8' }
+  switch (type) {
+    case 'company': return <svg {...p}><rect x="3" y="7" width="18" height="14" rx="1.5"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+    case 'role':    return <svg {...p}><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+    case 'phone':   return <svg {...p}><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13 19.79 19.79 0 0 1 1.61 4.38 2 2 0 0 1 3.6 2.18h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 9.91a16 16 0 0 0 6.18 6.18l.95-.95a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+    case 'email':   return <svg {...p}><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 7 10-7"/></svg>
+    case 'date':    return <svg {...p}><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+    case 'tags':    return <svg {...p}><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+    case 'text':    return <svg {...p}><path d="M4 7h16M4 12h10M4 17h7"/></svg>
+    case 'number':  return <svg {...p}><path d="M9 3H5l-1 6h2M9 3l-1 6M14 3h1l1 6h-2M14 3l1 6M5 9h14M5 15h14M8 15v6M16 15v6"/></svg>
+    case 'checkbox':return <svg {...p}><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m9 12 2 2 4-4"/></svg>
+    case 'url':     return <svg {...p}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+    case 'address': return <svg {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>
+    case 'ai':      return <svg {...p}><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/><path d="M12 6v6l4 2"/></svg>
+    default:        return <svg {...p}><path d="M4 7h16M4 12h10M4 17h7"/></svg>
+  }
+}
+
+export default function ContactPanel({ conversation, formatPhoneNumber, user, onContactUpdated }) {
+  const [contact, setContact]           = useState(null)
+  const [notes, setNotes]               = useState([])
+  const [newNote, setNewNote]           = useState('')
+  const [loading, setLoading]           = useState(false)
+  const [editingName, setEditingName]   = useState(false)
+  const [nameEdit, setNameEdit]         = useState({ first_name: '', last_name: '' })
+  const [editingField, setEditingField] = useState(null)
+  const [editingValue, setEditingValue] = useState('')
   const [assignedScenario, setAssignedScenario] = useState(null)
-  const [aiPaused, setAiPaused] = useState(conversation.manual_override || false)
-  const [togglingAi, setTogglingAi] = useState(false)
+  const [aiPaused, setAiPaused]         = useState(conversation.manual_override || false)
+  const [togglingAi, setTogglingAi]     = useState(false)
+  // custom fields
+  const [showAddProp, setShowAddProp]   = useState(false)
+  const [newPropLabel, setNewPropLabel] = useState('')
+  const [newPropType, setNewPropType]   = useState('text')
+  const [editCustomIdx, setEditCustomIdx]     = useState(null)
+  const [editCustomValue, setEditCustomValue] = useState('')
 
   useEffect(() => {
-    const fetchData = async () => {
-      await Promise.all([
-        fetchContact(),
-        fetchNotes(),
-        fetchScenarioAssignment()
-      ])
-    }
-    fetchData()
+    Promise.all([fetchContact(), fetchNotes(), fetchScenario()])
   }, [conversation.id])
 
-  // Keep aiPaused in sync if parent conversation updates
   useEffect(() => {
     setAiPaused(conversation.manual_override || false)
   }, [conversation.manual_override])
 
   const fetchContact = async () => {
     try {
-      const response = await fetch(`/api/contacts/by-phone/${encodeURIComponent(conversation.phone_number)}`)
-      const data = await response.json()
-      if (data.success) {
-        setContact(data.contact)
-      }
-    } catch (error) {
-      console.error('Error fetching contact:', error)
-    }
+      const res  = await fetchWithWorkspace(`/api/contacts/by-phone/${encodeURIComponent(conversation.phone_number)}`)
+      const data = await res.json()
+      if (data.success) setContact(data.contact)
+    } catch (e) { console.error(e) }
   }
 
   const fetchNotes = async () => {
     try {
-      const response = await fetch(`/api/conversations/${conversation.id}/notes`)
-      const data = await response.json()
-      if (data.success) {
-        setNotes(data.notes)
-      }
-    } catch (error) {
-      console.error('Error fetching notes:', error)
-    }
+      const res  = await fetchWithWorkspace(`/api/conversations/${conversation.id}/notes`)
+      const data = await res.json()
+      if (data.success) setNotes(data.notes)
+    } catch (e) { console.error(e) }
   }
 
-  const fetchScenarioAssignment = async () => {
+  const fetchScenario = async () => {
     try {
-      const res = await fetchWithWorkspace(`/api/conversations/assign-scenario?conversationId=${conversation.id}`)
+      const res  = await fetchWithWorkspace(`/api/conversations/assign-scenario?conversationId=${conversation.id}`)
       const data = await res.json()
-      if (data.success) {
-        setAssignedScenario(data.assignedScenario || null)
-      }
-    } catch (error) {
-      console.error('Error fetching scenario assignment:', error)
-    }
+      if (data.success) setAssignedScenario(data.assignedScenario || null)
+    } catch (e) { console.error(e) }
   }
 
   const handleToggleAi = async () => {
     setTogglingAi(true)
-    const newPaused = !aiPaused
-    setAiPaused(newPaused) // optimistic
+    const next = !aiPaused
+    setAiPaused(next)
     try {
-      const res = await fetchWithWorkspace('/api/conversations/ai-toggle', {
+      const res  = await fetchWithWorkspace('/api/conversations/ai-toggle', {
         method: 'POST',
-        body: JSON.stringify({ conversationId: conversation.id, paused: newPaused })
+        body: JSON.stringify({ conversationId: conversation.id, paused: next })
       })
       const data = await res.json()
-      if (!data.success) {
-        setAiPaused(!newPaused) // revert
-      }
-    } catch (e) {
-      setAiPaused(!newPaused) // revert
-      console.error('Error toggling AI:', e)
-    } finally {
-      setTogglingAi(false)
-    }
+      if (!data.success) setAiPaused(!next)
+    } catch { setAiPaused(!next) }
+    finally { setTogglingAi(false) }
   }
 
-  const saveContact = async (contactData) => {
+  const saveContact = async (fields) => {
     try {
       setLoading(true)
-      const response = await fetch('/api/contacts', {
+      const url = contact ? `/api/contacts?id=${contact.id}` : '/api/contacts'
+      const res  = await fetchWithWorkspace(url, {
         method: contact ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...contactData,
-          phone_number: conversation.phone_number,
-          id: contact?.id
-        }),
+        body: JSON.stringify({ ...fields, phone_number: conversation.phone_number })
       })
-
-      const data = await response.json()
+      const data = await res.json()
       if (data.success) {
         setContact(data.contact)
+        onContactUpdated?.(data.contact)
       }
-    } catch (error) {
-      console.error('Error saving contact:', error)
-    } finally {
-      setLoading(false)
-    }
+    } catch (e) { console.error(e) }
+    finally { setLoading(false) }
+  }
+
+  const saveNameEdit = () => {
+    setEditingName(false)
+    saveContact({ ...contact, ...nameEdit })
+  }
+
+  const saveField = (field) => {
+    setEditingField(null)
+    saveContact({ ...contact, [field]: editingValue })
+  }
+
+  const getCustomFields = () => {
+    if (!contact?.custom_fields) return []
+    return Array.isArray(contact.custom_fields) ? contact.custom_fields : []
+  }
+
+  const saveCustomValue = (idx) => {
+    const fields = [...getCustomFields()]
+    fields[idx] = { ...fields[idx], value: editCustomValue }
+    setEditCustomIdx(null)
+    saveContact({ ...contact, custom_fields: fields })
+  }
+
+  const addCustomField = () => {
+    if (!newPropLabel.trim()) return
+    const fields = [...getCustomFields()]
+    fields.push({
+      id: Date.now().toString(),
+      label: newPropLabel.trim(),
+      type: newPropType,
+      value: newPropType === 'checkbox' ? false : newPropType === 'tags' ? [] : ''
+    })
+    setShowAddProp(false); setNewPropLabel(''); setNewPropType('text')
+    saveContact({ ...contact, custom_fields: fields })
+  }
+
+  const deleteCustomField = (idx) => {
+    const fields = getCustomFields().filter((_, i) => i !== idx)
+    saveContact({ ...contact, custom_fields: fields })
   }
 
   const addNote = async () => {
     if (!newNote.trim()) return
-
     try {
-      const response = await fetch('/api/conversations/notes', {
+      const res  = await fetchWithWorkspace('/api/conversations/notes', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          conversation_id: conversation.id,
-          content: newNote,
-          created_by: user.userId
-        }),
+        body: JSON.stringify({ conversation_id: conversation.id, content: newNote })
       })
-
-      const data = await response.json()
-      if (data.success) {
-        setNotes([...notes, data.note])
-        setNewNote('')
-      }
-    } catch (error) {
-      console.error('Error adding note:', error)
-    }
+      const data = await res.json()
+      if (data.success) { setNotes([...notes, data.note]); setNewNote('') }
+    } catch (e) { console.error(e) }
   }
 
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit'
-    })
-  }
+  const formatDate = (d) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 
-  const handleFieldEdit = (field, value) => {
-    setEditing({ ...editing, [field]: value })
-  }
-
-  const handleFieldSave = (field) => {
-    const updatedContact = { ...contact, [field]: editing[field] }
-    saveContact(updatedContact)
-    setEditing({ ...editing, [field]: undefined })
-  }
-
-  const displayName = contact?.name || formatPhoneNumber(conversation.phone_number)
-  const initials = getInitials(displayName, conversation.phone_number)
+  const personalName = contact ? [contact.first_name, contact.last_name].filter(Boolean).join(' ') || null : null
+  const avatarLabel  = personalName || contact?.business_name || formatPhoneNumber(conversation.phone_number)
+  const initials     = getInitials(avatarLabel, conversation.phone_number)
+  const customFields = getCustomFields()
 
   return (
-    <div className="w-full bg-white flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto">
-        <div className="p-6 space-y-6">
-          {/* Avatar and Phone */}
-          <div className="text-center">
-            <div
-              className="w-16 h-16 rounded-full flex items-center justify-center text-white font-semibold text-lg mx-auto mb-3"
-              style={{ backgroundColor: getAvatarColor(conversation.phone_number) }}
-            >
-              {initials}
-            </div>
-            <h4 className="text-lg font-semibold text-gray-900">
-              {formatPhoneNumber(conversation.phone_number)}
-            </h4>
-          </div>
+    <div className="w-full bg-white flex flex-col h-full overflow-y-auto">
 
-          {/* AI Scenario Section */}
-          <div className="rounded-lg border border-gray-200 overflow-hidden">
-            <div className="px-3 py-2.5 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <svg className="w-3.5 h-3.5 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/>
-                  <path d="M12 6v6l4 2"/>
-                </svg>
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">AI Scenario</span>
-              </div>
-              {/* AI On/Off toggle */}
-              <button
-                onClick={handleToggleAi}
-                disabled={togglingAi}
-                title={aiPaused ? 'AI paused — click to resume' : 'AI active — click to pause'}
-                className={`flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-medium transition-colors ${
-                  aiPaused
-                    ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
-                    : 'bg-green-100 text-green-700 hover:bg-green-200'
-                } ${togglingAi ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-              >
-                <span className={`w-1.5 h-1.5 rounded-full ${aiPaused ? 'bg-amber-500' : 'bg-green-500'}`} />
-                {aiPaused ? 'Paused' : 'Active'}
-              </button>
-            </div>
-            <div className="px-3 py-2.5">
-              {assignedScenario ? (
-                <div className="flex items-center gap-2">
-                  <svg className="w-3.5 h-3.5 text-[#C54A3F] flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="3" y="3" width="18" height="18" rx="2"/>
-                    <path d="M9 9h6M9 12h6M9 15h4"/>
-                  </svg>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">{assignedScenario.name}</p>
-                    <p className="text-[10px] text-gray-400">Explicitly assigned</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="12" r="3"/>
-                    <path d="M12 2v3m0 14v3M2 12h3m14 0h3"/>
-                  </svg>
-                  <p className="text-sm text-gray-400">Default matching</p>
-                </div>
-              )}
-            </div>
-          </div>
+      {/* ── Header ── */}
+      <div className="flex flex-col items-center px-6 pt-7 pb-5 border-b border-gray-100">
+        <div
+          className="w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-xl mb-3 select-none"
+          style={{ backgroundColor: getAvatarColor(conversation.phone_number) }}
+        >
+          {initials}
+        </div>
 
-          {/* Name */}
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-2 uppercase">Name</label>
-            {editing.name !== undefined ? (
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={editing.name}
-                  onChange={(e) => handleFieldEdit('name', e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-gray-400"
-                  placeholder="Click to add name"
-                  autoFocus
-                />
-                <button
-                  onClick={() => handleFieldSave('name')}
-                  className="px-3 py-2 bg-[#C54A3F] text-white rounded-md text-sm hover:bg-[#B73E34]"
-                  disabled={loading}
-                >
-                  Save
-                </button>
-              </div>
-            ) : (
-              <div
-                onClick={() => handleFieldEdit('name', contact?.name || '')}
-                className="p-3 border border-gray-200 rounded-md cursor-pointer hover:bg-gray-50"
-              >
-                <span className="text-sm text-gray-900">
-                  {contact?.name || 'Click to add name'}
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* Email */}
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-2 uppercase">Email</label>
-            {editing.email !== undefined ? (
-              <div className="flex gap-2">
-                <input
-                  type="email"
-                  value={editing.email}
-                  onChange={(e) => handleFieldEdit('email', e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-gray-400"
-                  placeholder="Click to add email"
-                  autoFocus
-                />
-                <button
-                  onClick={() => handleFieldSave('email')}
-                  className="px-3 py-2 bg-[#C54A3F] text-white rounded-md text-sm hover:bg-[#B73E34]"
-                  disabled={loading}
-                >
-                  Save
-                </button>
-              </div>
-            ) : (
-              <div
-                onClick={() => handleFieldEdit('email', contact?.email || '')}
-                className="p-3 border border-gray-200 rounded-md cursor-pointer hover:bg-gray-50"
-              >
-                <span className="text-sm text-gray-900">
-                  {contact?.email || 'Click to add email'}
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* Notes Section */}
-          <div className="border-t border-gray-200 pt-6">
-            <label className="block text-xs font-medium text-gray-600 mb-3 uppercase">Notes</label>
-
-            <div className="mb-4">
-              <textarea
-                value={newNote}
-                onChange={(e) => setNewNote(e.target.value)}
-                placeholder="Add a note for your team..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-gray-400 resize-none"
-                rows={3}
+        {editingName ? (
+          <div className="w-full space-y-2">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={nameEdit.first_name}
+                onChange={(e) => setNameEdit(n => ({ ...n, first_name: e.target.value }))}
+                placeholder="First name"
+                autoFocus
+                onKeyDown={(e) => { if (e.key === 'Enter') saveNameEdit(); if (e.key === 'Escape') setEditingName(false) }}
+                className="flex-1 text-sm px-2.5 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:border-blue-400 min-w-0"
               />
-              {newNote.trim() && (
+              <input
+                type="text"
+                value={nameEdit.last_name}
+                onChange={(e) => setNameEdit(n => ({ ...n, last_name: e.target.value }))}
+                placeholder="Last name"
+                onKeyDown={(e) => { if (e.key === 'Enter') saveNameEdit(); if (e.key === 'Escape') setEditingName(false) }}
+                className="flex-1 text-sm px-2.5 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:border-blue-400 min-w-0"
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setEditingName(false)} className="text-xs px-3 py-1.5 text-gray-500 hover:text-gray-700 rounded-md hover:bg-gray-50">Cancel</button>
+              <button onClick={saveNameEdit} disabled={loading} className="text-xs px-3 py-1.5 bg-[#C54A3F] text-white rounded-md hover:bg-[#B73E34]">Save</button>
+            </div>
+          </div>
+        ) : (
+         
+          <button
+            onClick={() => { setEditingName(true); setNameEdit({ first_name: contact?.first_name || '', last_name: contact?.last_name || '' }) }}
+            className={`text-lg leading-tight text-center hover:opacity-70 transition-opacity ${personalName ? 'text-gray-900 font-semibold' : 'text-gray-400 font-normal'}`}
+          >
+            {personalName || 'Add a name…'}
+          </button>
+        )}
+
+        {!editingName && (
+          <p className="text-sm text-gray-400 mt-0.5">{formatPhoneNumber(conversation.phone_number)}</p>
+        )}
+      </div>
+
+      {/* ── AI Scenario ── */}
+      <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+        <div className="flex items-center gap-2 min-w-0">
+          <Icon type="ai" className="w-4 h-4 text-gray-400 flex-shrink-0" />
+          <span className="text-sm text-gray-500 truncate">
+            {assignedScenario ? assignedScenario.name : 'Default matching'}
+          </span>
+        </div>
+        <button
+          onClick={handleToggleAi}
+          disabled={togglingAi}
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 ml-2 transition-colors ${
+            aiPaused
+              ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+              : 'bg-green-100 text-green-700 hover:bg-green-200'
+          } ${togglingAi ? 'opacity-50 cursor-not-allowed' : ''}`}
+        >
+          <span className={`w-1.5 h-1.5 rounded-full ${aiPaused ? 'bg-amber-500' : 'bg-green-500'}`} />
+          {aiPaused ? 'Paused' : 'Active'}
+        </button>
+      </div>
+
+      {/* ── Contact Fields ── */}
+      <div className="px-5 py-3">
+        <ContactField
+          icon={<Icon type="company" />}
+          label="Company"
+          value={contact?.business_name}
+          placeholder="Set a company"
+          editing={editingField === 'business_name'}
+          editValue={editingValue}
+          onEditValueChange={setEditingValue}
+          onStartEdit={() => { setEditingField('business_name'); setEditingValue(contact?.business_name || '') }}
+          onSave={() => saveField('business_name')}
+          onCancel={() => setEditingField(null)}
+        />
+        <ContactField
+          icon={<Icon type="role" />}
+          label="Role"
+          value={contact?.role}
+          placeholder="Set a role"
+          editing={editingField === 'role'}
+          editValue={editingValue}
+          onEditValueChange={setEditingValue}
+          onStartEdit={() => { setEditingField('role'); setEditingValue(contact?.role || '') }}
+          onSave={() => saveField('role')}
+          onCancel={() => setEditingField(null)}
+        />
+        {/* Phone — read only */}
+        <div className="flex items-center gap-3 py-2.5">
+          <span className="flex-shrink-0"><Icon type="phone" /></span>
+          <span className="text-sm text-gray-400 w-16 flex-shrink-0">Phone</span>
+          <span className="text-sm text-gray-800">{formatPhoneNumber(conversation.phone_number)}</span>
+        </div>
+        <ContactField
+          icon={<Icon type="email" />}
+          label="Email"
+          value={contact?.email}
+          placeholder="Set an email…"
+          editing={editingField === 'email'}
+          editValue={editingValue}
+          onEditValueChange={setEditingValue}
+          onStartEdit={() => { setEditingField('email'); setEditingValue(contact?.email || '') }}
+          onSave={() => saveField('email')}
+          onCancel={() => setEditingField(null)}
+          inputType="email"
+        />
+
+        {/* Custom fields */}
+        {customFields.map((field, idx) => (
+          <CustomField
+            key={field.id || idx}
+            field={field}
+            editing={editCustomIdx === idx}
+            editValue={editCustomValue}
+            onEditValueChange={setEditCustomValue}
+            onStartEdit={() => { setEditCustomIdx(idx); setEditCustomValue(field.value ?? '') }}
+            onSave={() => saveCustomValue(idx)}
+            onCancel={() => setEditCustomIdx(null)}
+            onDelete={() => deleteCustomField(idx)}
+            onToggle={() => {
+              const f = [...customFields]
+              f[idx] = { ...f[idx], value: !f[idx].value }
+              saveContact({ ...contact, custom_fields: f })
+            }}
+          />
+        ))}
+
+        {/* Add a property */}
+        {showAddProp ? (
+          <div className="mt-3 rounded-xl border border-gray-200 overflow-hidden bg-white shadow-sm">
+            <div className="px-4 py-3 border-b border-gray-100">
+              <input
+                type="text"
+                value={newPropLabel}
+                onChange={(e) => setNewPropLabel(e.target.value)}
+                placeholder="Property name…"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') addCustomField()
+                  if (e.key === 'Escape') { setShowAddProp(false); setNewPropLabel('') }
+                }}
+                className="w-full text-sm focus:outline-none bg-transparent placeholder-gray-400"
+              />
+            </div>
+            <div className="px-3 py-2 grid grid-cols-2 gap-0.5">
+              {FIELD_TYPES.map(ft => (
                 <button
-                  onClick={addNote}
-                  className="mt-2 px-4 py-2 bg-[#C54A3F] text-white rounded-md text-sm hover:bg-[#B73E34]"
+                  key={ft.type}
+                  onClick={() => setNewPropType(ft.type)}
+                  className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm transition-colors text-left ${
+                    newPropType === ft.type
+                      ? 'bg-[#C54A3F]/10 text-[#C54A3F] font-medium'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
                 >
-                  Add Note
+                  <Icon type={ft.type} className={`w-4 h-4 flex-shrink-0 ${newPropType === ft.type ? 'text-[#C54A3F]' : 'text-gray-400'}`} />
+                  {ft.label}
                 </button>
-              )}
-            </div>
-
-            <div className="space-y-3">
-              {notes.map((note) => (
-                <div key={note.id} className="p-3 bg-gray-50 rounded-md border border-gray-200">
-                  <p className="text-sm text-gray-900 mb-2 whitespace-pre-wrap">{note.content}</p>
-                  <div className="flex items-center justify-between text-xs text-gray-500">
-                    <span>{note.created_by_name || 'Team Member'}</span>
-                    <span>{formatDate(note.created_at)}</span>
-                  </div>
-                </div>
               ))}
-
-              {notes.length === 0 && (
-                <p className="text-sm text-gray-500 text-center py-4">No notes yet</p>
-              )}
             </div>
+            <div className="px-4 py-2.5 border-t border-gray-100 flex gap-2 justify-end">
+              <button onClick={() => { setShowAddProp(false); setNewPropLabel('') }} className="text-sm px-3 py-1.5 text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-50">Cancel</button>
+              <button onClick={addCustomField} disabled={!newPropLabel.trim()} className="text-sm px-3 py-1.5 bg-[#C54A3F] text-white rounded-lg hover:bg-[#B73E34] disabled:opacity-40">Add</button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowAddProp(true)}
+            className="flex items-center gap-2 mt-2 text-sm text-gray-400 hover:text-gray-600 transition-colors py-1"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 5v14M5 12h14"/>
+            </svg>
+            Add a property
+          </button>
+        )}
+      </div>
+
+      {/* ── Notes ── */}
+      <div className="px-5 py-4 border-t border-gray-100">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm font-semibold text-gray-700">Notes</span>
+          {notes.length > 0 && (
+            <span className="text-[11px] text-gray-400 bg-gray-100 rounded-full px-2 py-0.5 font-medium">{notes.length}</span>
+          )}
+        </div>
+
+        {/* Note input */}
+        <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50 focus-within:border-gray-300 focus-within:bg-white transition-all">
+          <textarea
+            value={newNote}
+            onChange={(e) => setNewNote(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && e.metaKey) addNote() }}
+            placeholder="Write a note..."
+            className="w-full px-3 pt-2.5 pb-1 text-[13px] text-gray-700 placeholder-gray-400 resize-none focus:outline-none bg-transparent leading-relaxed"
+            rows={2}
+          />
+          <div className="flex items-center justify-end px-2.5 pb-2">
+            {newNote.trim() && (
+              <button
+                onClick={addNote}
+                className="text-[11px] font-medium px-3 py-1 bg-[#C54A3F] text-white rounded-md hover:bg-[#B73E34] transition-colors"
+              >
+                Save
+              </button>
+            )}
           </div>
         </div>
+
+        {/* Existing notes */}
+        {notes.length > 0 && (
+          <div className="mt-3 space-y-px">
+            {notes.map((note) => (
+              <div key={note.id} className="group px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors">
+                <p className="text-[13px] text-gray-700 whitespace-pre-wrap leading-snug">{note.content}</p>
+                <div className="flex items-center gap-1.5 mt-1.5">
+                  <span className="text-[11px] text-gray-400 font-medium">{note.created_by_name || 'Team'}</span>
+                  <span className="text-[11px] text-gray-300">·</span>
+                  <span className="text-[11px] text-gray-400">{formatDate(note.created_at)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {notes.length === 0 && !newNote && (
+          <p className="text-[12px] text-gray-400 text-center py-3">No notes yet</p>
+        )}
       </div>
+
+    </div>
+  )
+}
+
+// ── Reusable field row ──
+function ContactField({ icon, label, value, placeholder, editing, editValue, onEditValueChange, onStartEdit, onSave, onCancel, inputType = 'text' }) {
+  return (
+    <div className="flex items-center gap-3 py-2.5 group">
+      <span className="flex-shrink-0">{icon}</span>
+      <span className="text-sm text-gray-400 w-16 flex-shrink-0">{label}</span>
+      <div className="flex-1 min-w-0">
+        {editing ? (
+          <input
+            type={inputType}
+            value={editValue}
+            onChange={(e) => onEditValueChange(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel() }}
+            onBlur={onSave}
+            autoFocus
+            className="w-full text-sm text-gray-900 bg-transparent border-0 border-b border-blue-400 focus:outline-none py-0.5"
+          />
+        ) : (
+          <button
+            onClick={onStartEdit}
+            className={`text-sm text-left w-full truncate transition-colors ${
+              value ? 'text-gray-800 hover:text-[#C54A3F]' : 'text-gray-400 hover:text-gray-500'
+            }`}
+          >
+            {value || placeholder}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Custom field row ──
+function CustomField({ field, editing, editValue, onEditValueChange, onStartEdit, onSave, onCancel, onDelete, onToggle }) {
+  const displayVal = field.type === 'tags'
+    ? (Array.isArray(field.value) ? field.value.join(', ') : field.value) || ''
+    : field.value || ''
+
+  return (
+    <div className="flex items-center gap-3 py-2.5 group">
+      <span className="flex-shrink-0"><Icon type={field.type} /></span>
+      <span className="text-sm text-gray-400 w-16 flex-shrink-0 truncate" title={field.label}>{field.label}</span>
+      <div className="flex-1 min-w-0">
+        {field.type === 'checkbox' ? (
+          <button onClick={onToggle} className="flex items-center">
+            <div className={`w-4 h-4 rounded border-2 transition-colors flex items-center justify-center ${field.value ? 'bg-[#C54A3F] border-[#C54A3F]' : 'border-gray-300 hover:border-gray-400'}`}>
+              {field.value && <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="m5 12 5 5 9-9"/></svg>}
+            </div>
+          </button>
+        ) : editing ? (
+          <input
+            type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : field.type === 'url' ? 'url' : 'text'}
+            value={editValue}
+            onChange={(e) => onEditValueChange(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel() }}
+            onBlur={onSave}
+            autoFocus
+            placeholder={`Add ${field.label.toLowerCase()}`}
+            className="w-full text-sm text-gray-900 bg-transparent border-0 border-b border-blue-400 focus:outline-none py-0.5"
+          />
+        ) : (
+          <button
+            onClick={onStartEdit}
+            className={`text-sm text-left w-full truncate transition-colors ${displayVal ? 'text-gray-800 hover:text-[#C54A3F]' : 'text-gray-400 hover:text-gray-500'}`}
+          >
+            {displayVal || `Set ${field.label.toLowerCase()}…`}
+          </button>
+        )}
+      </div>
+      <button onClick={onDelete} className="opacity-0 group-hover:opacity-100 flex-shrink-0 text-gray-300 hover:text-red-400 transition-all p-0.5">
+        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M18 6 6 18M6 6l12 12"/>
+        </svg>
+      </button>
     </div>
   )
 }
