@@ -60,6 +60,7 @@ export default function Sidebar({ user, currentPath, onClose }) {
     { name: 'Contacts', href: '/contacts', icon: 'fa-address-book' },
     { name: 'Campaigns', href: '/campaigns', icon: 'fa-bullhorn' },
     { name: 'Scenarios', href: '/scenarios', icon: 'fa-robot' },
+    { name: 'Call History', href: '/call-history', icon: 'fa-phone-alt' },
     { name: 'Credits', href: '/billing', icon: 'fa-coins' },
     { name: 'Settings', href: '/settings', icon: 'fa-cog' },
   ]

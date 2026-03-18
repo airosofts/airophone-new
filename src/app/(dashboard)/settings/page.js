@@ -6,6 +6,7 @@ import MessageTemplates from '@/components/settings/MessageTemplates'
 import ApiKeys from '@/components/settings/ApiKeys'
 import Blocklist from '@/components/settings/Blocklist'
 import AiSettings from '@/components/settings/AiSettings'
+import CallForwarding from '@/components/settings/CallForwarding'
 
 const sections = [
   {
@@ -16,6 +17,7 @@ const sections = [
       { id: 'apikeys',    name: 'API Keys',           icon: 'fa-plug' },
       { id: 'blocklist',  name: 'Blocklist',          icon: 'fa-ban' },
       { id: 'ai',         name: 'AI Settings',        icon: 'fa-robot' },
+      { id: 'forwarding', name: 'Call Forwarding',    icon: 'fa-phone-alt' },
     ],
   },
   {
@@ -86,6 +88,7 @@ export default function SettingsPage() {
         {activeTab === 'apikeys'   && <ApiKeys />}
         {activeTab === 'blocklist' && <Blocklist />}
         {activeTab === 'ai'        && <AiSettings />}
+        {activeTab === 'forwarding' && <CallForwarding />}
 
         {['profile', 'notifications', 'security'].includes(activeTab) && (
           <div className="bg-white border border-gray-200 rounded-lg">
