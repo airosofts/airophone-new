@@ -10,33 +10,18 @@ export async function GET(request) {
     }
 
     const { searchParams } = new URL(request.url)
-    const filter = searchParams.get('filter') || 'all' // all, forwarded
+    const filter = searchParams.get('filter') || 'all'
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '50')
     const offset = (page - 1) * limit
 
     const supabase = createSupabaseServerClient()
 
-    // Get workspace phone numbers to filter calls
-    const { data: phoneNumbers } = await supabase
-      .from('phone_numbers')
-      .select('phone_number')
-      .eq('workspace_id', user.workspaceId)
-
-    if (!phoneNumbers || phoneNumbers.length === 0) {
-      return NextResponse.json({ success: true, calls: [], total: 0 })
-    }
-
-    const workspaceNumbers = phoneNumbers.map(pn => pn.phone_number)
-
-    // Build query
+    // Query calls scoped to workspace
     let query = supabase
       .from('calls')
       .select('*', { count: 'exact' })
-      .or(
-        workspaceNumbers.map(n => `to_number.eq.${n}`).join(',') + ',' +
-        workspaceNumbers.map(n => `from_number.eq.${n}`).join(',')
-      )
+      .eq('workspace_id', user.workspaceId)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1)
 
