@@ -54,7 +54,20 @@ export default function DashboardLayout({ children }) {
 
       {/* Sidebar */}
       <div className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 transition-transform duration-300 ease-in-out fixed lg:relative z-40 h-full`}>
-        <Sidebar user={user} onClose={() => setSidebarOpen(false)} />
+        <Sidebar
+          user={user}
+          onClose={() => setSidebarOpen(false)}
+          onNotificationNavigate={(conversationId, noteId) => {
+            // Dispatch a custom event that inbox page listens to
+            window.dispatchEvent(new CustomEvent('notification-navigate', {
+              detail: { conversationId, noteId }
+            }))
+            // Navigate to inbox if not already there
+            if (!window.location.pathname.startsWith('/inbox')) {
+              router.push('/inbox')
+            }
+          }}
+        />
       </div>
 
       {/* Main Content */}

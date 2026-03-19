@@ -40,6 +40,32 @@ export async function POST(request) {
       )
     }
 
+    // Create notifications for mentioned users
+    if (mentioned_users?.length > 0) {
+      const notifications = mentioned_users
+        .filter(id => id !== user.userId) // Don't notify yourself
+        .map(recipientId => ({
+          workspace_id: user.workspaceId,
+          recipient_id: recipientId,
+          actor_id: user.userId,
+          type: 'mention',
+          conversation_id,
+          note_id: note.id,
+          content: content.length > 120 ? content.slice(0, 120) + '...' : content
+        }))
+
+      if (notifications.length > 0) {
+        const { error: notifError } = await supabaseAdmin
+          .from('notifications')
+          .insert(notifications)
+
+        if (notifError) {
+          console.error('Error creating notifications:', notifError)
+          // Don't fail the note creation if notifications fail
+        }
+      }
+    }
+
     // Format note with creator name
     const formattedNote = {
       ...note,

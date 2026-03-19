@@ -7,8 +7,9 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { logout } from '@/lib/auth'
 import { apiGet } from '@/lib/api-client'
 import { validateAndUpgradeSession } from '@/lib/session-validator'
+import NotificationPanel from './NotificationPanel'
 
-export default function Sidebar({ user, currentPath, onClose }) {
+export default function Sidebar({ user, currentPath, onClose, onNotificationNavigate }) {
   const [phoneNumbers, setPhoneNumbers] = useState([])
   const [loading, setLoading] = useState(true)
   const router = useRouter()
@@ -84,13 +85,16 @@ export default function Sidebar({ user, currentPath, onClose }) {
             </div>
             <h1 className="text-sm font-semibold text-gray-900 tracking-tight">AiroPhone</h1>
           </div>
-          {onClose && (
-            <button onClick={onClose} className="lg:hidden p-1 hover:bg-gray-100 rounded">
-              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          )}
+          <div className="flex items-center gap-1">
+            <NotificationPanel onNavigateToConversation={onNotificationNavigate} />
+            {onClose && (
+              <button onClick={onClose} className="lg:hidden p-1 hover:bg-gray-100 rounded">
+                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

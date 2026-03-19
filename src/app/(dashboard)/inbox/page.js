@@ -25,6 +25,7 @@ export default function InboxPage() {
   const [loading, setLoading] = useState(true)
   const [mobileView, setMobileView] = useState('list') // 'list' | 'chat' | 'contact'
   const [assignScenarioModal, setAssignScenarioModal] = useState(null) // { conversationId, phoneNumber }
+  const [highlightNoteId, setHighlightNoteId] = useState(null)
 
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -105,6 +106,31 @@ export default function InboxPage() {
       }
     }
   }, [phoneNumbers, callHook])
+
+  // Listen for notification-navigate events from sidebar
+  useEffect(() => {
+    const handleNotificationNavigate = (e) => {
+      const { conversationId, noteId } = e.detail
+      if (!conversationId) return
+      // Find the conversation in the list
+      const conv = conversations.find(c => c.id === conversationId)
+      if (conv) {
+        handleConversationSelect(conv)
+        if (noteId) {
+          setHighlightNoteId(noteId)
+          // Auto-clear highlight after 3s
+          setTimeout(() => setHighlightNoteId(null), 3000)
+          // Scroll to the note after a short delay
+          setTimeout(() => {
+            const noteEl = document.getElementById(`note-${noteId}`)
+            if (noteEl) noteEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          }, 500)
+        }
+      }
+    }
+    window.addEventListener('notification-navigate', handleNotificationNavigate)
+    return () => window.removeEventListener('notification-navigate', handleNotificationNavigate)
+  }, [conversations])
 
   // Play notification sound on new inbound messages (any conversation)
   const lastConvTimestampRef = useRef(null)
@@ -500,6 +526,7 @@ export default function InboxPage() {
                 conversation={activeConversation}
                 formatPhoneNumber={formatPhoneNumber}
                 user={user}
+                highlightNoteId={highlightNoteId}
                 onContactUpdated={(updatedContact) => {
                   if (updatedContact && activeConversation) {
                     const firstName = updatedContact.first_name || null

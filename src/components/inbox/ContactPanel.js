@@ -5,6 +5,7 @@
 import { useState, useEffect } from 'react'
 import { getAvatarColor, getInitials } from '@/lib/avatar-color'
 import { fetchWithWorkspace } from '@/lib/api-client'
+import MentionTextarea, { renderNoteWithMentions } from './MentionTextarea'
 
 const FIELD_TYPES = [
   { type: 'text',     label: 'Text' },
@@ -35,10 +36,11 @@ function Icon({ type, className = 'w-4 h-4 text-gray-400' }) {
   }
 }
 
-export default function ContactPanel({ conversation, formatPhoneNumber, user, onContactUpdated }) {
+export default function ContactPanel({ conversation, formatPhoneNumber, user, onContactUpdated, highlightNoteId }) {
   const [contact, setContact]           = useState(null)
   const [notes, setNotes]               = useState([])
   const [newNote, setNewNote]           = useState('')
+  const [mentionedUsers, setMentionedUsers] = useState([])
   const [loading, setLoading]           = useState(false)
   const [editingName, setEditingName]   = useState(false)
   const [nameEdit, setNameEdit]         = useState({ first_name: '', last_name: '' })
@@ -163,10 +165,10 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user, on
     try {
       const res  = await fetchWithWorkspace('/api/conversations/notes', {
         method: 'POST',
-        body: JSON.stringify({ conversation_id: conversation.id, content: newNote })
+        body: JSON.stringify({ conversation_id: conversation.id, content: newNote, mentioned_users: mentionedUsers })
       })
       const data = await res.json()
-      if (data.success) { setNotes([...notes, data.note]); setNewNote('') }
+      if (data.success) { setNotes([...notes, data.note]); setNewNote(''); setMentionedUsers([]) }
     } catch (e) { console.error(e) }
   }
 
@@ -378,17 +380,16 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user, on
           )}
         </div>
 
-        {/* Note input */}
+        {/* Note input with @mention support */}
         <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50 focus-within:border-gray-300 focus-within:bg-white transition-all">
-          <textarea
+          <MentionTextarea
             value={newNote}
-            onChange={(e) => setNewNote(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && e.metaKey) addNote() }}
-            placeholder="Write a note..."
-            className="w-full px-3 pt-2.5 pb-1 text-[13px] text-gray-700 placeholder-gray-400 resize-none focus:outline-none bg-transparent leading-relaxed"
-            rows={2}
+            onChange={(text, userIds) => { setNewNote(text); if (userIds) setMentionedUsers(userIds) }}
+            onSubmit={addNote}
+            placeholder="Write a note... use @ to mention"
           />
-          <div className="flex items-center justify-end px-2.5 pb-2">
+          <div className="flex items-center justify-between px-2.5 pb-2">
+            <span className="text-[10px] text-gray-300">@ to mention</span>
             {newNote.trim() && (
               <button
                 onClick={addNote}
@@ -404,8 +405,14 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user, on
         {notes.length > 0 && (
           <div className="mt-3 space-y-px">
             {notes.map((note) => (
-              <div key={note.id} className="group px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors">
-                <p className="text-[13px] text-gray-700 whitespace-pre-wrap leading-snug">{note.content}</p>
+              <div
+                key={note.id}
+                id={`note-${note.id}`}
+                className={`group px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors ${
+                  highlightNoteId === note.id ? 'ring-2 ring-[#C54A3F]/30 bg-red-50/30' : ''
+                }`}
+              >
+                <p className="text-[13px] text-gray-700 whitespace-pre-wrap leading-snug">{renderNoteWithMentions(note.content)}</p>
                 <div className="flex items-center gap-1.5 mt-1.5">
                   <span className="text-[11px] text-gray-400 font-medium">{note.created_by_name || 'Team'}</span>
                   <span className="text-[11px] text-gray-300">·</span>
