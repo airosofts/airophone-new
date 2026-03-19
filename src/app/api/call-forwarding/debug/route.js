@@ -287,3 +287,28 @@ export async function POST(request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
+
+// DELETE /api/call-forwarding/debug - Clean up all test/duplicate call records
+export async function DELETE(request) {
+  try {
+    const supabase = createSupabaseServerClient()
+
+    // Count before
+    const { count: before } = await supabase.from('calls').select('*', { count: 'exact', head: true })
+
+    // Delete all calls (clean slate for testing)
+    const { error } = await supabase.from('calls').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json({
+      success: true,
+      deleted: before,
+      message: `Deleted ${before} call records. Ready for clean testing.`
+    })
+  } catch (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+}
