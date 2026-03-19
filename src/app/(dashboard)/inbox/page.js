@@ -107,24 +107,54 @@ export default function InboxPage() {
     }
   }, [phoneNumbers, callHook])
 
-  // Listen for notification-navigate events from sidebar
+  // Listen for notification-navigate events from sidebar / notifications page
+  const pendingNavigationRef = useRef(null)
+
+  // When conversations change, check if there's a pending navigation
+  useEffect(() => {
+    if (!pendingNavigationRef.current || !conversations.length) return
+    const { conversationId, noteId } = pendingNavigationRef.current
+    const conv = conversations.find(c => c.id === conversationId)
+    if (conv) {
+      pendingNavigationRef.current = null
+      setActiveConversation(conv.id)
+      setSelectedConversation(conv)
+      setIsCreatingNewConversation(false)
+      setMobileView('chat')
+      refetch(false)
+      if (noteId) {
+        setHighlightNoteId(noteId)
+        setTimeout(() => setHighlightNoteId(null), 4000)
+        setTimeout(() => {
+          const noteEl = document.getElementById(`note-${noteId}`)
+          if (noteEl) noteEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }, 800)
+      }
+    }
+  }, [conversations])
+
   useEffect(() => {
     const handleNotificationNavigate = (e) => {
       const { conversationId, noteId } = e.detail
       if (!conversationId) return
-      // Find the conversation in the list
+      // Store pending navigation — will be picked up when conversations load
+      pendingNavigationRef.current = { conversationId, noteId }
+      // Also try immediately in case conversations are already loaded
       const conv = conversations.find(c => c.id === conversationId)
       if (conv) {
-        handleConversationSelect(conv)
+        pendingNavigationRef.current = null
+        setActiveConversation(conv.id)
+        setSelectedConversation(conv)
+        setIsCreatingNewConversation(false)
+        setMobileView('chat')
+        refetch(false)
         if (noteId) {
           setHighlightNoteId(noteId)
-          // Auto-clear highlight after 3s
-          setTimeout(() => setHighlightNoteId(null), 3000)
-          // Scroll to the note after a short delay
+          setTimeout(() => setHighlightNoteId(null), 4000)
           setTimeout(() => {
             const noteEl = document.getElementById(`note-${noteId}`)
             if (noteEl) noteEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
-          }, 500)
+          }, 800)
         }
       }
     }

@@ -15,7 +15,7 @@ export async function GET(request) {
       .select(`
         *,
         actor:users!notifications_actor_fkey(id, name, profile_photo_url),
-        conversation:conversations!notifications_conversation_fkey(id, phone_number, name),
+        conversation:conversations!notifications_conversation_fkey(id, phone_number, from_number, name),
         note:conversation_notes!notifications_note_fkey(id, content)
       `)
       .eq('recipient_id', user.userId)

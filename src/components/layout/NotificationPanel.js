@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { apiGet, fetchWithWorkspace } from '@/lib/api-client'
 
 export default function NotificationPanel({ onNavigateToConversation }) {
@@ -9,6 +10,7 @@ export default function NotificationPanel({ onNavigateToConversation }) {
   const [isOpen, setIsOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const panelRef = useRef(null)
+  const router = useRouter()
 
   const fetchNotifications = useCallback(async () => {
     try {
@@ -82,7 +84,11 @@ export default function NotificationPanel({ onNavigateToConversation }) {
       markAsRead([notification.id])
     }
     setIsOpen(false)
-    onNavigateToConversation?.(notification.conversation?.id, notification.note_id)
+    onNavigateToConversation?.(
+      notification.conversation?.id,
+      notification.note_id,
+      notification.conversation?.from_number
+    )
   }
 
   const formatTime = (dateStr) => {
@@ -202,6 +208,16 @@ export default function NotificationPanel({ onNavigateToConversation }) {
                 ))}
               </div>
             )}
+          </div>
+
+          {/* See all link */}
+          <div className="px-4 py-2.5 border-t border-gray-100 flex-shrink-0">
+            <button
+              onClick={() => { setIsOpen(false); router.push('/notifications') }}
+              className="w-full text-center text-[12px] font-medium text-[#C54A3F] hover:text-[#B73E34] transition-colors"
+            >
+              See all notifications
+            </button>
           </div>
         </div>
       )}

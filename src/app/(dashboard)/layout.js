@@ -57,15 +57,18 @@ export default function DashboardLayout({ children }) {
         <Sidebar
           user={user}
           onClose={() => setSidebarOpen(false)}
-          onNotificationNavigate={(conversationId, noteId) => {
-            // Dispatch a custom event that inbox page listens to
-            window.dispatchEvent(new CustomEvent('notification-navigate', {
-              detail: { conversationId, noteId }
-            }))
-            // Navigate to inbox if not already there
-            if (!window.location.pathname.startsWith('/inbox')) {
-              router.push('/inbox')
-            }
+          onNotificationNavigate={(conversationId, noteId, fromNumber) => {
+            // Navigate to inbox with the correct phone line, then dispatch event
+            const inboxUrl = fromNumber
+              ? `/inbox?from=${encodeURIComponent(fromNumber)}`
+              : '/inbox'
+            router.push(inboxUrl)
+            // Dispatch after a short delay to let inbox load the right phone line conversations
+            setTimeout(() => {
+              window.dispatchEvent(new CustomEvent('notification-navigate', {
+                detail: { conversationId, noteId }
+              }))
+            }, 500)
           }}
         />
       </div>
