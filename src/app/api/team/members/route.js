@@ -1,13 +1,35 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
+import { getUserFromRequest } from '@/lib/session-helper'
 
-export async function GET() {
+export async function GET(request) {
   try {
-    const { data: members, error } = await supabaseAdmin
-      .from('users')
-      .select('id, name, email, profile_photo_url, is_active, last_seen, role')
+    const user = getUserFromRequest(request)
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const workspaceId = user.workspaceId
+    if (!workspaceId) {
+      return NextResponse.json({ error: 'No workspace context' }, { status: 400 })
+    }
+
+    // Get active workspace members via join table
+    const { data: memberships, error } = await supabaseAdmin
+      .from('workspace_members')
+      .select(`
+        user_id,
+        role,
+        users (
+          id,
+          name,
+          email,
+          profile_photo_url,
+          is_active
+        )
+      `)
+      .eq('workspace_id', workspaceId)
       .eq('is_active', true)
-      .order('name')
 
     if (error) {
       console.error('Error fetching team members:', error)
@@ -17,9 +39,21 @@ export async function GET() {
       )
     }
 
+    // Flatten the joined data and filter out inactive users
+    const members = (memberships || [])
+      .filter(m => m.users?.is_active)
+      .map(m => ({
+        id: m.users.id,
+        name: m.users.name,
+        email: m.users.email,
+        profile_photo_url: m.users.profile_photo_url,
+        role: m.role
+      }))
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+
     return NextResponse.json({
       success: true,
-      members: members || []
+      members
     })
 
   } catch (error) {

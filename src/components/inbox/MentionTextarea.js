@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react' // eslint-disable-line no-unused-vars
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { apiGet } from '@/lib/api-client'
 
 export default function MentionTextarea({ value, onChange, onSubmit, placeholder = 'Write a note...', rows = 2 }) {
@@ -9,15 +10,19 @@ export default function MentionTextarea({ value, onChange, onSubmit, placeholder
   const [dropdownIndex, setDropdownIndex] = useState(0)
   const [mentionQuery, setMentionQuery] = useState('')
   const [mentionStart, setMentionStart] = useState(-1)
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 })
   const textareaRef = useRef(null)
-  const dropdownRef = useRef(null)
+  const membersRef = useRef([])
 
   useEffect(() => {
     const fetchMembers = async () => {
       try {
         const res = await apiGet('/api/team/members')
         const data = await res.json()
-        if (data.success) setMembers(data.members || [])
+        if (data.success) {
+          setMembers(data.members || [])
+          membersRef.current = data.members || []
+        }
       } catch (e) { console.error('Failed to fetch members:', e) }
     }
     fetchMembers()
@@ -27,15 +32,25 @@ export default function MentionTextarea({ value, onChange, onSubmit, placeholder
     m.name?.toLowerCase().includes(mentionQuery.toLowerCase())
   ).slice(0, 6)
 
-  const emitMentionedIds = useCallback((text) => {
-    const ids = members.filter(m => text.includes(`@${m.name}`)).map(m => m.id)
-    onChange(text, ids)
-  }, [members, onChange])
+  // Position dropdown near the textarea
+  const updateDropdownPosition = useCallback(() => {
+    if (!textareaRef.current) return
+    const rect = textareaRef.current.getBoundingClientRect()
+    setDropdownPos({
+      top: rect.bottom + 4,
+      left: rect.left
+    })
+  }, [])
+
+  const getMentionedIds = useCallback((text) => {
+    return membersRef.current.filter(m => text.includes(`@${m.name}`)).map(m => m.id)
+  }, [])
 
   const handleChange = useCallback((e) => {
     const text = e.target.value
     const cursorPos = e.target.selectionStart
-    emitMentionedIds(text)
+    const ids = getMentionedIds(text)
+    onChange(text, ids)
 
     // Check if we're in a mention context
     const textBeforeCursor = text.slice(0, cursorPos)
@@ -43,26 +58,28 @@ export default function MentionTextarea({ value, onChange, onSubmit, placeholder
 
     if (lastAtIndex !== -1) {
       const textAfterAt = textBeforeCursor.slice(lastAtIndex + 1)
-      // Only show dropdown if @ is at start or preceded by whitespace, and no space in query
+      // Show dropdown if @ is at start or preceded by whitespace, and no space in query yet
       const charBeforeAt = lastAtIndex > 0 ? text[lastAtIndex - 1] : ' '
       if ((charBeforeAt === ' ' || charBeforeAt === '\n' || lastAtIndex === 0) && !textAfterAt.includes(' ')) {
         setMentionQuery(textAfterAt)
         setMentionStart(lastAtIndex)
         setShowDropdown(true)
         setDropdownIndex(0)
+        updateDropdownPosition()
         return
       }
     }
 
     setShowDropdown(false)
-  }, [onChange])
+  }, [onChange, getMentionedIds, updateDropdownPosition])
 
   const insertMention = useCallback((member) => {
     if (mentionStart === -1) return
     const before = value.slice(0, mentionStart)
     const after = value.slice(mentionStart + mentionQuery.length + 1) // +1 for @
     const newValue = `${before}@${member.name} ${after}`
-    emitMentionedIds(newValue)
+    const ids = getMentionedIds(newValue)
+    onChange(newValue, ids)
     setShowDropdown(false)
     setMentionStart(-1)
 
@@ -75,7 +92,7 @@ export default function MentionTextarea({ value, onChange, onSubmit, placeholder
         textarea.setSelectionRange(newPos, newPos)
       }
     }, 0)
-  }, [value, onChange, mentionStart, mentionQuery])
+  }, [value, onChange, mentionStart, mentionQuery, getMentionedIds])
 
   const handleKeyDown = useCallback((e) => {
     if (showDropdown && filteredMembers.length > 0) {
@@ -99,6 +116,11 @@ export default function MentionTextarea({ value, onChange, onSubmit, placeholder
         setShowDropdown(false)
         return
       }
+      if (e.key === 'Tab') {
+        e.preventDefault()
+        insertMention(filteredMembers[dropdownIndex])
+        return
+      }
     }
 
     if (e.key === 'Enter' && e.metaKey) {
@@ -106,28 +128,21 @@ export default function MentionTextarea({ value, onChange, onSubmit, placeholder
     }
   }, [showDropdown, filteredMembers, dropdownIndex, insertMention, onSubmit])
 
-  return (
-    <div className="relative">
-      <textarea
-        ref={textareaRef}
-        value={value}
-        onChange={handleChange}
-        onKeyDown={handleKeyDown}
-        placeholder={placeholder}
-        className="w-full px-3 pt-2.5 pb-1 text-[13px] text-gray-700 placeholder-gray-400 resize-none focus:outline-none bg-transparent leading-relaxed"
-        rows={rows}
-      />
+  // Close dropdown on blur (with delay so click on dropdown still works)
+  const handleBlur = useCallback(() => {
+    setTimeout(() => setShowDropdown(false), 200)
+  }, [])
 
-      {/* Mention dropdown */}
-      {showDropdown && filteredMembers.length > 0 && (
+  const dropdown = showDropdown && filteredMembers.length > 0 && typeof document !== 'undefined'
+    ? createPortal(
         <div
-          ref={dropdownRef}
-          className="absolute left-2 bottom-full mb-1 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50 max-h-48 overflow-y-auto"
+          className="fixed w-60 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-[9999] max-h-52 overflow-y-auto"
+          style={{ top: dropdownPos.top, left: dropdownPos.left }}
         >
           {filteredMembers.map((member, idx) => (
             <button
               key={member.id}
-              onClick={() => insertMention(member)}
+              onMouseDown={(e) => { e.preventDefault(); insertMention(member) }}
               className={`w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors ${
                 idx === dropdownIndex ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-50'
               }`}
@@ -147,8 +162,25 @@ export default function MentionTextarea({ value, onChange, onSubmit, placeholder
               </div>
             </button>
           ))}
-        </div>
-      )}
+        </div>,
+        document.body
+      )
+    : null
+
+  return (
+    <div className="relative">
+      <textarea
+        ref={textareaRef}
+        value={value}
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
+        onBlur={handleBlur}
+        onFocus={() => { if (mentionStart !== -1) updateDropdownPosition() }}
+        placeholder={placeholder}
+        className="w-full px-3 pt-2.5 pb-1 text-[13px] text-gray-700 placeholder-gray-400 resize-none focus:outline-none bg-transparent leading-relaxed"
+        rows={rows}
+      />
+      {dropdown}
     </div>
   )
 }
@@ -156,11 +188,13 @@ export default function MentionTextarea({ value, onChange, onSubmit, placeholder
 // Helper to render note content with highlighted mentions
 export function renderNoteWithMentions(content) {
   if (!content) return null
-  // Split by @mentions pattern: @Name (word characters and spaces until next @ or end)
-  const parts = content.split(/(@\w[\w\s]*?)(?=\s@|\s*$|[^a-zA-Z\s])/g)
+
+  // Match @mentions — name is one or more words starting with uppercase after @
+  const regex = /(@[A-Z][a-zA-Z]*(?:\s[A-Z][a-zA-Z]*)*)/g
+  const parts = content.split(regex)
 
   return parts.map((part, i) => {
-    if (part.startsWith('@')) {
+    if (part.startsWith('@') && /^@[A-Z]/.test(part)) {
       return (
         <span key={i} className="text-[#C54A3F] font-medium bg-red-50 rounded px-0.5">
           {part}
