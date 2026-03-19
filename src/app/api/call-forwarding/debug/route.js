@@ -102,68 +102,122 @@ export async function GET(request) {
       ]
     }
 
-    // 9. Try to fetch Telnyx connection details from API to check webhook config
+    // 9. Search across ALL Telnyx resource types to find connection and webhook config
+    const connectionId = process.env.NEXT_PUBLIC_TELNYX_CONNECTION_ID
+    const telnyxHeaders = {
+      'Authorization': `Bearer ${process.env.TELNYX_API_KEY}`,
+      'Content-Type': 'application/json'
+    }
+
+    checks.telnyx_search = {}
+
     try {
-      const connectionId = process.env.NEXT_PUBLIC_TELNYX_CONNECTION_ID
-      if (connectionId) {
-        const telnyxRes = await fetch(
-          `https://api.telnyx.com/v2/credential_connections/${connectionId}`,
-          {
-            headers: {
-              'Authorization': `Bearer ${process.env.TELNYX_API_KEY}`,
-              'Content-Type': 'application/json'
-            }
-          }
-        )
-        const telnyxData = await telnyxRes.json()
+      // Try all connection types
+      const endpoints = [
+        { name: 'credential_connections', url: `https://api.telnyx.com/v2/credential_connections/${connectionId}` },
+        { name: 'fqdn_connections', url: `https://api.telnyx.com/v2/fqdn_connections/${connectionId}` },
+        { name: 'ip_connections', url: `https://api.telnyx.com/v2/ip_connections/${connectionId}` },
+      ]
 
-        if (telnyxRes.ok && telnyxData.data) {
-          const conn = telnyxData.data
-          checks.telnyx_connection_details = {
-            status: 'OK',
-            name: conn.connection_name,
-            active: conn.active,
-            webhook_event_url: conn.webhook_event_url || 'NOT SET — THIS IS THE PROBLEM!',
-            webhook_event_failover_url: conn.webhook_event_failover_url || 'not set',
-            inbound_settings: conn.inbound || 'not available',
-            outbound_settings: conn.outbound || 'not available'
-          }
+      for (const ep of endpoints) {
+        try {
+          const res = await fetch(ep.url, { headers: telnyxHeaders })
+          const data = await res.json()
+          checks.telnyx_search[ep.name] = res.ok ? { found: true, data: data.data } : { found: false }
+        } catch (e) {
+          checks.telnyx_search[ep.name] = { found: false, error: e.message }
+        }
+      }
 
-          if (!conn.webhook_event_url) {
-            checks.telnyx_connection_details.FIX = `Set webhook_event_url to: ${appUrl}/api/webhooks/telnyx/call`
-          }
+      // List Call Control Applications — this is likely where the webhook is configured
+      try {
+        const appsRes = await fetch('https://api.telnyx.com/v2/call_control_applications?page[size]=25', {
+          headers: telnyxHeaders
+        })
+        const appsData = await appsRes.json()
+        if (appsRes.ok && appsData.data) {
+          checks.call_control_applications = appsData.data.map(app => ({
+            id: app.id,
+            name: app.application_name,
+            active: app.active,
+            webhook_event_url: app.webhook_event_url || 'NOT SET',
+            webhook_event_failover_url: app.webhook_event_failover_url || 'not set',
+            inbound: app.inbound,
+            outbound: app.outbound,
+            FIX: !app.webhook_event_url
+              ? `NEEDS webhook_event_url set to: ${appUrl}/api/webhooks/telnyx/call`
+              : (app.webhook_event_url.includes('/api/webhooks/telnyx/call') ? 'LOOKS CORRECT' : `WRONG URL — should be: ${appUrl}/api/webhooks/telnyx/call`)
+          }))
         } else {
-          // Try FQDN connection type
-          const fqdnRes = await fetch(
-            `https://api.telnyx.com/v2/fqdn_connections/${connectionId}`,
-            {
-              headers: {
-                'Authorization': `Bearer ${process.env.TELNYX_API_KEY}`,
-                'Content-Type': 'application/json'
-              }
-            }
-          )
-          const fqdnData = await fqdnRes.json()
+          checks.call_control_applications = { error: appsData }
+        }
+      } catch (e) {
+        checks.call_control_applications = { error: e.message }
+      }
 
-          if (fqdnRes.ok && fqdnData.data) {
-            checks.telnyx_connection_details = {
-              status: 'OK (FQDN)',
-              data: fqdnData.data
+      // List TeXML Applications
+      try {
+        const texmlRes = await fetch('https://api.telnyx.com/v2/texml_applications?page[size]=25', {
+          headers: telnyxHeaders
+        })
+        const texmlData = await texmlRes.json()
+        if (texmlRes.ok && texmlData.data) {
+          checks.texml_applications = texmlData.data.map(app => ({
+            id: app.id,
+            name: app.friendly_name,
+            active: app.active,
+            voice_url: app.voice_url || 'NOT SET',
+            voice_method: app.voice_method,
+            status_callback_url: app.status_callback_url || 'not set'
+          }))
+        } else {
+          checks.texml_applications = { error: texmlData }
+        }
+      } catch (e) {
+        checks.texml_applications = { error: e.message }
+      }
+
+      // Check phone number voice settings for the forwarding number
+      if (activeRules?.length > 0) {
+        const fwdPhone = activeRules[0].phone_numbers?.phone_number
+        if (fwdPhone) {
+          try {
+            // List phone numbers from Telnyx to check their voice config
+            const phoneRes = await fetch(
+              `https://api.telnyx.com/v2/phone_numbers?filter[phone_number]=${encodeURIComponent(fwdPhone)}&page[size]=1`,
+              { headers: telnyxHeaders }
+            )
+            const phoneData = await phoneRes.json()
+            if (phoneRes.ok && phoneData.data?.[0]) {
+              const pn = phoneData.data[0]
+              checks.forwarding_phone_telnyx_config = {
+                phone_number: pn.phone_number,
+                connection_id: pn.connection_id || 'NOT SET — phone number has no voice connection!',
+                connection_name: pn.connection_name,
+                messaging_profile_id: pn.messaging_profile_id,
+                status: pn.status,
+                tags: pn.tags
+              }
+
+              // Also fetch the voice settings
+              const voiceRes = await fetch(
+                `https://api.telnyx.com/v2/phone_numbers/${pn.id}/voice`,
+                { headers: telnyxHeaders }
+              )
+              const voiceData = await voiceRes.json()
+              checks.forwarding_phone_voice_settings = voiceRes.ok
+                ? voiceData.data
+                : { error: voiceData, note: 'Voice not configured on this number' }
+            } else {
+              checks.forwarding_phone_telnyx_config = { error: phoneData, phone: fwdPhone }
             }
-          } else {
-            checks.telnyx_connection_details = {
-              status: 'COULD_NOT_FETCH',
-              credential_error: telnyxData,
-              fqdn_error: fqdnData
-            }
+          } catch (e) {
+            checks.forwarding_phone_telnyx_config = { error: e.message }
           }
         }
       }
     } catch (e) {
-      checks.telnyx_connection_details = {
-        status: 'FETCH_ERROR',
-        message: e.message
-      }
+      checks.telnyx_search_error = e.message
     }
 
     return NextResponse.json({
