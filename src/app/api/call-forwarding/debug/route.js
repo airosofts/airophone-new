@@ -2,13 +2,12 @@ import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { getUserFromRequest } from '@/lib/session-helper'
 
-// GET /api/call-forwarding/debug - Check forwarding setup status
+// GET /api/call-forwarding/debug - Check forwarding setup status (no auth required for debugging)
 export async function GET(request) {
   try {
+    // Try to get user context but don't require it
     const user = getUserFromRequest(request)
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const workspaceId = user?.workspaceId || null
 
     const supabase = createSupabaseServerClient()
     const checks = {}
@@ -31,12 +30,13 @@ export async function GET(request) {
       ? { status: 'ERROR', message: rulesError.message, hint: rulesError.hint }
       : { status: 'OK', total_rows: rulesCount }
 
-    // 3. Get active forwarding rules for this workspace
-    const { data: activeRules, error: activeError } = await supabase
+    // 3. Get active forwarding rules (workspace-scoped if logged in, otherwise all)
+    let rulesQuery = supabase
       .from('call_forwarding_rules')
       .select('*, phone_numbers(phone_number, custom_name)')
-      .eq('workspace_id', user.workspaceId)
       .eq('is_active', true)
+    if (workspaceId) rulesQuery = rulesQuery.eq('workspace_id', workspaceId)
+    const { data: activeRules, error: activeError } = await rulesQuery
 
     checks.active_rules = activeError
       ? { status: 'ERROR', message: activeError.message }
@@ -53,11 +53,12 @@ export async function GET(request) {
           }))
         }
 
-    // 4. Get workspace phone numbers
-    const { data: phoneNumbers, error: phoneError } = await supabase
+    // 4. Get phone numbers (workspace-scoped if logged in, otherwise all)
+    let phoneQuery = supabase
       .from('phone_numbers')
       .select('id, phone_number, custom_name, workspace_id, is_active, connection_id')
-      .eq('workspace_id', user.workspaceId)
+    if (workspaceId) phoneQuery = phoneQuery.eq('workspace_id', workspaceId)
+    const { data: phoneNumbers, error: phoneError } = await phoneQuery
 
     checks.phone_numbers = phoneError
       ? { status: 'ERROR', message: phoneError.message }
@@ -167,7 +168,7 @@ export async function GET(request) {
 
     return NextResponse.json({
       success: true,
-      workspace_id: user.workspaceId,
+      workspace_id: workspaceId || 'not logged in — showing all data',
       checks
     })
   } catch (error) {
@@ -176,14 +177,9 @@ export async function GET(request) {
   }
 }
 
-// POST /api/call-forwarding/debug - Simulate a webhook to test the full flow
+// POST /api/call-forwarding/debug - Simulate a webhook to test the full flow (no auth for debugging)
 export async function POST(request) {
   try {
-    const user = getUserFromRequest(request)
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
     const { to_number, from_number } = await request.json()
 
     if (!to_number) {
