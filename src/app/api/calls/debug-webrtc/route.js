@@ -19,7 +19,7 @@ export async function GET() {
   }
 
   try {
-    // Check the specific connection ID
+    // Check the specific connection ID - return FULL raw data
     const connId = process.env.NEXT_PUBLIC_TELNYX_CONNECTION_ID
     if (connId) {
       const res = await fetch(`https://api.telnyx.com/v2/credential_connections/${connId}`, {
@@ -27,14 +27,7 @@ export async function GET() {
       })
       if (res.ok) {
         const data = await res.json()
-        results.connection = {
-          id: data.data?.id,
-          active: data.data?.active,
-          connection_name: data.data?.connection_name,
-          user_name: data.data?.user_name,
-          webrtc_enabled: data.data?.webrtc_enabled,
-          outbound_voice_profile_id: data.data?.outbound_voice_profile_id
-        }
+        results.connection = data.data // Return full raw object
       } else {
         const err = await res.json().catch(() => ({}))
         results.connection = { error: `${res.status} - ${err.errors?.[0]?.detail || res.statusText}` }
