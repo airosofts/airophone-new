@@ -1,9 +1,21 @@
 // GET /api/calls/check - Debug call records
 import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
+import { createClient } from '@supabase/supabase-js'
 
 export async function GET() {
   const supabase = createSupabaseServerClient()
+
+  // Also test with anon key (same as browser client uses)
+  const anonClient = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  )
+  const { data: anonCalls, error: anonError } = await anonClient
+    .from('calls')
+    .select('id, conversation_id, status')
+    .order('created_at', { ascending: false })
+    .limit(3)
 
   // Get recent calls with conversation info
   const { data: calls, error } = await supabase
@@ -27,7 +39,12 @@ export async function GET() {
   return NextResponse.json({
     recentCalls: calls || [],
     callsError: error?.message,
-    columnTest: colError?.message,
-    hasConversationId: !error && calls?.[0] ? 'conversation_id' in (calls[0] || {}) : 'unknown'
+    hasConversationId: !error && calls?.[0] ? 'conversation_id' in (calls[0] || {}) : 'unknown',
+    anonClientTest: {
+      success: !anonError,
+      error: anonError?.message,
+      count: anonCalls?.length || 0,
+      calls: anonCalls || []
+    }
   })
 }

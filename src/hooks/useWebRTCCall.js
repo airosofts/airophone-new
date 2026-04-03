@@ -190,11 +190,26 @@ const handleCallUpdate = (call) => {
     return // Don't process as main call
   }
   
+  // Detect incoming call via callUpdate (SDK may not fire telnyx.call.receive)
+  if (!currentCall && !isCallActive && (call.state === 'ringing' || call.state === 'new')) {
+    const callerNumber = call.params?.caller_id_number || call.params?.callerIdNumber || 'Unknown'
+    const destNumber = call.params?.destination_number || call.params?.destinationNumber || ''
+    console.log('Detected incoming call from callUpdate:', callerNumber, '->', destNumber)
+    setCurrentCall(call)
+    setIncomingCall({
+      from: callerNumber,
+      to: destNumber,
+      callId: call.id
+    })
+    setIsCallActive(true)
+    setCallStatus('incoming')
+    return
+  }
+
   // Handle main call updates
   if (!currentCall || call.id === currentCall.id) {
     switch (call.state) {
       case 'active':
-        // Don't override conference status
         if (callStatus !== 'conference') {
           setCallStatus('active')
         }
@@ -208,6 +223,12 @@ const handleCallUpdate = (call) => {
         setCallStatus('held')
         setIsOnHold(true)
         break
+      case 'ringing':
+        // Outbound call ringing on remote end
+        if (callStatus !== 'incoming') {
+          setCallStatus('ringing')
+        }
+        break
       case 'hangup':
         console.log('Main call hangup detected')
         setCallStatus('ended')
@@ -219,9 +240,8 @@ const handleCallUpdate = (call) => {
         console.log('Main call destroy detected')
         performCompleteCleanup()
         break
-      // ... other states remain the same
     }
-    
+
     setCurrentCall(call)
   }
 }
@@ -321,8 +341,8 @@ const setupAudioRouting = (call, isParticipant = false) => {
         const telnyxClient = new TelnyxRTC({
           login: process.env.NEXT_PUBLIC_TELNYX_SIP_USERNAME,
           password: process.env.NEXT_PUBLIC_TELNYX_SIP_PASSWORD,
-          ringtoneFile: '/sounds/ringtone.mp3',
-          ringbackFile: '/sounds/ringback.mp3',
+          ringtoneFile: '/call.mp3',
+          ringbackFile: '/call.mp3',
           debugMode: true
         })
 
