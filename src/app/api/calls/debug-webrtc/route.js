@@ -127,21 +127,36 @@ export async function POST(request) {
     }
 
     if (action === 'fix') {
-      // Enable WebRTC on existing connection
+      // First, find the outbound voice profile
+      let voiceProfileId = null
+      const profileRes = await fetch('https://api.telnyx.com/v2/outbound_voice_profiles?page[size]=5', {
+        headers: TELNYX_HEADERS
+      })
+      if (profileRes.ok) {
+        const profileData = await profileRes.json()
+        voiceProfileId = profileData.data?.[0]?.id || null
+      }
+
+      // Enable WebRTC on existing connection + attach voice profile
       const connId = process.env.NEXT_PUBLIC_TELNYX_CONNECTION_ID
       if (!connId) {
         return NextResponse.json({ error: 'No connection ID in env' }, { status: 400 })
       }
 
+      const patchBody = {
+        active: true,
+        webrtc_enabled: true,
+        user_name: process.env.NEXT_PUBLIC_TELNYX_SIP_USERNAME,
+        password: process.env.NEXT_PUBLIC_TELNYX_SIP_PASSWORD
+      }
+      if (voiceProfileId) {
+        patchBody.outbound_voice_profile_id = voiceProfileId
+      }
+
       const res = await fetch(`https://api.telnyx.com/v2/credential_connections/${connId}`, {
         method: 'PATCH',
         headers: TELNYX_HEADERS,
-        body: JSON.stringify({
-          active: true,
-          webrtc_enabled: true,
-          user_name: process.env.NEXT_PUBLIC_TELNYX_SIP_USERNAME,
-          password: process.env.NEXT_PUBLIC_TELNYX_SIP_PASSWORD
-        })
+        body: JSON.stringify(patchBody)
       })
 
       const data = await res.json()
