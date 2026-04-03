@@ -416,18 +416,20 @@ const setupAudioRouting = (call, isParticipant = false) => {
     fetchNumbers()
   }, [selectedCallerNumber])
 
-  // Log outbound call to DB
+  // Log outbound call to DB (uses workspace headers)
   const logCallToDb = async (toNumber, fromNumber, callControlId, conversationId) => {
     try {
-      const res = await fetch('/api/calls/log', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ toNumber, fromNumber, callControlId, conversationId })
-      })
-      const data = await res.json()
-      if (data.success) {
-        console.log('Call logged to DB:', data.callId)
+      const userSession = typeof window !== 'undefined' ? localStorage.getItem('user_session') : null
+      const user = userSession ? JSON.parse(userSession) : null
+      const headers = { 'Content-Type': 'application/json' }
+      if (user) {
+        headers['x-user-id'] = user.userId || ''
+        headers['x-workspace-id'] = user.workspaceId || ''
+        headers['x-messaging-profile-id'] = user.messagingProfileId || ''
       }
+      const res = await fetch('/api/calls/log', { method: 'POST', headers, body: JSON.stringify({ toNumber, fromNumber, callControlId, conversationId }) })
+      const data = await res.json()
+      if (data.success) console.log('Call logged to DB:', data.callId)
     } catch (err) {
       console.error('Failed to log call to DB:', err)
     }

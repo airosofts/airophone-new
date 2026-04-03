@@ -82,6 +82,21 @@ export async function GET() {
         enabled: p.enabled
       }))
     }
+
+    // Check phone number connection assignments
+    const phoneRes = await fetch('https://api.telnyx.com/v2/phone_numbers?page[size]=20', {
+      headers: TELNYX_HEADERS
+    })
+    if (phoneRes.ok) {
+      const phoneData = await phoneRes.json()
+      results.phoneNumbers = (phoneData.data || []).map(p => ({
+        id: p.id,
+        phone_number: p.phone_number,
+        connection_id: p.connection_id,
+        connection_name: p.connection_name,
+        status: p.status
+      }))
+    }
   } catch (error) {
     results.error = error.message
   }
@@ -176,7 +191,47 @@ export async function POST(request) {
       })
     }
 
-    return NextResponse.json({ error: 'Unknown action. Use "create" or "fix"' }, { status: 400 })
+    if (action === 'assign-numbers') {
+      // Reassign all phone numbers to the current credential connection
+      const connId = process.env.NEXT_PUBLIC_TELNYX_CONNECTION_ID
+      if (!connId) {
+        return NextResponse.json({ error: 'No connection ID in env' }, { status: 400 })
+      }
+
+      const phoneRes = await fetch('https://api.telnyx.com/v2/phone_numbers?page[size]=20', {
+        headers: TELNYX_HEADERS
+      })
+      if (!phoneRes.ok) {
+        return NextResponse.json({ error: 'Failed to list phone numbers' }, { status: 500 })
+      }
+
+      const phoneData = await phoneRes.json()
+      const results = []
+
+      for (const phone of (phoneData.data || [])) {
+        if (phone.connection_id === connId) {
+          results.push({ phone: phone.phone_number, status: 'already_assigned' })
+          continue
+        }
+
+        const patchRes = await fetch(`https://api.telnyx.com/v2/phone_numbers/${phone.id}/voice`, {
+          method: 'PATCH',
+          headers: TELNYX_HEADERS,
+          body: JSON.stringify({ connection_id: connId })
+        })
+
+        if (patchRes.ok) {
+          results.push({ phone: phone.phone_number, status: 'reassigned', from: phone.connection_id })
+        } else {
+          const err = await patchRes.json().catch(() => ({}))
+          results.push({ phone: phone.phone_number, status: 'failed', error: err.errors?.[0]?.detail })
+        }
+      }
+
+      return NextResponse.json({ success: true, connectionId: connId, results })
+    }
+
+    return NextResponse.json({ error: 'Unknown action. Use "create", "fix", or "assign-numbers"' }, { status: 400 })
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
