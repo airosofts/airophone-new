@@ -69,7 +69,13 @@ export function useWebRTCCall() {
 // UPDATED: Enhanced cleanup to remove participant audio elements
 const performCompleteCleanup = () => {
   console.log('Performing complete cleanup')
-  
+
+  // Stop ringtone if playing
+  if (window._incomingRingtone) {
+    window._incomingRingtone.pause()
+    window._incomingRingtone = null
+  }
+
   // Clear all timers
   stopCallTimer()
   if (cleanupTimeoutRef.current) {
@@ -192,9 +198,36 @@ const handleCallUpdate = (call) => {
   
   // Detect incoming call via callUpdate (SDK may not fire telnyx.call.receive)
   if (!currentCall && !isCallActive && (call.state === 'ringing' || call.state === 'new')) {
-    const callerNumber = call.params?.caller_id_number || call.params?.callerIdNumber || 'Unknown'
-    const destNumber = call.params?.destination_number || call.params?.destinationNumber || ''
-    console.log('Detected incoming call from callUpdate:', callerNumber, '->', destNumber)
+    // Try every known property path for caller number
+    const callerNumber = call.params?.caller_id_number
+      || call.params?.callerIdNumber
+      || call.options?.remoteCallerNumber
+      || call.options?.caller_id_number
+      || call.remoteCallerNumber
+      || call.params?.from
+      || 'Unknown'
+    const destNumber = call.params?.destination_number
+      || call.params?.destinationNumber
+      || call.options?.destinationNumber
+      || call.options?.destination_number
+      || call.params?.to
+      || ''
+
+    console.log('Detected incoming call:', callerNumber, '->', destNumber)
+    console.log('Call object keys:', Object.keys(call))
+    console.log('Call params:', JSON.stringify(call.params))
+    console.log('Call options:', JSON.stringify(call.options))
+
+    // Play ringtone
+    try {
+      const ringtone = new Audio('/call.mp3')
+      ringtone.loop = true
+      ringtone.volume = 0.5
+      ringtone.play().catch(e => console.warn('Ringtone play failed:', e.message))
+      // Store ref to stop later
+      window._incomingRingtone = ringtone
+    } catch (e) { console.warn('Ringtone error:', e) }
+
     setCurrentCall(call)
     setIncomingCall({
       from: callerNumber,
@@ -496,9 +529,18 @@ const setupAudioRouting = (call, isParticipant = false) => {
     }
   }
 
+  const stopRingtone = () => {
+    if (window._incomingRingtone) {
+      window._incomingRingtone.pause()
+      window._incomingRingtone.currentTime = 0
+      window._incomingRingtone = null
+    }
+  }
+
   const acceptCall = async () => {
     if (!currentCall) return
     try {
+      stopRingtone()
       await currentCall.answer()
       setCallStatus('active')
       setIncomingCall(null)
@@ -511,6 +553,7 @@ const setupAudioRouting = (call, isParticipant = false) => {
   const rejectCall = async () => {
     if (!currentCall) return
     try {
+      stopRingtone()
       await currentCall.hangup()
       performCompleteCleanup()
     } catch (error) {

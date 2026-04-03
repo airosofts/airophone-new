@@ -97,19 +97,44 @@ export default function CallHistoryPage() {
   }
 
   const getDirectionIcon = (call) => {
-    if (call.direction === 'incoming' || call.direction === 'inbound') {
+    const isInbound = call.direction === 'incoming' || call.direction === 'inbound'
+    const isMissed = call.status === 'missed'
+    const isForwarded = call.status === 'forwarded' || call.forwarded_to
+
+    if (isForwarded) {
       return (
-        <div className="w-7 h-7 rounded-full bg-green-50 flex items-center justify-center flex-shrink-0" title="Incoming">
-          <svg className="w-3.5 h-3.5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+        <div className="w-7 h-7 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0" title="Forwarded">
+          <svg className="w-3.5 h-3.5 text-blue-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="15 17 20 12 15 7" /><path d="M4 18v-2a4 4 0 014-4h12" />
+          </svg>
+        </div>
+      )
+    }
+    if (isMissed) {
+      return (
+        <div className="w-7 h-7 rounded-full bg-red-50 flex items-center justify-center flex-shrink-0" title="Missed">
+          <svg className="w-3.5 h-3.5 text-red-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.01 2.18 2 2 0 012 0h3" />
+            <line x1="15" y1="3" x2="21" y2="9" /><line x1="21" y1="3" x2="15" y2="9" />
+          </svg>
+        </div>
+      )
+    }
+    if (isInbound) {
+      return (
+        <div className="w-7 h-7 rounded-full bg-emerald-50 flex items-center justify-center flex-shrink-0" title="Incoming">
+          <svg className="w-3.5 h-3.5 text-emerald-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="16 2 16 8 22 8" /><line x1="23" y1="1" x2="16" y2="8" />
+            <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.01 2.18 2 2 0 012 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 14.92v2z" />
           </svg>
         </div>
       )
     }
     return (
-      <div className="w-7 h-7 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0" title="Outgoing">
-        <svg className="w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+      <div className="w-7 h-7 rounded-full bg-[#C54A3F]/10 flex items-center justify-center flex-shrink-0" title="Outgoing">
+        <svg className="w-3.5 h-3.5 text-[#C54A3F]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="22 8 22 2 16 2" /><line x1="15" y1="9" x2="22" y2="2" />
+          <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.01 2.18 2 2 0 012 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 14.92v2z" />
         </svg>
       </div>
     )
