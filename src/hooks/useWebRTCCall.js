@@ -374,8 +374,6 @@ const setupAudioRouting = (call, isParticipant = false) => {
         const telnyxClient = new TelnyxRTC({
           login: process.env.NEXT_PUBLIC_TELNYX_SIP_USERNAME,
           password: process.env.NEXT_PUBLIC_TELNYX_SIP_PASSWORD,
-          ringtoneFile: '/call.mp3',
-          ringbackFile: '/call.mp3',
           debugMode: true
         })
 
