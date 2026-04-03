@@ -465,8 +465,7 @@ const setupAudioRouting = (call, isParticipant = false) => {
       setIsCallActive(true)
       setCallStatus('connecting')
 
-      // Log outbound call to DB (don't block on this)
-      logCallToDb(phoneNumber, callerNumber, call.id, conversationId)
+      // Call records are created by the Telnyx webhook — no need to log from UI
 
       return call
 
@@ -553,63 +552,86 @@ const preventUnwantedEndCall = () => {
 
 // REPLACE these functions in your useWebRTCCall.js hook:
 
-// Mute toggle using Telnyx SDK's proper muteAudio/unmuteAudio methods
+// Mute toggle — tries every known approach
 const toggleMute = async () => {
   if (!currentCall) {
     console.error('No active call to mute/unmute')
     return
   }
 
+  const newMuteState = !isMuted
+
   try {
-    console.log('Mute toggle - current state:', isMuted, 'call:', currentCall.id)
+    console.log('Mute toggle - current:', isMuted, '-> target:', newMuteState)
+    console.log('Available mute methods:', {
+      muteAudio: typeof currentCall.muteAudio,
+      unmuteAudio: typeof currentCall.unmuteAudio,
+      toggleAudioMute: typeof currentCall.toggleAudioMute,
+      mute: typeof currentCall.mute,
+      unmute: typeof currentCall.unmute,
+      peer: !!currentCall.peer,
+      localStream: !!currentCall.localStream
+    })
 
-    // Use Telnyx SDK's dedicated audio mute methods (v2.25+)
-    if (typeof currentCall.toggleAudioMute === 'function') {
-      console.log('Using Telnyx SDK toggleAudioMute()')
-      currentCall.toggleAudioMute()
-      // Read the actual mute state from SDK
-      const newState = currentCall.isAudioMuted ?? !isMuted
-      setIsMuted(newState)
-      console.log('Mute state after toggle:', newState)
-      return
+    let success = false
+
+    // Approach 1: Telnyx SDK muteAudio/unmuteAudio
+    if (!success && typeof currentCall.muteAudio === 'function') {
+      try {
+        if (newMuteState) { currentCall.muteAudio() } else { currentCall.unmuteAudio() }
+        console.log('SDK muteAudio/unmuteAudio called')
+        success = true
+      } catch (e) { console.warn('SDK muteAudio failed:', e.message) }
     }
 
-    // Fallback: use muteAudio/unmuteAudio
-    if (!isMuted && typeof currentCall.muteAudio === 'function') {
-      console.log('Using Telnyx SDK muteAudio()')
-      currentCall.muteAudio()
-      setIsMuted(true)
-      return
-    }
-    if (isMuted && typeof currentCall.unmuteAudio === 'function') {
-      console.log('Using Telnyx SDK unmuteAudio()')
-      currentCall.unmuteAudio()
-      setIsMuted(false)
-      return
+    // Approach 2: Access RTCPeerConnection senders and disable audio tracks
+    if (currentCall.peer) {
+      try {
+        const senders = currentCall.peer.getSenders()
+        senders.forEach(sender => {
+          if (sender.track && sender.track.kind === 'audio') {
+            sender.track.enabled = !newMuteState
+            console.log('PeerConnection sender audio track enabled:', !newMuteState)
+            success = true
+          }
+        })
+      } catch (e) { console.warn('PeerConnection mute failed:', e.message) }
     }
 
-    // Last resort: Try onMuteUnmutePressed
-    if (typeof currentCall.onMuteUnmutePressed === 'function') {
-      console.log('Using Telnyx SDK onMuteUnmutePressed method')
-      currentCall.onMuteUnmutePressed()
-      setIsMuted(!isMuted)
-    } else {
-      // Fallback to direct mute/unmute
-      if (isMuted) {
-        console.log('Unmuting call...')
-        await currentCall.unmute()
-        setIsMuted(false)
-      } else {
-        console.log('Muting call...')
-        await currentCall.mute()
-        setIsMuted(true)
+    // Approach 3: Access localStream audio tracks directly
+    if (!success) {
+      const stream = currentCall.localStream
+      if (stream) {
+        stream.getAudioTracks().forEach(track => {
+          track.enabled = !newMuteState
+          console.log('LocalStream audio track enabled:', !newMuteState)
+          success = true
+        })
       }
     }
-    
-    console.log('Mute toggle completed, new state:', !isMuted)
+
+    // Approach 4: Find any audio element with local stream
+    if (!success) {
+      try {
+        const audioEl = document.getElementById('remoteAudio')
+        if (audioEl?.srcObject) {
+          audioEl.srcObject.getAudioTracks().forEach(track => {
+            track.enabled = !newMuteState
+            console.log('Audio element track enabled:', !newMuteState)
+            success = true
+          })
+        }
+      } catch (e) { console.warn('Audio element mute failed:', e.message) }
+    }
+
+    if (success) {
+      setIsMuted(newMuteState)
+      console.log('Mute state set to:', newMuteState)
+    } else {
+      console.error('All mute approaches failed')
+    }
   } catch (error) {
     console.error('Error in toggleMute:', error)
-    console.log('Available methods on currentCall:', Object.getOwnPropertyNames(currentCall))
   }
 }
 
