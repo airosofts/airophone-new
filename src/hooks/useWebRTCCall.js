@@ -584,10 +584,11 @@ const toggleMute = async () => {
       } catch (e) { console.warn('SDK muteAudio failed:', e.message) }
     }
 
-    // Approach 2: Access RTCPeerConnection senders and disable audio tracks
-    if (currentCall.peer) {
+    // Approach 2: Access RTCPeerConnection via peer.instance and disable audio sender tracks
+    const pc = currentCall.peer?.instance || currentCall.peer
+    if (pc && typeof pc.getSenders === 'function') {
       try {
-        const senders = currentCall.peer.getSenders()
+        const senders = pc.getSenders()
         senders.forEach(sender => {
           if (sender.track && sender.track.kind === 'audio') {
             sender.track.enabled = !newMuteState
@@ -600,7 +601,7 @@ const toggleMute = async () => {
 
     // Approach 3: Access localStream audio tracks directly
     if (!success) {
-      const stream = currentCall.localStream
+      const stream = currentCall.localStream || currentCall.options?.localStream
       if (stream) {
         stream.getAudioTracks().forEach(track => {
           track.enabled = !newMuteState
