@@ -69,105 +69,40 @@ export default function ChatWindow({
     }
   }, [conversation])
 
-  // NEW: Auto-select the correct caller number when conversation OR messages change
+  // Auto-select the correct caller number when conversation changes
   useEffect(() => {
-    if (conversation && callHook && callHook.availablePhoneNumbers.length > 0 && messages.length > 0) {
-      // Find the number that matches the conversation's receiving number
-      const matchingNumber = findMatchingCallerNumber()
-      
-      if (matchingNumber && matchingNumber !== callHook.selectedCallerNumber) {
-        console.log(`Auto-selecting caller number: ${matchingNumber} for conversation with ${conversation.phone_number}`)
-        console.log(`Available numbers:`, callHook.availablePhoneNumbers.map(n => n.phoneNumber))
-        console.log(`Messages analysis:`, {
-          totalMessages: messages.length,
-          inboundCount: messages.filter(m => m.direction === 'inbound').length,
-          outboundCount: messages.filter(m => m.direction === 'outbound').length,
-          latestInbound: messages.filter(m => m.direction === 'inbound')[0]?.to_number,
-          latestOutbound: messages.filter(m => m.direction === 'outbound')[0]?.from_number
-        })
-        callHook.setSelectedCallerNumber(matchingNumber)
+    if (conversation && callHook) {
+      const correctNumber = findMatchingCallerNumber()
+      if (correctNumber && correctNumber !== callHook.selectedCallerNumber) {
+        callHook.setSelectedCallerNumber(correctNumber)
       }
     }
-  }, [conversation, callHook?.availablePhoneNumbers, messages]) // Added messages dependency
+  }, [conversation?.id])
 
-  // NEW: Helper function to find the correct caller number
+  // Helper function to find the correct caller number
   const findMatchingCallerNumber = () => {
-    if (!conversation || !callHook?.availablePhoneNumbers || !messages.length) {
-      console.log('No data for caller number selection')
-      return callHook?.selectedCallerNumber || callHook?.availablePhoneNumbers?.[0]?.phoneNumber
+    // Priority 1: Use the conversation's own line (from_number is our number for this convo)
+    if (conversation?.from_number) {
+      return conversation.from_number
     }
-    
-    // Sort messages by date (newest first)
-    const sortedMessages = [...messages].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-    
-    console.log('Finding matching caller number for conversation:', conversation.phone_number)
-    console.log('Available numbers:', callHook.availablePhoneNumbers.map(n => n.phoneNumber))
-    
-    // Look through messages to find which number received/sent messages in this conversation
-    const inboundMessages = sortedMessages.filter(msg => msg.direction === 'inbound')
-    const outboundMessages = sortedMessages.filter(msg => msg.direction === 'outbound')
-    
-    console.log('Message analysis:', {
-      total: messages.length,
-      inbound: inboundMessages.length,
-      outbound: outboundMessages.length
-    })
-    
-    // Priority 1: Use the number that received the most recent inbound message
-    if (inboundMessages.length > 0) {
-      const latestInbound = inboundMessages[0] // Most recent
-      const receivingNumber = latestInbound.to_number
-      console.log('Latest inbound message to:', receivingNumber)
-      
-      const matchingPhone = callHook.availablePhoneNumbers.find(phone => 
-        normalizePhoneNumber(phone.phoneNumber) === normalizePhoneNumber(receivingNumber)
-      )
-      
-      if (matchingPhone) {
-        console.log(`✓ Found matching number from inbound message: ${matchingPhone.phoneNumber}`)
-        return matchingPhone.phoneNumber
-      }
-    }
-    
-    // Priority 2: Use the number that sent the most recent outbound message
-    if (outboundMessages.length > 0) {
-      const latestOutbound = outboundMessages[0] // Most recent
-      const sendingNumber = latestOutbound.from_number
-      console.log('Latest outbound message from:', sendingNumber)
-      
-      const matchingPhone = callHook.availablePhoneNumbers.find(phone => 
-        normalizePhoneNumber(phone.phoneNumber) === normalizePhoneNumber(sendingNumber)
-      )
-      
-      if (matchingPhone) {
-        console.log(`✓ Found matching number from outbound message: ${matchingPhone.phoneNumber}`)
-        return matchingPhone.phoneNumber
-      }
-    }
-    
-    // Priority 3: Use the currently selected phoneNumber from props (if it's voice-capable)
-    if (phoneNumber) {
-      const matchingPhone = callHook.availablePhoneNumbers.find(phone => 
-        normalizePhoneNumber(phone.phoneNumber) === normalizePhoneNumber(phoneNumber.phoneNumber)
-      )
-      
-      if (matchingPhone) {
-        console.log(`✓ Using current selected number: ${matchingPhone.phoneNumber}`)
-        return matchingPhone.phoneNumber
-      }
-    }
-    
-    // Fallback: Keep current selection or use first available
-    const fallback = callHook.selectedCallerNumber || callHook.availablePhoneNumbers[0]?.phoneNumber
-    console.log(`Using fallback number: ${fallback}`)
-    return fallback
-  }
 
-  // NEW: Helper function to normalize phone numbers for comparison
-  const normalizePhoneNumber = (phone) => {
-    if (!phone) return ''
-    const digits = phone.replace(/\D/g, '')
-    return digits.startsWith('1') && digits.length === 11 ? digits.slice(1) : digits
+    // Priority 2: Use the currently selected phone line from sidebar
+    if (phoneNumber?.phoneNumber) {
+      return phoneNumber.phoneNumber
+    }
+
+    // Priority 3: Try from messages
+    const msgItems = messages.filter(m => m._type !== 'call')
+    if (msgItems.length > 0) {
+      const sorted = [...msgItems].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      const outbound = sorted.find(m => m.direction === 'outbound')
+      if (outbound?.from_number) return outbound.from_number
+      const inbound = sorted.find(m => m.direction === 'inbound')
+      if (inbound?.to_number) return inbound.to_number
+    }
+
+    // Fallback
+    return callHook?.selectedCallerNumber || callHook?.availablePhoneNumbers?.[0]?.phoneNumber
   }
 
   const scrollToBottom = () => {

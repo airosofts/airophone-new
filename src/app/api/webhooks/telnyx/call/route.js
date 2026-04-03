@@ -104,14 +104,37 @@ async function handleCallInitiated(supabase, payload) {
   const fromNumber = payload.from
   const dbDirection = mapDirection(payload.direction)
 
-  // Dedup
-  const { data: existing } = await supabase
+  // Dedup by exact telnyx_call_id
+  const { data: exactMatch } = await supabase
     .from('calls')
     .select('id')
     .eq('telnyx_call_id', callControlId)
     .maybeSingle()
 
-  if (existing) return
+  if (exactMatch) return
+
+  // Also check for recent UI-created call (webrtc_ prefix) to same numbers within 15s
+  const fromDigits = fromNumber?.replace(/\D/g, '').slice(-10)
+  const toDigits = toNumber?.replace(/\D/g, '').slice(-10)
+  const fifteenSecondsAgo = new Date(Date.now() - 15000).toISOString()
+
+  const { data: uiCall } = await supabase
+    .from('calls')
+    .select('id, conversation_id')
+    .like('telnyx_call_id', 'webrtc_%')
+    .like('from_number', `%${fromDigits}`)
+    .like('to_number', `%${toDigits}`)
+    .gte('created_at', fifteenSecondsAgo)
+    .limit(1)
+    .maybeSingle()
+
+  if (uiCall) {
+    // Update the UI-created record with the real telnyx call ID
+    await supabase.from('calls')
+      .update({ telnyx_call_id: callControlId })
+      .eq('id', uiCall.id)
+    return
+  }
 
   // Resolve workspace and phone record
   const isIncoming = payload.direction === 'incoming'

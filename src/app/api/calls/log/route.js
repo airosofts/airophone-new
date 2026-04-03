@@ -56,23 +56,30 @@ export async function POST(request) {
       }
     }
 
-    // Check if call already exists (from webhook)
-    if (callControlId) {
-      const { data: existing } = await supabase
-        .from('calls')
-        .select('id')
-        .eq('telnyx_call_id', callControlId)
-        .maybeSingle()
+    // Check for existing recent call (within 10 seconds) to same number to avoid duplicates
+    // The webhook may create a record with a different telnyx_call_id than the WebRTC call.id
+    const tenSecondsAgo = new Date(Date.now() - 10000).toISOString()
+    const fromDigits = normalizedFrom?.replace(/\D/g, '').slice(-10)
+    const toDigits = normalizedTo?.replace(/\D/g, '').slice(-10)
 
-      if (existing) {
-        // Update with conversation_id if not set
-        await supabase.from('calls')
-          .update({ conversation_id: convId })
-          .eq('id', existing.id)
-          .is('conversation_id', null)
+    const { data: recentCall } = await supabase
+      .from('calls')
+      .select('id')
+      .eq('direction', 'outbound')
+      .like('from_number', `%${fromDigits}`)
+      .like('to_number', `%${toDigits}`)
+      .gte('created_at', tenSecondsAgo)
+      .limit(1)
+      .maybeSingle()
 
-        return NextResponse.json({ success: true, callId: existing.id, conversationId: convId })
-      }
+    if (recentCall) {
+      // Update existing record with conversation_id
+      await supabase.from('calls')
+        .update({ conversation_id: convId })
+        .eq('id', recentCall.id)
+        .is('conversation_id', null)
+
+      return NextResponse.json({ success: true, callId: recentCall.id, conversationId: convId, deduplicated: true })
     }
 
     // Insert new call record

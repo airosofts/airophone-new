@@ -2,6 +2,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import {
+  Phone, PhoneOff, Mic, MicOff, Pause, Play, Grid3X3,
+  UserPlus, ArrowRightLeft, X, Minus, Search, User, Loader2
+} from 'lucide-react'
 
 export default function CallInterface({
   callStatus,
@@ -80,9 +84,7 @@ export default function CallInterface({
     try {
       if (participantCalls.length > 0) {
         for (const participant of participantCalls) {
-          try {
-            if (participant.call?.hangup) await participant.call.hangup()
-          } catch (e) { /* ignore */ }
+          try { if (participant.call?.hangup) await participant.call.hangup() } catch (e) { /* ignore */ }
         }
       }
       if (callHook?.endCall) await callHook.endCall()
@@ -153,8 +155,7 @@ export default function CallInterface({
   const getInitials = () => {
     const num = getPhoneNumber()
     if (num === 'Unknown') return '?'
-    const digits = num.replace(/\D/g, '')
-    return digits.slice(-2)
+    return num.replace(/\D/g, '').slice(-2)
   }
 
   const isConnecting = ['connecting', 'initiating', 'trying', 'ringing'].includes(callStatus)
@@ -166,10 +167,7 @@ export default function CallInterface({
   )
 
   const dialpadKeys = [
-    ['1', '2', '3'],
-    ['4', '5', '6'],
-    ['7', '8', '9'],
-    ['*', '0', '#']
+    ['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9'], ['*', '0', '#']
   ]
   const dialpadLetters = { '2': 'ABC', '3': 'DEF', '4': 'GHI', '5': 'JKL', '6': 'MNO', '7': 'PQRS', '8': 'TUV', '9': 'WXYZ', '0': '+' }
 
@@ -182,7 +180,7 @@ export default function CallInterface({
     return 'Connecting...'
   }
 
-  // Minimized pill view
+  // Minimized pill
   if (isMinimized) {
     return (
       <div className="fixed bottom-6 right-6 z-50">
@@ -202,11 +200,11 @@ export default function CallInterface({
             <p className="text-xs font-semibold text-gray-900 leading-tight">{formatPhoneNumber(getPhoneNumber())}</p>
             <p className="text-[10px] text-gray-500 leading-tight">{getCallStatusText()}</p>
           </div>
-          <div className="w-7 h-7 rounded-full bg-red-50 flex items-center justify-center ml-1" onClick={(e) => { e.stopPropagation(); handleEndClick() }}>
-            <svg className="w-3.5 h-3.5 text-[#C54A3F]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.01 2.18 2 2 0 012 0h3" />
-              <line x1="1" y1="1" x2="23" y2="23" />
-            </svg>
+          <div
+            className="w-7 h-7 rounded-full bg-red-50 hover:bg-red-100 flex items-center justify-center ml-1 transition-colors"
+            onClick={(e) => { e.stopPropagation(); handleEndClick() }}
+          >
+            <PhoneOff className="w-3.5 h-3.5 text-[#C54A3F]" />
           </div>
         </button>
       </div>
@@ -242,9 +240,7 @@ export default function CallInterface({
                   className="w-6 h-6 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center transition-colors"
                   title="Minimize"
                 >
-                  <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
-                    <line x1="5" y1="12" x2="19" y2="12" />
-                  </svg>
+                  <Minus className="w-3 h-3 text-white" />
                 </button>
               </div>
             </div>
@@ -267,7 +263,7 @@ export default function CallInterface({
                     </div>
                     <span className="text-[10px] text-emerald-600 font-medium">Host</span>
                   </div>
-                  {participantCalls.map((p, i) => (
+                  {participantCalls.map((p) => (
                     <div key={p.id} className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
                         <span className={`w-1.5 h-1.5 rounded-full ${
@@ -291,7 +287,7 @@ export default function CallInterface({
             {/* Status Message */}
             {conferenceStatus && (
               <div className="mb-3 px-2.5 py-2 bg-blue-50 rounded-lg flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse flex-shrink-0" />
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse shrink-0" />
                 <p className="text-xs text-blue-700 font-medium">{conferenceStatus}</p>
               </div>
             )}
@@ -304,19 +300,14 @@ export default function CallInterface({
                   className="w-14 h-14 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center text-white shadow-lg transition-all active:scale-95"
                   title="Decline"
                 >
-                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.01 2.18 2 2 0 012 0h3" />
-                    <line x1="1" y1="1" x2="23" y2="23" />
-                  </svg>
+                  <PhoneOff className="w-5 h-5" />
                 </button>
                 <button
                   onClick={onAcceptCall}
                   className="w-14 h-14 bg-emerald-500 hover:bg-emerald-600 rounded-full flex items-center justify-center text-white shadow-lg transition-all active:scale-95"
                   title="Answer"
                 >
-                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.01 2.18 2 2 0 012 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 14.92v2z" />
-                  </svg>
+                  <Phone className="w-5 h-5" />
                 </button>
               </div>
             )}
@@ -324,7 +315,6 @@ export default function CallInterface({
             {/* Active Call Controls */}
             {callStatus !== 'incoming' && (
               <>
-                {/* Main controls row */}
                 <div className="flex items-center justify-center gap-3">
                   {/* Mute */}
                   <button
@@ -336,15 +326,7 @@ export default function CallInterface({
                     }`}
                     title={isMuted ? 'Unmute' : 'Mute'}
                   >
-                    {isMuted ? (
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <line x1="1" y1="1" x2="23" y2="23" /><path d="M9 9v3a3 3 0 005.12 2.12M15 9.34V4a3 3 0 00-5.94-.6" /><path d="M17 16.95A7 7 0 015 12v-2m14 0v2c0 .76-.12 1.5-.34 2.18" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" />
-                      </svg>
-                    ) : (
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" /><path d="M19 10v2a7 7 0 01-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" />
-                      </svg>
-                    )}
+                    {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
                   </button>
 
                   {/* Hold */}
@@ -357,11 +339,7 @@ export default function CallInterface({
                     }`}
                     title={isOnHold ? 'Resume' : 'Hold'}
                   >
-                    {isOnHold ? (
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3" /></svg>
-                    ) : (
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
-                    )}
+                    {isOnHold ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
                   </button>
 
                   {/* End Call */}
@@ -370,10 +348,7 @@ export default function CallInterface({
                     className="w-12 h-12 bg-[#C54A3F] hover:bg-[#B73E34] rounded-full flex items-center justify-center text-white shadow-md transition-all active:scale-95"
                     title="End Call"
                   >
-                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.01 2.18 2 2 0 012 0h3" />
-                      <line x1="1" y1="1" x2="23" y2="23" />
-                    </svg>
+                    <PhoneOff className="w-5 h-5" />
                   </button>
 
                   {/* Dialpad */}
@@ -386,11 +361,7 @@ export default function CallInterface({
                     }`}
                     title="Dialpad"
                   >
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                      <circle cx="4" cy="4" r="1.5" /><circle cx="12" cy="4" r="1.5" /><circle cx="20" cy="4" r="1.5" />
-                      <circle cx="4" cy="12" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="20" cy="12" r="1.5" />
-                      <circle cx="4" cy="20" r="1.5" /><circle cx="12" cy="20" r="1.5" /><circle cx="20" cy="20" r="1.5" />
-                    </svg>
+                    <Grid3X3 className="w-4 h-4" />
                   </button>
                 </div>
 
@@ -401,9 +372,7 @@ export default function CallInterface({
                     disabled={callStatus === 'transferring'}
                     className="flex flex-col items-center gap-0.5 text-gray-500 hover:text-gray-700 disabled:opacity-40 transition-colors"
                   >
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="23" y1="11" x2="17" y2="11" />
-                    </svg>
+                    <UserPlus className="w-4 h-4" />
                     <span className="text-[10px] font-medium">Add</span>
                   </button>
                   <button
@@ -411,9 +380,7 @@ export default function CallInterface({
                     disabled={callStatus === 'transferring'}
                     className="flex flex-col items-center gap-0.5 text-gray-500 hover:text-gray-700 disabled:opacity-40 transition-colors"
                   >
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="17 1 21 5 17 9" /><path d="M3 11V9a4 4 0 014-4h14" /><polyline points="7 23 3 19 7 15" /><path d="M21 13v2a4 4 0 01-4 4H3" />
-                    </svg>
+                    <ArrowRightLeft className="w-4 h-4" />
                     <span className="text-[10px] font-medium">Transfer</span>
                   </button>
                 </div>
@@ -428,7 +395,7 @@ export default function CallInterface({
             <div className="px-4 pt-3 pb-1 flex items-center justify-between">
               <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Dialpad</span>
               <button onClick={() => setShowDialpad(false)} className="w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center">
-                <svg className="w-3 h-3 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                <X className="w-3 h-3 text-gray-500" />
               </button>
             </div>
             {dialpadInput && (
@@ -436,7 +403,7 @@ export default function CallInterface({
                 <div className="bg-gray-50 rounded-lg px-3 py-1.5 flex items-center justify-between">
                   <span className="text-sm font-mono text-gray-800">{dialpadInput}</span>
                   <button onClick={() => setDialpadInput('')} className="text-gray-400 hover:text-gray-600">
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                    <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
@@ -458,96 +425,95 @@ export default function CallInterface({
 
         {/* Add Participant Panel */}
         {showAddParticipant && (
-          <div className="mt-2 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden max-h-72">
-            <div className="px-4 pt-3 pb-2 flex items-center justify-between">
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Add Participant</span>
-              <button onClick={() => setShowAddParticipant(false)} className="w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center">
-                <svg className="w-3 h-3 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-              </button>
-            </div>
-            <div className="px-4 pb-2">
-              <input
-                type="text"
-                placeholder="Name or phone number..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-[#C54A3F]/40 focus:ring-1 focus:ring-[#C54A3F]/20"
-              />
-            </div>
-            <div className="max-h-44 overflow-y-auto px-2 pb-2">
-              {loadingContacts ? (
-                <div className="py-6 text-center text-xs text-gray-400">Loading...</div>
-              ) : filteredContacts.length > 0 ? (
-                filteredContacts.map((c) => (
-                  <button key={c.id} onClick={() => handleAddParticipant(c.phone_number)} className="w-full flex items-center gap-2.5 px-2 py-2 hover:bg-gray-50 rounded-lg text-left transition-colors">
-                    <div className="w-7 h-7 rounded-full bg-[#C54A3F]/10 flex items-center justify-center text-[#C54A3F]">
-                      <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-900">{c.name || 'Unknown'}</p>
-                      <p className="text-[10px] text-gray-400">{formatPhoneNumber(c.phone_number)}</p>
-                    </div>
-                  </button>
-                ))
-              ) : searchQuery ? (
-                <div className="py-4 text-center">
-                  <button onClick={() => handleAddParticipant(searchQuery)} className="px-4 py-2 bg-[#C54A3F] text-white text-xs font-medium rounded-lg hover:bg-[#B73E34] transition-colors">
-                    Call {searchQuery}
-                  </button>
-                </div>
-              ) : (
-                <div className="py-4 text-center text-xs text-gray-400">Enter a number above</div>
-              )}
-            </div>
-          </div>
+          <ContactSearchPanel
+            title="Add Participant"
+            onClose={() => setShowAddParticipant(false)}
+            onSelect={handleAddParticipant}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            contacts={filteredContacts}
+            loading={loadingContacts}
+            formatPhoneNumber={formatPhoneNumber}
+            actionColor="[#C54A3F]"
+          />
         )}
 
         {/* Transfer Panel */}
         {showTransfer && (
-          <div className="mt-2 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden max-h-72">
-            <div className="px-4 pt-3 pb-2 flex items-center justify-between">
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Transfer Call</span>
-              <button onClick={() => setShowTransfer(false)} className="w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center">
-                <svg className="w-3 h-3 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-              </button>
-            </div>
-            <div className="px-4 pb-2">
-              <input
-                type="text"
-                placeholder="Name or phone number..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-[#C54A3F]/40 focus:ring-1 focus:ring-[#C54A3F]/20"
-              />
-            </div>
-            <div className="max-h-44 overflow-y-auto px-2 pb-2">
-              {loadingContacts ? (
-                <div className="py-6 text-center text-xs text-gray-400">Loading...</div>
-              ) : filteredContacts.length > 0 ? (
-                filteredContacts.map((c) => (
-                  <button key={c.id} onClick={() => handleTransfer(c.phone_number)} className="w-full flex items-center gap-2.5 px-2 py-2 hover:bg-gray-50 rounded-lg text-left transition-colors">
-                    <div className="w-7 h-7 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600">
-                      <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="17 1 21 5 17 9" /><path d="M3 11V9a4 4 0 014-4h14" /></svg>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-900">{c.name || 'Unknown'}</p>
-                      <p className="text-[10px] text-gray-400">{formatPhoneNumber(c.phone_number)}</p>
-                    </div>
-                  </button>
-                ))
-              ) : searchQuery ? (
-                <div className="py-4 text-center">
-                  <button onClick={() => handleTransfer(searchQuery)} className="px-4 py-2 bg-emerald-500 text-white text-xs font-medium rounded-lg hover:bg-emerald-600 transition-colors">
-                    Transfer to {searchQuery}
-                  </button>
-                </div>
-              ) : (
-                <div className="py-4 text-center text-xs text-gray-400">Enter a number above</div>
-              )}
-            </div>
-          </div>
+          <ContactSearchPanel
+            title="Transfer Call"
+            onClose={() => setShowTransfer(false)}
+            onSelect={handleTransfer}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            contacts={filteredContacts}
+            loading={loadingContacts}
+            formatPhoneNumber={formatPhoneNumber}
+            actionColor="emerald-500"
+            isTransfer
+          />
         )}
       </div>
     </>
+  )
+}
+
+// Shared contact search panel for Add Participant / Transfer
+function ContactSearchPanel({ title, onClose, onSelect, searchQuery, setSearchQuery, contacts, loading, formatPhoneNumber, isTransfer }) {
+  return (
+    <div className="mt-2 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden max-h-72">
+      <div className="px-4 pt-3 pb-2 flex items-center justify-between">
+        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{title}</span>
+        <button onClick={onClose} className="w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center">
+          <X className="w-3 h-3 text-gray-500" />
+        </button>
+      </div>
+      <div className="px-4 pb-2">
+        <div className="relative">
+          <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-2.5" />
+          <input
+            type="text"
+            placeholder="Name or phone number..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-[#C54A3F]/40 focus:ring-1 focus:ring-[#C54A3F]/20"
+          />
+        </div>
+      </div>
+      <div className="max-h-44 overflow-y-auto px-2 pb-2">
+        {loading ? (
+          <div className="py-6 flex justify-center">
+            <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
+          </div>
+        ) : contacts.length > 0 ? (
+          contacts.map((c) => (
+            <button key={c.id} onClick={() => onSelect(c.phone_number)} className="w-full flex items-center gap-2.5 px-2 py-2 hover:bg-gray-50 rounded-lg text-left transition-colors">
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center ${
+                isTransfer ? 'bg-emerald-50 text-emerald-600' : 'bg-[#C54A3F]/10 text-[#C54A3F]'
+              }`}>
+                {isTransfer ? <ArrowRightLeft className="w-3 h-3" /> : <User className="w-3 h-3" />}
+              </div>
+              <div>
+                <p className="text-xs font-medium text-gray-900">{c.name || 'Unknown'}</p>
+                <p className="text-[10px] text-gray-400">{formatPhoneNumber(c.phone_number)}</p>
+              </div>
+            </button>
+          ))
+        ) : searchQuery ? (
+          <div className="py-4 text-center">
+            <button
+              onClick={() => onSelect(searchQuery)}
+              className={`px-4 py-2 text-white text-xs font-medium rounded-lg transition-colors ${
+                isTransfer ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-[#C54A3F] hover:bg-[#B73E34]'
+              }`}
+            >
+              {isTransfer ? 'Transfer to' : 'Call'} {searchQuery}
+            </button>
+          </div>
+        ) : (
+          <div className="py-4 text-center text-xs text-gray-400">Enter a number above</div>
+        )}
+      </div>
+    </div>
   )
 }
