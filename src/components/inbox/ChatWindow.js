@@ -240,9 +240,25 @@ export default function ChatWindow({
   }
 
   const handleCallClick = async () => {
+    // Check WebRTC readiness first with helpful messages
+    if (callHook.isInitializing) {
+      alert('Phone system is still connecting. Please wait a few seconds and try again.')
+      return
+    }
+
+    if (callHook.initError) {
+      alert(`Phone system error: ${callHook.initError}`)
+      return
+    }
+
+    if (!callHook.isRegistered) {
+      alert('Phone system is not connected. Please refresh the page and try again.')
+      return
+    }
+
     // Auto-select the correct caller number before making the call
     const correctCallerNumber = findMatchingCallerNumber()
-    
+
     if (!correctCallerNumber) {
       alert('No suitable phone number found for calling')
       return
@@ -267,6 +283,7 @@ export default function ChatWindow({
     : (conversation.name || formatPhoneNumber(conversation.phone_number))
   const initials = getInitials(displayName, conversation.phone_number)
   const isOnCall = callHook?.getCurrentCallNumber && callHook.getCurrentCallNumber() === conversation.phone_number
+  const isWebRTCReady = callHook?.isRegistered && !callHook?.isInitializing
 
   return (
     <div className="flex h-full bg-white">
@@ -317,13 +334,31 @@ export default function ChatWindow({
                 {/* Call */}
                 <button
                   onClick={handleCallClick}
-                  disabled={callHook?.isCallActive && !isOnCall}
-                  className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-40"
-                  title="Call"
+                  disabled={(callHook?.isCallActive && !isOnCall) || !isWebRTCReady}
+                  className={`relative p-2 rounded-lg transition-colors disabled:opacity-40 ${
+                    isWebRTCReady
+                      ? 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                      : 'text-gray-300 cursor-not-allowed'
+                  }`}
+                  title={
+                    callHook?.isInitializing ? 'Connecting phone system...' :
+                    callHook?.initError ? `Phone error: ${callHook.initError}` :
+                    !callHook?.isRegistered ? 'Phone system not connected' :
+                    'Call'
+                  }
                 >
                   <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.01 2.18 2 2 0 012 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 14.92v2z" />
                   </svg>
+                  {callHook?.isInitializing && (
+                    <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 border border-white rounded-full bg-yellow-400 animate-pulse" />
+                  )}
+                  {isWebRTCReady && (
+                    <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 border border-white rounded-full bg-emerald-400" />
+                  )}
+                  {!callHook?.isInitializing && !isWebRTCReady && (
+                    <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 border border-white rounded-full bg-red-400" />
+                  )}
                 </button>
 
                 {/* Done / Open toggle */}
