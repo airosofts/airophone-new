@@ -48,6 +48,12 @@ export default function CallHistoryPage() {
     return m > 0 ? `${m}m ${s}s` : `${s}s`
   }
 
+  const formatCredits = (seconds) => {
+    if (!seconds) return null
+    const credits = seconds / 60 // 1 credit per minute
+    return Math.round(credits) || 1 // minimum 1 credit display
+  }
+
   const formatDate = (dateStr) => {
     if (!dateStr) return '—'
     const d = new Date(dateStr)

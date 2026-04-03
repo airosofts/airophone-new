@@ -174,7 +174,7 @@ export default function BillingPage() {
               </div>
             ) : (
               <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-bold text-gray-900">{walletBalance.toLocaleString()}</span>
+                <span className="text-3xl font-bold text-gray-900">{Math.round(walletBalance).toLocaleString()}</span>
                 <span className="text-sm text-gray-400">credits</span>
               </div>
             )}
@@ -184,8 +184,8 @@ export default function BillingPage() {
         {/* Pricing Tiers */}
         <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
           <div className="px-5 py-3.5 border-b border-gray-100">
-            <h3 className="text-sm font-semibold text-gray-900">Message Pricing</h3>
-            <p className="text-xs text-gray-400 mt-0.5">Rate per SMS/MMS — automatically decreases as volume grows</p>
+            <h3 className="text-sm font-semibold text-gray-900">Credit Pricing</h3>
+            <p className="text-xs text-gray-400 mt-0.5">Rate automatically decreases as volume grows</p>
           </div>
           <div className="grid grid-cols-3 divide-x divide-gray-100">
             {[
@@ -198,10 +198,19 @@ export default function BillingPage() {
                   {tier.tag}
                 </span>
                 <p className="text-xl font-bold text-gray-900">{tier.rate}</p>
-                <p className="text-xs text-gray-400 mt-0.5">per message</p>
-                <p className="text-xs text-gray-500 mt-1.5 font-medium">{tier.label} messages</p>
+                <p className="text-xs text-gray-400 mt-0.5">per credit</p>
+                <p className="text-xs text-gray-500 mt-1.5 font-medium">{tier.label} credits</p>
               </div>
             ))}
+          </div>
+          <div className="px-5 py-3 bg-gray-50 border-t border-gray-100">
+            <p className="text-xs text-gray-500">
+              <span className="font-medium text-gray-700">1 SMS = 1 credit</span>
+              <span className="mx-2 text-gray-300">•</span>
+              <span className="font-medium text-gray-700">1 AI reply = 2 credits</span>
+              <span className="mx-2 text-gray-300">•</span>
+              <span className="font-medium text-gray-700">1 min call = 1 credit</span>
+            </p>
           </div>
         </div>
 
@@ -296,7 +305,7 @@ export default function BillingPage() {
                               transaction.type === 'topup' || transaction.type === 'refund' ? 'text-green-600' : 'text-red-600'
                             }`}>
                               {transaction.type === 'topup' || transaction.type === 'refund' ? '+' : '−'}
-                              {Math.abs(transaction.amount).toLocaleString()} credits
+                              {Math.round(Math.abs(transaction.amount)).toLocaleString()} credits
                             </span>
                           </td>
                         </tr>

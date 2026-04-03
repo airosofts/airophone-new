@@ -2,6 +2,8 @@
 // Sole authority for call records — creates, updates, and links to conversations
 import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
+import { supabaseAdmin } from '@/lib/supabase-server'
+import { CALL_CREDITS_PER_MINUTE } from '@/lib/pricing'
 
 function mapDirection(d) {
   if (d === 'incoming') return 'inbound'
@@ -197,6 +199,81 @@ async function handleCallHangup(supabase, payload) {
 
   await supabase.from('calls').update(updates).eq('id', call.id)
   console.log('[call-webhook] Hangup:', callControlId?.slice(0, 20), 'status:', finalStatus, 'duration:', updates.duration_seconds || 0)
+
+  // Deduct credits for completed calls (only if answered and has duration)
+  if (finalStatus === 'completed' && updates.duration_seconds > 0) {
+    await deductCallCredits(call.id, updates.duration_seconds, payload)
+  }
+}
+
+async function deductCallCredits(callId, durationSeconds, payload) {
+  try {
+    // Calculate credits: duration_seconds / 60 * CALL_CREDITS_PER_MINUTE
+    // e.g. 30s = 0.5 credits, 90s = 1.5 credits
+    const creditsToDeduct = (durationSeconds / 60) * CALL_CREDITS_PER_MINUTE
+
+    // Find the workspace and wallet owner for this call
+    const { data: callRecord } = await supabaseAdmin
+      .from('calls')
+      .select('workspace_id, from_number, to_number, direction')
+      .eq('id', callId)
+      .single()
+
+    if (!callRecord?.workspace_id) {
+      console.log('[call-billing] No workspace_id on call, skipping deduction')
+      return
+    }
+
+    // Get workspace owner (wallet holder)
+    const { data: workspace } = await supabaseAdmin
+      .from('workspaces')
+      .select('created_by')
+      .eq('id', callRecord.workspace_id)
+      .single()
+
+    if (!workspace?.created_by) {
+      console.log('[call-billing] No workspace owner found')
+      return
+    }
+
+    const walletOwnerId = workspace.created_by
+    const contactNumber = callRecord.direction === 'outbound' ? callRecord.to_number : callRecord.from_number
+    const durationMins = Math.ceil(durationSeconds / 60)
+
+    // Deduct credits using existing RPC (p_message_count accepts decimal)
+    const { data: result, error } = await supabaseAdmin.rpc('deduct_message_cost', {
+      p_user_id: walletOwnerId,
+      p_workspace_id: callRecord.workspace_id,
+      p_message_count: creditsToDeduct,
+      p_cost_per_message: 0.03, // tracked for pricing tier reference
+      p_description: `Call ${callRecord.direction === 'outbound' ? 'to' : 'from'} ${contactNumber} (${durationMins}m)`,
+      p_campaign_id: null,
+      p_message_id: null,
+      p_recipient_phone: contactNumber
+    })
+
+    if (error) {
+      console.error('[call-billing] Deduction error:', error.message)
+      return
+    }
+
+    // Log to message_transactions for tracking
+    await supabaseAdmin.from('message_transactions').insert({
+      workspace_id: callRecord.workspace_id,
+      user_id: walletOwnerId,
+      campaign_id: null,
+      message_id: null,
+      recipient_phone: contactNumber,
+      cost_per_message: 0.03,
+      total_cost: creditsToDeduct * 0.03,
+      message_type: 'call',
+      status: 'sent'
+    })
+
+    console.log(`[call-billing] Deducted ${creditsToDeduct.toFixed(2)} credits for ${durationSeconds}s call (${durationMins}m). New balance: ${result?.new_balance}`)
+  } catch (err) {
+    console.error('[call-billing] Error:', err.message)
+  }
 }
 
 export async function GET() {
