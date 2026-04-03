@@ -1,5 +1,5 @@
 // src/app/api/webhooks/telnyx/call/route.js
-// Records call history only — forwarding is handled by Telnyx natively
+// Records call history and links calls to conversations
 import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 
@@ -7,6 +7,14 @@ function mapDirection(d) {
   if (d === 'incoming') return 'inbound'
   if (d === 'outgoing') return 'outbound'
   return d
+}
+
+function normalizePhoneNumber(phone) {
+  if (!phone) return null
+  const digits = phone.replace(/\D/g, '')
+  if (digits.length === 10) return `+1${digits}`
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`
+  return phone.startsWith('+') ? phone : `+1${digits}`
 }
 
 export async function POST(request) {
@@ -46,6 +54,50 @@ export async function POST(request) {
   return NextResponse.json({ success: true })
 }
 
+async function findOrCreateConversation(supabase, contactNumber, ourNumber, workspaceId) {
+  const normalizedContact = normalizePhoneNumber(contactNumber)
+  const normalizedOur = normalizePhoneNumber(ourNumber)
+
+  if (!normalizedContact || !normalizedOur) return null
+
+  // Try to find existing conversation
+  const { data: existing } = await supabase
+    .from('conversations')
+    .select('id')
+    .eq('phone_number', normalizedContact)
+    .eq('from_number', normalizedOur)
+    .maybeSingle()
+
+  if (existing) return existing.id
+
+  // Create new conversation
+  const { data: created, error } = await supabase
+    .from('conversations')
+    .insert({
+      phone_number: normalizedContact,
+      from_number: normalizedOur,
+      workspace_id: workspaceId,
+      status: 'open',
+      last_message_at: new Date().toISOString()
+    })
+    .select('id')
+    .single()
+
+  if (error) {
+    console.error('[call-webhook] Error creating conversation:', error.message)
+    // Try once more in case of race condition (upsert)
+    const { data: retry } = await supabase
+      .from('conversations')
+      .select('id')
+      .eq('phone_number', normalizedContact)
+      .eq('from_number', normalizedOur)
+      .maybeSingle()
+    return retry?.id || null
+  }
+
+  return created?.id || null
+}
+
 async function handleCallInitiated(supabase, payload) {
   const callControlId = payload.call_control_id
   const toNumber = payload.to
@@ -61,15 +113,20 @@ async function handleCallInitiated(supabase, payload) {
 
   if (existing) return
 
-  // Resolve workspace
-  const digits = (payload.direction === 'incoming' ? toNumber : fromNumber)?.replace(/\D/g, '').slice(-10)
+  // Resolve workspace and phone record
+  const isIncoming = payload.direction === 'incoming'
+  const ourNumber = isIncoming ? toNumber : fromNumber
+  const contactNumber = isIncoming ? fromNumber : toNumber
+  const digits = ourNumber?.replace(/\D/g, '').slice(-10)
+
   let workspaceId = null
   let forwardedTo = null
+  let conversationId = null
 
   if (digits) {
     const { data: phoneRec } = await supabase
       .from('phone_numbers')
-      .select('workspace_id, id')
+      .select('workspace_id, id, phone_number')
       .like('phone_number', `%${digits}`)
       .limit(1)
       .maybeSingle()
@@ -77,8 +134,8 @@ async function handleCallInitiated(supabase, payload) {
     if (phoneRec) {
       workspaceId = phoneRec.workspace_id
 
-      // Check if this number has a forwarding rule (for recording purposes)
-      if (payload.direction === 'incoming') {
+      // Check forwarding rule for incoming calls
+      if (isIncoming) {
         const { data: fwdRule } = await supabase
           .from('call_forwarding_rules')
           .select('forward_to, id')
@@ -90,6 +147,9 @@ async function handleCallInitiated(supabase, payload) {
           forwardedTo = fwdRule.forward_to
         }
       }
+
+      // Link to conversation
+      conversationId = await findOrCreateConversation(supabase, contactNumber, ourNumber, workspaceId)
     }
   }
 
@@ -101,6 +161,7 @@ async function handleCallInitiated(supabase, payload) {
     status: forwardedTo ? 'forwarded' : 'initiated',
     forwarded_to: forwardedTo,
     workspace_id: workspaceId,
+    conversation_id: conversationId,
     created_at: new Date().toISOString()
   })
 
@@ -111,27 +172,34 @@ async function handleCallInitiated(supabase, payload) {
 
 async function handleCallHangup(supabase, payload) {
   const endTime = new Date().toISOString()
+  const hangupCause = payload.hangup_cause || 'normal_clearing'
 
   const { data: call } = await supabase
     .from('calls')
-    .update({ status: 'completed', ended_at: endTime, hangup_cause: payload.hangup_cause || 'normal_clearing', updated_at: endTime })
+    .update({ ended_at: endTime, hangup_cause: hangupCause, updated_at: endTime })
     .eq('telnyx_call_id', payload.call_control_id)
-    .select('id, answered_at, forwarded_to')
+    .select('id, status, answered_at, forwarded_to')
     .maybeSingle()
 
   if (!call) return
 
-  // Don't overwrite 'forwarded' status with 'completed'
+  // Determine final status
+  let finalStatus = 'completed'
   if (call.forwarded_to) {
-    await supabase.from('calls')
-      .update({ status: 'forwarded', ended_at: endTime })
-      .eq('id', call.id)
+    finalStatus = 'forwarded'
+  } else if (!call.answered_at && hangupCause !== 'normal_clearing') {
+    finalStatus = 'missed'
+  } else if (!call.answered_at) {
+    finalStatus = 'missed'
   }
 
+  const updates = { status: finalStatus }
+
   if (call.answered_at) {
-    const duration = Math.floor((new Date(endTime) - new Date(call.answered_at)) / 1000)
-    await supabase.from('calls').update({ duration_seconds: duration }).eq('id', call.id)
+    updates.duration_seconds = Math.floor((new Date(endTime) - new Date(call.answered_at)) / 1000)
   }
+
+  await supabase.from('calls').update(updates).eq('id', call.id)
 }
 
 export async function GET() {

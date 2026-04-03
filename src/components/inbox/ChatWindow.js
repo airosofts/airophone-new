@@ -3,6 +3,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import MessageBubble from '../ui/message-bubble'
+import CallBubble from '../ui/call-bubble'
 import CallInterface from '../calling/CallInterface'
 import { PhoneNumberSelector } from '../calling/PhoneNumberSelector'
 import { apiPost } from '@/lib/api-client'
@@ -254,7 +255,7 @@ export default function ChatWindow({
 
     try {
       console.log(`Initiating call to ${conversation.phone_number} from ${correctCallerNumber}`)
-      await callHook.initiateCall(conversation.phone_number, correctCallerNumber)
+      await callHook.initiateCall(conversation.phone_number, correctCallerNumber, conversation.id)
     } catch (error) {
       console.error('Error initiating call:', error)
       alert(error.message || 'Failed to initiate call')
@@ -447,8 +448,10 @@ export default function ChatWindow({
         {/* Messages Area - Instant like OpenPhone, NO loading or empty state */}
         <div className="flex-1 overflow-y-auto bg-white">
           <div className="p-4 space-y-2">
-            {messages.map((message) => (
-              <MessageBubble key={message.id} message={message} user={user} />
+            {messages.map((item) => (
+              item._type === 'call'
+                ? <CallBubble key={`call-${item.id}`} call={item} />
+                : <MessageBubble key={item.id} message={item} user={user} />
             ))}
             <div ref={messagesEndRef} />
           </div>

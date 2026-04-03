@@ -416,8 +416,25 @@ const setupAudioRouting = (call, isParticipant = false) => {
     fetchNumbers()
   }, [selectedCallerNumber])
 
+  // Log outbound call to DB
+  const logCallToDb = async (toNumber, fromNumber, callControlId, conversationId) => {
+    try {
+      const res = await fetch('/api/calls/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ toNumber, fromNumber, callControlId, conversationId })
+      })
+      const data = await res.json()
+      if (data.success) {
+        console.log('Call logged to DB:', data.callId)
+      }
+    } catch (err) {
+      console.error('Failed to log call to DB:', err)
+    }
+  }
+
   // Main call functions
-  const initiateCall = async (phoneNumber, fromNumber = null) => {
+  const initiateCall = async (phoneNumber, fromNumber = null, conversationId = null) => {
     if (!client || !isRegistered) {
       throw new Error('WebRTC client not ready. Please wait and try again.')
     }
@@ -429,13 +446,13 @@ const setupAudioRouting = (call, isParticipant = false) => {
 
     try {
       setCallStatus('initiating')
-      
+
       const cleanDestination = phoneNumber.replace(/\D/g, '')
       const cleanCaller = callerNumber.replace(/\D/g, '')
-      
+
       const formattedDestination = cleanDestination.startsWith('1') ? cleanDestination : `1${cleanDestination}`
       const formattedCaller = cleanCaller.startsWith('1') ? cleanCaller : `1${cleanCaller}`
-      
+
       const call = client.newCall({
         destinationNumber: formattedDestination,
         callerNumber: formattedCaller,
@@ -445,7 +462,10 @@ const setupAudioRouting = (call, isParticipant = false) => {
       setCurrentCall(call)
       setIsCallActive(true)
       setCallStatus('connecting')
-      
+
+      // Log outbound call to DB (don't block on this)
+      logCallToDb(phoneNumber, callerNumber, call.id, conversationId)
+
       return call
 
     } catch (error) {

@@ -17,13 +17,17 @@ function normalizePhoneNumber(phone) {
 
 // Cache for messages - stores messages by conversation ID
 const messageCache = new Map()
+const callCache = new Map()
 
 export function useRealtimeMessages(conversationId) {
   const [messages, setMessages] = useState([])
+  const [calls, setCalls] = useState([])
   const [loading, setLoading] = useState(false)
   const [optimisticMessages, setOptimisticMessages] = useState([])
   const channelRef = useRef(null)
+  const callChannelRef = useRef(null)
   const messageIdsRef = useRef(new Set())
+  const callIdsRef = useRef(new Set())
   const currentConversationIdRef = useRef(conversationId)
 
   // Immediately update messages when conversationId changes - BEFORE any async operations
@@ -33,6 +37,7 @@ export function useRealtimeMessages(conversationId) {
 
       if (!conversationId) {
         setMessages([])
+        setCalls([])
         return
       }
 
@@ -45,6 +50,41 @@ export function useRealtimeMessages(conversationId) {
       } else {
         setMessages([]) // Show empty immediately
       }
+
+      const cachedCalls = callCache.get(conversationId)
+      if (cachedCalls) {
+        setCalls(cachedCalls)
+        callIdsRef.current.clear()
+        cachedCalls.forEach(c => callIdsRef.current.add(c.id))
+      } else {
+        setCalls([])
+      }
+    }
+  }, [conversationId])
+
+  const fetchCalls = useCallback(async () => {
+    if (!conversationId) {
+      setCalls([])
+      return
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('calls')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true })
+
+      if (error) throw error
+
+      if (currentConversationIdRef.current === conversationId) {
+        callIdsRef.current.clear()
+        data?.forEach(c => callIdsRef.current.add(c.id))
+        callCache.set(conversationId, data || [])
+        setCalls(data || [])
+      }
+    } catch (error) {
+      console.error('Error fetching calls:', error)
     }
   }, [conversationId])
 
@@ -104,11 +144,15 @@ export function useRealtimeMessages(conversationId) {
 
   useEffect(() => {
     fetchMessages()
+    fetchCalls()
 
     if (!conversationId) return
 
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current)
+    }
+    if (callChannelRef.current) {
+      supabase.removeChannel(callChannelRef.current)
     }
 
     channelRef.current = supabase
@@ -161,13 +205,56 @@ export function useRealtimeMessages(conversationId) {
       )
       .subscribe()
 
+    // Subscribe to call changes for this conversation
+    callChannelRef.current = supabase
+      .channel(`calls_${conversationId}_${Date.now()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'calls',
+          filter: `conversation_id=eq.${conversationId}`
+        },
+        (payload) => {
+          if (callIdsRef.current.has(payload.new.id)) return
+          callIdsRef.current.add(payload.new.id)
+          setCalls(current => {
+            const updated = [...current, payload.new].sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+            callCache.set(conversationId, updated)
+            return updated
+          })
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'calls',
+          filter: `conversation_id=eq.${conversationId}`
+        },
+        (payload) => {
+          setCalls(current => {
+            const updated = current.map(c => c.id === payload.new.id ? payload.new : c)
+            callCache.set(conversationId, updated)
+            return updated
+          })
+        }
+      )
+      .subscribe()
+
     return () => {
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current)
         channelRef.current = null
       }
+      if (callChannelRef.current) {
+        supabase.removeChannel(callChannelRef.current)
+        callChannelRef.current = null
+      }
     }
-  }, [conversationId, fetchMessages])
+  }, [conversationId, fetchMessages, fetchCalls])
 
   const addOptimisticMessage = useCallback((message) => {
     const optimisticId = `optimistic_${Date.now()}_${Math.random()}`
@@ -208,19 +295,22 @@ export function useRealtimeMessages(conversationId) {
     )
   }, [])
 
-  const allMessages = useMemo(() => {
-    return [...messages, ...optimisticMessages].sort(
+  // Merge messages and calls into a single timeline
+  const allItems = useMemo(() => {
+    const msgItems = [...messages, ...optimisticMessages].map(m => ({ ...m, _type: 'message' }))
+    const callItems = calls.map(c => ({ ...c, _type: 'call' }))
+    return [...msgItems, ...callItems].sort(
       (a, b) => new Date(a.created_at) - new Date(b.created_at)
     )
-  }, [messages, optimisticMessages])
+  }, [messages, optimisticMessages, calls])
 
   return {
-    messages: allMessages,
+    messages: allItems,
     loading,
     addOptimisticMessage,
     replaceOptimisticMessage,
     removeOptimisticMessage,
-    refetch: fetchMessages
+    refetch: () => { fetchMessages(); fetchCalls() }
   }
 }
 

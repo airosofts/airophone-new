@@ -42,12 +42,14 @@ export default function InboxPage() {
   // Only show messages that belong to the currently selected phone line
   const selectedLineNumber = selectedPhoneNumber?.phoneNumber
   const messages = selectedLineNumber
-    ? allMessages.filter(msg => {
-        if (msg.isOptimistic) return true
+    ? allMessages.filter(item => {
+        if (item.isOptimistic) return true
+        // Call items linked to conversation are always relevant
+        if (item._type === 'call') return true
         const normalize = (p) => p ? p.replace(/\D/g, '').replace(/^1/, '') : ''
         const line = normalize(selectedLineNumber)
-        if (msg.direction === 'outbound') return normalize(msg.from_number) === line
-        if (msg.direction === 'inbound') return normalize(msg.to_number) === line
+        if (item.direction === 'outbound') return normalize(item.from_number) === line
+        if (item.direction === 'inbound') return normalize(item.to_number) === line
         return true
       })
     : allMessages
