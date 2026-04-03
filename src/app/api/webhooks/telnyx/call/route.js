@@ -33,9 +33,7 @@ export async function POST(request) {
         await handleCallInitiated(supabase, payload)
         break
       case 'call.answered':
-        await supabase.from('calls')
-          .update({ status: 'answered', answered_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-          .eq('telnyx_call_id', payload.call_control_id)
+        await handleCallAnswered(supabase, payload)
         break
       case 'call.hangup':
         await handleCallHangup(supabase, payload)
@@ -193,16 +191,63 @@ async function handleCallInitiated(supabase, payload) {
   }
 }
 
+async function handleCallAnswered(supabase, payload) {
+  const now = new Date().toISOString()
+  const callControlId = payload.call_control_id
+
+  // Try exact match first
+  const { data: exact } = await supabase.from('calls')
+    .update({ status: 'answered', answered_at: now, updated_at: now })
+    .eq('telnyx_call_id', callControlId)
+    .select('id')
+    .maybeSingle()
+
+  if (exact) return
+
+  // Fallback: match recent call by phone numbers (for webrtc_ prefixed records)
+  const fromDigits = payload.from?.replace(/\D/g, '').slice(-10)
+  const toDigits = payload.to?.replace(/\D/g, '').slice(-10)
+  if (fromDigits && toDigits) {
+    const thirtySecondsAgo = new Date(Date.now() - 30000).toISOString()
+    await supabase.from('calls')
+      .update({ status: 'answered', answered_at: now, updated_at: now, telnyx_call_id: callControlId })
+      .like('from_number', `%${fromDigits}`)
+      .like('to_number', `%${toDigits}`)
+      .gte('created_at', thirtySecondsAgo)
+      .is('answered_at', null)
+  }
+}
+
 async function handleCallHangup(supabase, payload) {
   const endTime = new Date().toISOString()
   const hangupCause = payload.hangup_cause || 'normal_clearing'
 
-  const { data: call } = await supabase
+  // Try exact match first
+  let { data: call } = await supabase
     .from('calls')
     .update({ ended_at: endTime, hangup_cause: hangupCause, updated_at: endTime })
     .eq('telnyx_call_id', payload.call_control_id)
     .select('id, status, answered_at, forwarded_to')
     .maybeSingle()
+
+  // Fallback: match by phone numbers for webrtc_ prefixed records
+  if (!call) {
+    const fromDigits = payload.from?.replace(/\D/g, '').slice(-10)
+    const toDigits = payload.to?.replace(/\D/g, '').slice(-10)
+    if (fromDigits && toDigits) {
+      const thirtySecondsAgo = new Date(Date.now() - 30000).toISOString()
+      const { data: fallback } = await supabase
+        .from('calls')
+        .update({ ended_at: endTime, hangup_cause: hangupCause, updated_at: endTime, telnyx_call_id: payload.call_control_id })
+        .like('from_number', `%${fromDigits}`)
+        .like('to_number', `%${toDigits}`)
+        .gte('created_at', thirtySecondsAgo)
+        .is('ended_at', null)
+        .select('id, status, answered_at, forwarded_to')
+        .maybeSingle()
+      call = fallback
+    }
+  }
 
   if (!call) return
 

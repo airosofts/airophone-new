@@ -553,7 +553,7 @@ const preventUnwantedEndCall = () => {
 
 // REPLACE these functions in your useWebRTCCall.js hook:
 
-// FIXED: Mute toggle using local audio track directly
+// Mute toggle using Telnyx SDK's proper muteAudio/unmuteAudio methods
 const toggleMute = async () => {
   if (!currentCall) {
     console.error('No active call to mute/unmute')
@@ -563,20 +563,32 @@ const toggleMute = async () => {
   try {
     console.log('Mute toggle - current state:', isMuted, 'call:', currentCall.id)
 
-    // Method 1: Directly disable the local audio track (most reliable)
-    const localStream = currentCall.localStream || currentCall.options?.localStream
-    if (localStream) {
-      const audioTracks = localStream.getAudioTracks()
-      if (audioTracks.length > 0) {
-        const newMuteState = !isMuted
-        audioTracks.forEach(track => { track.enabled = !newMuteState })
-        console.log(`Audio tracks ${newMuteState ? 'muted' : 'unmuted'} directly`)
-        setIsMuted(newMuteState)
-        return
-      }
+    // Use Telnyx SDK's dedicated audio mute methods (v2.25+)
+    if (typeof currentCall.toggleAudioMute === 'function') {
+      console.log('Using Telnyx SDK toggleAudioMute()')
+      currentCall.toggleAudioMute()
+      // Read the actual mute state from SDK
+      const newState = currentCall.isAudioMuted ?? !isMuted
+      setIsMuted(newState)
+      console.log('Mute state after toggle:', newState)
+      return
     }
 
-    // Method 2: Try Telnyx SDK method as fallback
+    // Fallback: use muteAudio/unmuteAudio
+    if (!isMuted && typeof currentCall.muteAudio === 'function') {
+      console.log('Using Telnyx SDK muteAudio()')
+      currentCall.muteAudio()
+      setIsMuted(true)
+      return
+    }
+    if (isMuted && typeof currentCall.unmuteAudio === 'function') {
+      console.log('Using Telnyx SDK unmuteAudio()')
+      currentCall.unmuteAudio()
+      setIsMuted(false)
+      return
+    }
+
+    // Last resort: Try onMuteUnmutePressed
     if (typeof currentCall.onMuteUnmutePressed === 'function') {
       console.log('Using Telnyx SDK onMuteUnmutePressed method')
       currentCall.onMuteUnmutePressed()
