@@ -27,6 +27,7 @@ export function useWebRTCCall() {
   const participantCallsRef = useRef([])
   const pendingParticipantRef = useRef(null)
   const cleanupTimeoutRef = useRef(null)
+  const ringtoneRef = useRef(null)
 
   // Helper functions
   const formatDuration = (seconds) => {
@@ -52,6 +53,25 @@ export function useWebRTCCall() {
     }
   }
 
+  const playRingtone = () => {
+    try {
+      if (ringtoneRef.current) return // already playing
+      const audio = new Audio('/call.mp3')
+      audio.loop = true
+      audio.volume = 0.5
+      audio.play().catch(e => console.warn('Ringtone play failed:', e.message))
+      ringtoneRef.current = audio
+    } catch (e) { console.warn('Ringtone error:', e) }
+  }
+
+  const stopRingtone = () => {
+    if (ringtoneRef.current) {
+      ringtoneRef.current.pause()
+      ringtoneRef.current.currentTime = 0
+      ringtoneRef.current = null
+    }
+  }
+
   const addToCallHistory = (callData) => {
     setCallHistory(prev => [callData, ...prev.slice(0, 49)])
   }
@@ -70,11 +90,8 @@ export function useWebRTCCall() {
 const performCompleteCleanup = () => {
   console.log('Performing complete cleanup')
 
-  // Stop ringtone if playing
-  if (window._incomingRingtone) {
-    window._incomingRingtone.pause()
-    window._incomingRingtone = null
-  }
+  // Stop ringtone
+  stopRingtone()
 
   // Clear all timers
   stopCallTimer()
@@ -214,19 +231,9 @@ const handleCallUpdate = (call) => {
       || ''
 
     console.log('Detected incoming call:', callerNumber, '->', destNumber)
-    console.log('Call object keys:', Object.keys(call))
     console.log('Call params:', JSON.stringify(call.params))
-    console.log('Call options:', JSON.stringify(call.options))
 
-    // Play ringtone
-    try {
-      const ringtone = new Audio('/call.mp3')
-      ringtone.loop = true
-      ringtone.volume = 0.5
-      ringtone.play().catch(e => console.warn('Ringtone play failed:', e.message))
-      // Store ref to stop later
-      window._incomingRingtone = ringtone
-    } catch (e) { console.warn('Ringtone error:', e) }
+    playRingtone()
 
     setCurrentCall(call)
     setIncomingCall({
@@ -524,14 +531,6 @@ const setupAudioRouting = (call, isParticipant = false) => {
       console.error('Error initiating call:', error)
       performCompleteCleanup()
       throw error
-    }
-  }
-
-  const stopRingtone = () => {
-    if (window._incomingRingtone) {
-      window._incomingRingtone.pause()
-      window._incomingRingtone.currentTime = 0
-      window._incomingRingtone = null
     }
   }
 
