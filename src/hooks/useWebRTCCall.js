@@ -28,6 +28,7 @@ export function useWebRTCCall() {
   const pendingParticipantRef = useRef(null)
   const cleanupTimeoutRef = useRef(null)
   const ringtoneRef = useRef(null)
+  const outboundCallIdRef = useRef(null) // Track our outbound call ID
 
   // Helper functions
   const formatDuration = (seconds) => {
@@ -136,6 +137,7 @@ const performCompleteCleanup = () => {
   
   // Clear participant tracking
   pendingParticipantRef.current = null
+  outboundCallIdRef.current = null
   setParticipantCalls([])
   participantCallsRef.current = []
 }
@@ -214,7 +216,28 @@ const handleCallUpdate = (call) => {
   }
   
   // Detect incoming call via callUpdate (SDK may not fire telnyx.call.receive)
-  if (!currentCall && !isCallActive && (call.state === 'ringing' || call.state === 'new')) {
+  // Skip if: we initiated this call, or it's our outbound call, or we already have an active call
+  const isOurOutboundCall = outboundCallIdRef.current === call.id
+  if (!isOurOutboundCall && !currentCall && !isCallActive && (call.state === 'ringing' || call.state === 'new')) {
+    // Extra check: if call has a destination_number set by us, it's outbound not incoming
+    const hasDestination = call.params?.destination_number || call.options?.destinationNumber
+    const hasCaller = call.params?.caller_id_number || call.options?.remoteCallerNumber
+
+    // Outbound calls have destination set by us; true incoming calls have a remote caller
+    // If the call was initiated locally (type includes 'outbound' or we set destination), skip
+    if (call.direction === 'outbound' || (hasDestination && !hasCaller)) {
+      console.log('Skipping outbound call from incoming detection:', call.id)
+      // Don't treat as incoming - fall through to main call handler
+    } else {
+    // Filter: only ring if the destination number belongs to our workspace phone numbers
+    const incomingTo = call.params?.destination_number || call.params?.destinationNumber || ''
+    const incomingToDigits = incomingTo.replace(/\D/g, '').slice(-10)
+    const isOurNumber = availablePhoneNumbers.some(p => p.phoneNumber?.replace(/\D/g, '').slice(-10) === incomingToDigits)
+
+    if (incomingToDigits && !isOurNumber) {
+      console.log('Incoming call to', incomingTo, 'is not our number, ignoring')
+      return
+    }
     // Try every known property path for caller number
     const callerNumber = call.params?.caller_id_number
       || call.params?.callerIdNumber
@@ -244,6 +267,7 @@ const handleCallUpdate = (call) => {
     setIsCallActive(true)
     setCallStatus('incoming')
     return
+    } // close else (incoming call)
   }
 
   // Handle main call updates
@@ -518,6 +542,9 @@ const setupAudioRouting = (call, isParticipant = false) => {
         callerNumber: formattedCaller,
         callerName: 'SMS Dashboard'
       })
+
+      // Mark this as our outbound call so handleCallUpdate won't treat it as incoming
+      outboundCallIdRef.current = call.id
 
       setCurrentCall(call)
       setIsCallActive(true)
