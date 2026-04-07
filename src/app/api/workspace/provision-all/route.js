@@ -85,10 +85,49 @@ async function reassignNumbers(workspaceId, connectionId) {
 }
 
 export async function POST(request) {
-  // Simple secret check to prevent accidental public use
-  const { secret } = await request.json().catch(() => ({}))
+  const body = await request.json().catch(() => ({}))
+  const { secret, action } = body
   if (secret !== process.env.ADMIN_PROVISION_SECRET && secret !== 'provision2024') {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // Fix existing connections: patch voice profile + webhook on all workspace connections
+  if (action === 'fix-connections') {
+    const voiceProfileId = await getVoiceProfileId()
+    if (!voiceProfileId) return NextResponse.json({ error: 'No voice profile found' }, { status: 500 })
+
+    const { data: workspaces } = await supabaseAdmin
+      .from('workspaces')
+      .select('id, name, telnyx_connection_id')
+      .not('telnyx_connection_id', 'is', null)
+
+    const results = []
+    for (const ws of workspaces) {
+      const patchBody = {
+        active: true,
+        webrtc_enabled: true,
+        outbound_voice_profile_id: voiceProfileId,
+        ...(process.env.NEXT_PUBLIC_APP_URL && {
+          webhook_event_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/telnyx/call`,
+          webhook_api_version: '2'
+        })
+      }
+      const res = await fetch(`${TELNYX_API}/credential_connections/${ws.telnyx_connection_id}`, {
+        method: 'PATCH',
+        headers: TELNYX_HEADERS,
+        body: JSON.stringify(patchBody)
+      })
+      const data = await res.json()
+      results.push({
+        workspace: ws.name,
+        connectionId: ws.telnyx_connection_id,
+        status: res.ok ? 'fixed' : 'failed',
+        outbound_voice_profile_id: data.data?.outbound_voice_profile_id,
+        error: res.ok ? undefined : data.errors?.[0]?.detail
+      })
+      await new Promise(r => setTimeout(r, 200))
+    }
+    return NextResponse.json({ success: true, voiceProfileId, results })
   }
 
   try {
