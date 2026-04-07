@@ -434,9 +434,39 @@ const setupAudioRouting = (call, isParticipant = false) => {
         })
 
         telnyxClient.on('telnyx.call.receive', (call) => {
-          console.log('Incoming call via telnyx.call.receive:', call.id, call.params)
-          // Delegate to handleCallUpdate via ref so phone number filtering applies
-          handleCallUpdateRef.current?.(call)
+          console.log('telnyx.call.receive fired:', call.id, 'state:', call.state, 'params:', call.params)
+
+          // This event ONLY fires for true incoming calls — no need for outbound check.
+          // Use refs so we always read current values (not stale closure).
+          if (currentCallRef.current || isCallActiveRef.current) {
+            console.log('Already on a call, ignoring incoming')
+            return
+          }
+
+          // Workspace filter: only ring if the destination matches one of our numbers
+          const incomingTo = call.params?.destination_number || call.params?.destinationNumber || ''
+          const incomingToDigits = incomingTo.replace(/\D/g, '').slice(-10)
+          const numbers = availablePhoneNumbersRef.current
+          const isOurNumber = numbers.length === 0 || numbers.some(p => p.phoneNumber?.replace(/\D/g, '').slice(-10) === incomingToDigits)
+
+          if (incomingToDigits && !isOurNumber) {
+            console.log('Incoming call to', incomingTo, 'not our number, ignoring')
+            return
+          }
+
+          const callerNumber = call.params?.caller_id_number
+            || call.params?.callerIdNumber
+            || call.options?.remoteCallerNumber
+            || call.params?.from
+            || 'Unknown'
+          const destNumber = incomingTo
+
+          console.log('Incoming call accepted:', callerNumber, '->', destNumber)
+          playRingtone()
+          setCurrentCall(call)
+          setIncomingCall({ from: callerNumber, to: destNumber, callId: call.id })
+          setIsCallActive(true)
+          setCallStatus('incoming')
         })
 
         await telnyxClient.connect()
