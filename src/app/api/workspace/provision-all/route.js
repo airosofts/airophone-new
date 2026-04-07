@@ -25,8 +25,9 @@ async function provisionWorkspace(workspace, voiceProfileId) {
   const sipPassword = Array.from(crypto.getRandomValues(new Uint8Array(18)))
     .map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 24)
 
+  const safeName2 = workspace.name.replace(/[^a-zA-Z0-9]/g, '').slice(0, 20) || 'ws'
   const body = {
-    connection_name: `AiroPhone - ${workspace.name}`,
+    connection_name: `AiroPhone${safeName2}${suffix}`,
     active: true,
     webrtc_enabled: true,
     simultaneous_ringing_enabled: true,

@@ -30,7 +30,7 @@ async function provisionTelnyxCredential(workspaceId, workspaceName) {
   const voiceProfileId = await getVoiceProfileId()
 
   const body = {
-    connection_name: `AiroPhone - ${workspaceName}`,
+    connection_name: `AiroPhone${workspaceName.replace(/[^a-zA-Z0-9]/g, '').slice(0, 20)}${suffix}`,
     active: true,
     webrtc_enabled: true,
     simultaneous_ringing_enabled: true,
