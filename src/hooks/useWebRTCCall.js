@@ -267,11 +267,16 @@ const handleCallUpdate = (call) => {
       const incomingTo = call.params?.destination_number || call.params?.destinationNumber || ''
       const incomingToDigits = incomingTo.replace(/\D/g, '').slice(-10)
       const numbers = availablePhoneNumbersRef.current
-      // If numbers haven't loaded yet, allow through (better to ring than miss)
-      const isOurNumber = numbers.length === 0 || numbers.some(p => p.phoneNumber?.replace(/\D/g, '').slice(-10) === incomingToDigits)
 
+      // Block when numbers not loaded — prevents cross-workspace ring
+      if (numbers.length === 0) {
+        console.log('[WebRTC] Phone numbers not loaded, blocking callUpdate incoming')
+        return
+      }
+
+      const isOurNumber = numbers.some(p => p.phoneNumber?.replace(/\D/g, '').slice(-10) === incomingToDigits)
       if (incomingToDigits && !isOurNumber) {
-        console.log('Incoming call to', incomingTo, 'is not our number, ignoring')
+        console.log('[WebRTC] callUpdate: incoming to', incomingTo, 'not our number, ignoring')
         return
       }
 
@@ -417,9 +422,34 @@ const setupAudioRouting = (call, isParticipant = false) => {
           return
         }
 
-        if (!process.env.NEXT_PUBLIC_TELNYX_SIP_USERNAME || 
-            !process.env.NEXT_PUBLIC_TELNYX_SIP_PASSWORD) {
-          console.error('Missing WebRTC environment variables')
+        // Fetch workspace-specific SIP credentials (auto-provisions if first time)
+        let sipUsername, sipPassword
+        try {
+          const userSession = localStorage.getItem('user_session')
+          const user = userSession ? JSON.parse(userSession) : null
+          const headers = { 'Content-Type': 'application/json' }
+          if (user) {
+            headers['x-user-id'] = user.userId || ''
+            headers['x-workspace-id'] = user.workspaceId || ''
+            headers['x-messaging-profile-id'] = user.messagingProfileId || ''
+          }
+          const credsRes = await fetch('/api/workspace/sip-credentials', { headers })
+          const credsData = await credsRes.json()
+          if (!credsData.success || !credsData.sipUsername) {
+            throw new Error(credsData.error || 'Failed to get SIP credentials')
+          }
+          sipUsername = credsData.sipUsername
+          sipPassword = credsData.sipPassword
+          console.log('[WebRTC] Using workspace SIP credential:', sipUsername)
+        } catch (e) {
+          // Fallback to shared env var credential (legacy)
+          console.warn('[WebRTC] Could not get workspace SIP creds, falling back to env:', e.message)
+          sipUsername = process.env.NEXT_PUBLIC_TELNYX_SIP_USERNAME
+          sipPassword = process.env.NEXT_PUBLIC_TELNYX_SIP_PASSWORD
+        }
+
+        if (!sipUsername || !sipPassword) {
+          console.error('Missing WebRTC SIP credentials')
           setInitError('Missing WebRTC configuration')
           setIsInitializing(false)
           return
@@ -427,9 +457,9 @@ const setupAudioRouting = (call, isParticipant = false) => {
 
         // Request microphone permissions first
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({ 
-            audio: { echoCancellation: true, noiseSuppression: true }, 
-            video: false 
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true },
+            video: false
           })
           stream.getTracks().forEach(track => track.stop())
         } catch (mediaError) {
@@ -440,10 +470,10 @@ const setupAudioRouting = (call, isParticipant = false) => {
         }
 
         const { TelnyxRTC } = await import('@telnyx/webrtc')
-        
+
         const telnyxClient = new TelnyxRTC({
-          login: process.env.NEXT_PUBLIC_TELNYX_SIP_USERNAME,
-          password: process.env.NEXT_PUBLIC_TELNYX_SIP_PASSWORD,
+          login: sipUsername,
+          password: sipPassword,
           debugMode: true
         })
 
@@ -476,14 +506,20 @@ const setupAudioRouting = (call, isParticipant = false) => {
             return
           }
 
-          // Workspace filter: only ring if the destination matches one of our numbers
+          // Workspace filter: only ring if the destination matches one of our numbers.
+          // If numbers haven't loaded, BLOCK — better to miss than to ring wrong workspace.
           const incomingTo = call.params?.destination_number || call.params?.destinationNumber || ''
           const incomingToDigits = incomingTo.replace(/\D/g, '').slice(-10)
           const numbers = availablePhoneNumbersRef.current
-          const isOurNumber = numbers.length === 0 || numbers.some(p => p.phoneNumber?.replace(/\D/g, '').slice(-10) === incomingToDigits)
 
-          if (incomingToDigits && !isOurNumber) {
-            console.log('Incoming call to', incomingTo, 'not our number, ignoring')
+          if (numbers.length === 0) {
+            console.log('[WebRTC] Phone numbers not loaded yet, blocking incoming call')
+            return
+          }
+
+          const isOurNumber = numbers.some(p => p.phoneNumber?.replace(/\D/g, '').slice(-10) === incomingToDigits)
+          if (!isOurNumber) {
+            console.log('[WebRTC] Incoming call to', incomingTo, 'not our number, ignoring')
             return
           }
 
@@ -501,6 +537,23 @@ const setupAudioRouting = (call, isParticipant = false) => {
           setIsCallActive(true)
           setCallStatus('incoming')
         })
+
+        // Load phone numbers BEFORE connecting so the incoming call filter is ready
+        try {
+          const numRes = await fetch('/api/phone-numbers')
+          const numData = await numRes.json()
+          if (numData.success && numData.phoneNumbers) {
+            const voiceNums = numData.phoneNumbers.filter(p =>
+              p.capabilities?.includes('voice') || p.capabilities?.includes('Voice')
+            )
+            availablePhoneNumbersRef.current = voiceNums
+            setAvailablePhoneNumbers(voiceNums)
+            if (voiceNums.length > 0) setSelectedCallerNumber(voiceNums[0].phoneNumber)
+            console.log('[WebRTC] Loaded', voiceNums.length, 'phone numbers for call filtering')
+          }
+        } catch (e) {
+          console.error('[WebRTC] Failed to load phone numbers:', e.message)
+        }
 
         await telnyxClient.connect()
         setClient(telnyxClient)
@@ -537,30 +590,8 @@ const setupAudioRouting = (call, isParticipant = false) => {
     }
   }, [])
 
-  // Fetch phone numbers
-  useEffect(() => {
-    const fetchNumbers = async () => {
-      try {
-        const response = await fetch('/api/phone-numbers')
-        const data = await response.json()
-        
-        if (data.success && data.phoneNumbers) {
-          const voiceNumbers = data.phoneNumbers.filter(phone => 
-            phone.capabilities?.includes('voice') || phone.capabilities?.includes('Voice')
-          )
-          setAvailablePhoneNumbers(voiceNumbers)
-          
-          if (!selectedCallerNumber && voiceNumbers.length > 0) {
-            setSelectedCallerNumber(voiceNumbers[0].phoneNumber)
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching phone numbers:', error)
-      }
-    }
-
-    fetchNumbers()
-  }, [selectedCallerNumber])
+  // Phone numbers are loaded inside initializeClient() before SDK connects.
+  // This keeps the ref populated before any calls can arrive.
 
   // Log outbound call to DB (uses workspace headers)
   const logCallToDb = async (toNumber, fromNumber, callControlId, conversationId) => {
