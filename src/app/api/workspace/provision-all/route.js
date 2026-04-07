@@ -33,7 +33,7 @@ async function provisionWorkspace(workspace, voiceProfileId) {
     simultaneous_ringing_enabled: true,
     user_name: sipUsername,
     password: sipPassword,
-    ...(voiceProfileId && { outbound_voice_profile_id: voiceProfileId }),
+    ...(voiceProfileId && { outbound: { outbound_voice_profile_id: voiceProfileId } }),
     ...(process.env.NEXT_PUBLIC_APP_URL && {
       webhook_event_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/telnyx/call`,
       webhook_api_version: '2'
@@ -105,8 +105,7 @@ export async function POST(request) {
     for (const ws of workspaces) {
       const patchBody = {
         active: true,
-        webrtc_enabled: true,
-        outbound_voice_profile_id: voiceProfileId,
+        outbound: { outbound_voice_profile_id: voiceProfileId },
         ...(process.env.NEXT_PUBLIC_APP_URL && {
           webhook_event_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/telnyx/call`,
           webhook_api_version: '2'

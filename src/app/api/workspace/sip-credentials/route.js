@@ -36,7 +36,7 @@ async function provisionTelnyxCredential(workspaceId, workspaceName) {
     simultaneous_ringing_enabled: true,
     user_name: sipUsername,
     password: sipPassword,
-    ...(voiceProfileId && { outbound_voice_profile_id: voiceProfileId })
+    ...(voiceProfileId && { outbound: { outbound_voice_profile_id: voiceProfileId } })
   }
 
   // Add webhook URL if configured
