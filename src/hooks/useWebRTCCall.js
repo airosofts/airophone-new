@@ -70,9 +70,30 @@ export function useWebRTCCall() {
       if (ringtoneRef.current) return // already playing
       const audio = new Audio('/call.mp3')
       audio.loop = true
-      audio.volume = 0.5
-      audio.play().catch(e => console.warn('Ringtone play failed:', e.message))
+      audio.volume = 0.7
       ringtoneRef.current = audio
+      const attemptPlay = () => {
+        audio.play().catch(e => {
+          if (e.name === 'NotAllowedError') {
+            // Tab not focused — retry on next user interaction
+            console.warn('Ringtone blocked (tab not focused), waiting for interaction')
+            const resume = () => {
+              if (ringtoneRef.current === audio) {
+                audio.play().catch(() => {})
+              }
+              document.removeEventListener('click', resume)
+              document.removeEventListener('keydown', resume)
+              document.removeEventListener('visibilitychange', resume)
+            }
+            document.addEventListener('click', resume, { once: true })
+            document.addEventListener('keydown', resume, { once: true })
+            document.addEventListener('visibilitychange', resume, { once: true })
+          } else {
+            console.warn('Ringtone play failed:', e.message)
+          }
+        })
+      }
+      attemptPlay()
     } catch (e) { console.warn('Ringtone error:', e) }
   }
 
@@ -136,6 +157,14 @@ const performCompleteCleanup = () => {
   const participantAudioElements = document.querySelectorAll('[id^="participantAudio_"]')
   participantAudioElements.forEach(element => element.remove())
   
+  // Sync refs IMMEDIATELY so the next callUpdate sees clean state
+  // (don't wait for React re-render which may be too slow)
+  currentCallRef.current = null
+  isCallActiveRef.current = false
+  outboundCallIdRef.current = null
+  isInitiatingOutboundRef.current = false
+  pendingParticipantRef.current = null
+
   // Reset all call-related state
   setIsCallActive(false)
   setCurrentCall(null)
@@ -145,11 +174,7 @@ const performCompleteCleanup = () => {
   setIsOnHold(false)
   setIsMuted(false)
   setConferenceStatus('')
-  
-  // Clear participant tracking
-  pendingParticipantRef.current = null
-  outboundCallIdRef.current = null
-  isInitiatingOutboundRef.current = false
+  setParticipantCalls([])
   setParticipantCalls([])
   participantCallsRef.current = []
 }
@@ -298,13 +323,21 @@ const handleCallUpdate = (call) => {
       case 'hangup':
         console.log('Main call hangup detected')
         stopRingtone()
+        // Sync refs now so any rapid next call isn't blocked
+        currentCallRef.current = null
+        isCallActiveRef.current = false
         setCallStatus('ended')
         cleanupTimeoutRef.current = setTimeout(() => {
           performCompleteCleanup()
-        }, 1000)
+        }, 800)
         break
       case 'destroy':
         console.log('Main call destroy detected')
+        // Cancel pending hangup cleanup to avoid double-run
+        if (cleanupTimeoutRef.current) {
+          clearTimeout(cleanupTimeoutRef.current)
+          cleanupTimeoutRef.current = null
+        }
         performCompleteCleanup()
         break
     }
