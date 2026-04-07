@@ -21,9 +21,9 @@ async function getVoiceProfileId() {
 // Create a new Telnyx credential connection + SIP username/password for a workspace
 async function provisionTelnyxCredential(workspaceId, workspaceName) {
   // Generate a unique SIP username and a strong random password
-  const safeName = workspaceName.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12)
+  const safeName = workspaceName.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12) || 'ws'
   const suffix = workspaceId.replace(/-/g, '').slice(0, 8)
-  const sipUsername = `ws_${safeName}_${suffix}`
+  const sipUsername = `ws${safeName}${suffix}`
   const sipPassword = Array.from(crypto.getRandomValues(new Uint8Array(18)))
     .map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 24)
 

@@ -19,9 +19,9 @@ async function getVoiceProfileId() {
 }
 
 async function provisionWorkspace(workspace, voiceProfileId) {
-  const safeName = workspace.name.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12)
+  const safeName = workspace.name.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12) || 'ws'
   const suffix = workspace.id.replace(/-/g, '').slice(0, 8)
-  const sipUsername = `ws_${safeName}_${suffix}`
+  const sipUsername = `ws${safeName}${suffix}`
   const sipPassword = Array.from(crypto.getRandomValues(new Uint8Array(18)))
     .map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 24)
 
