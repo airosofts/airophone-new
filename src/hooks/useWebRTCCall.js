@@ -307,6 +307,10 @@ const handleCallUpdate = (call) => {
   // Handle main call updates
   if (!currentCallRef.current || call.id === currentCallRef.current.id) {
     switch (call.state) {
+      case 'requesting':
+      case 'trying':
+        setCallStatus('trying')
+        break
       case 'active':
         if (callStatus !== 'conference') {
           setCallStatus('active')
@@ -320,7 +324,6 @@ const handleCallUpdate = (call) => {
         setIsOnHold(true)
         break
       case 'ringing':
-        // Outbound call ringing on remote end
         if (callStatus !== 'incoming') {
           setCallStatus('ringing')
         }
@@ -644,6 +647,9 @@ const setupAudioRouting = (call, isParticipant = false) => {
       // Store call ID and clear the boolean flag
       outboundCallIdRef.current = call.id
       isInitiatingOutboundRef.current = false
+      // Sync refs immediately — don't wait for React re-render
+      currentCallRef.current = call
+      isCallActiveRef.current = true
 
       setCurrentCall(call)
       setIsCallActive(true)
