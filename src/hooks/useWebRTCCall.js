@@ -425,17 +425,19 @@ const setupAudioRouting = (call, isParticipant = false) => {
           return
         }
 
+        // Build auth headers once — reused for SIP creds + phone numbers fetch
+        const userSession = localStorage.getItem('user_session')
+        const sessionUser = userSession ? JSON.parse(userSession) : null
+        const headers = { 'Content-Type': 'application/json' }
+        if (sessionUser) {
+          headers['x-user-id'] = sessionUser.userId || ''
+          headers['x-workspace-id'] = sessionUser.workspaceId || ''
+          headers['x-messaging-profile-id'] = sessionUser.messagingProfileId || ''
+        }
+
         // Fetch workspace-specific SIP credentials (auto-provisions if first time)
         let sipUsername, sipPassword
         try {
-          const userSession = localStorage.getItem('user_session')
-          const user = userSession ? JSON.parse(userSession) : null
-          const headers = { 'Content-Type': 'application/json' }
-          if (user) {
-            headers['x-user-id'] = user.userId || ''
-            headers['x-workspace-id'] = user.workspaceId || ''
-            headers['x-messaging-profile-id'] = user.messagingProfileId || ''
-          }
           const credsRes = await fetch('/api/workspace/sip-credentials', { headers })
           const credsData = await credsRes.json()
           if (!credsData.success || !credsData.sipUsername) {
@@ -543,7 +545,7 @@ const setupAudioRouting = (call, isParticipant = false) => {
 
         // Load phone numbers BEFORE connecting so the incoming call filter is ready
         try {
-          const numRes = await fetch('/api/phone-numbers')
+          const numRes = await fetch('/api/phone-numbers', { headers })
           const numData = await numRes.json()
           if (numData.success && numData.phoneNumbers) {
             const voiceNums = numData.phoneNumbers.filter(p =>
