@@ -242,6 +242,58 @@ export default function CallInterface({
     )
   }
 
+  // Incoming call gets a prominent centered modal — impossible to miss
+  if (callStatus === 'incoming') {
+    return (
+      <>
+        {/* Backdrop */}
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50" />
+        {/* Centered incoming card */}
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-80 overflow-hidden animate-bounce-in">
+            <div className="bg-linear-to-b from-[#1a1a2e] to-[#16213e] px-6 py-8 flex flex-col items-center gap-4">
+              <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center text-white text-2xl font-bold ring-4 ring-white/20">
+                {getInitials()}
+              </div>
+              <div className="text-center">
+                <p className="text-white/60 text-sm font-medium tracking-wider uppercase">Incoming Call</p>
+                <p className="text-white text-2xl font-bold mt-1">{formatPhoneNumber ? formatPhoneNumber(incomingCall?.from) : incomingCall?.from}</p>
+                {incomingCall?.to && (
+                  <p className="text-white/50 text-xs mt-1">→ {formatPhoneNumber ? formatPhoneNumber(incomingCall.to) : incomingCall.to}</p>
+                )}
+              </div>
+              {/* Ripple animation */}
+              <div className="relative flex items-center justify-center w-12 h-6">
+                <span className="absolute w-2 h-2 bg-green-400 rounded-full animate-ping" />
+                <span className="w-2 h-2 bg-green-400 rounded-full" />
+              </div>
+            </div>
+            <div className="px-6 py-6 flex justify-center gap-10">
+              <div className="flex flex-col items-center gap-2">
+                <button
+                  onClick={onRejectCall}
+                  className="w-16 h-16 bg-red-500 hover:bg-red-600 active:scale-95 rounded-full flex items-center justify-center text-white shadow-lg transition-all"
+                >
+                  <PhoneOff className="w-6 h-6" />
+                </button>
+                <span className="text-xs text-gray-500 font-medium">Decline</span>
+              </div>
+              <div className="flex flex-col items-center gap-2">
+                <button
+                  onClick={onAcceptCall}
+                  className="w-16 h-16 bg-emerald-500 hover:bg-emerald-600 active:scale-95 rounded-full flex items-center justify-center text-white shadow-lg transition-all"
+                >
+                  <Phone className="w-6 h-6" />
+                </button>
+                <span className="text-xs text-gray-500 font-medium">Accept</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </>
+    )
+  }
+
   return (
     <>
       {/* Main Call Card - Bottom Right */}
@@ -323,28 +375,8 @@ export default function CallInterface({
               </div>
             )}
 
-            {/* Incoming Call Actions */}
-            {callStatus === 'incoming' && (
-              <div className="flex justify-center gap-6 py-2">
-                <button
-                  onClick={onRejectCall}
-                  className="w-14 h-14 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center text-white shadow-lg transition-all active:scale-95"
-                  title="Decline"
-                >
-                  <PhoneOff className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={onAcceptCall}
-                  className="w-14 h-14 bg-emerald-500 hover:bg-emerald-600 rounded-full flex items-center justify-center text-white shadow-lg transition-all active:scale-95"
-                  title="Answer"
-                >
-                  <Phone className="w-5 h-5" />
-                </button>
-              </div>
-            )}
-
             {/* Active Call Controls */}
-            {callStatus !== 'incoming' && (
+            {(
               <>
                 <div className="flex items-center justify-center gap-3">
                   {/* Mute */}

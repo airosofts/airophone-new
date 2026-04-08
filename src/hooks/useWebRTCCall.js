@@ -31,16 +31,19 @@ export function useWebRTCCall() {
   const ringtoneRef = useRef(null)
   const outboundCallIdRef = useRef(null) // Track our outbound call ID
   const isInitiatingOutboundRef = useRef(false) // Set true BEFORE newCall() to block race
-  const availablePhoneNumbersRef = useRef([]) // Mirror of state for stale-closure-safe access
-  const currentCallRef = useRef(null) // Mirror for stale-closure-safe access
-  const isCallActiveRef = useRef(false) // Mirror for stale-closure-safe access
-  const handleCallUpdateRef = useRef(null) // Always-current handler ref
+  const availablePhoneNumbersRef = useRef([])
+  const currentCallRef = useRef(null)
+  const isCallActiveRef = useRef(false)
+  const callStatusRef = useRef('idle')       // NEW — fixes stale callStatus in handlers
+  const incomingCallRef = useRef(null)       // NEW — fixes stale incomingCall in hangup handler
+  const handleCallUpdateRef = useRef(null)
 
-  // Keep refs in sync with state (so event handlers registered once always see current values)
-  // These run after every render — no deps array
+  // Keep refs in sync with state every render
   availablePhoneNumbersRef.current = availablePhoneNumbers
   currentCallRef.current = currentCall
   isCallActiveRef.current = isCallActive
+  callStatusRef.current = callStatus
+  incomingCallRef.current = incomingCall
 
   // Helper functions
   const formatDuration = (seconds) => {
@@ -293,7 +296,7 @@ const handleCallUpdate = (call) => {
           const updated = prev.filter(p => p.id !== call.id)
           
           // If no more participants, return to normal call
-          if (updated.length === 0 && callStatus === 'conference') {
+          if (updated.length === 0 && callStatusRef.current === 'conference') {
             setCallStatus('active')
             setConferenceStatus('Participant left - back to 2-way call')
             setTimeout(() => setConferenceStatus(''), 3000)
@@ -312,56 +315,17 @@ const handleCallUpdate = (call) => {
     return // Don't process as main call
   }
   
-  // Detect incoming call via callUpdate
-  // Use refs (not state) — this handler may be stale-closed from initial render
+  // Incoming call detection is handled exclusively by telnyx.call.receive below.
+  // Here we only skip outbound calls to prevent them triggering incoming UI.
   const isOurOutboundCall = isInitiatingOutboundRef.current || outboundCallIdRef.current === call.id
-  if (!isOurOutboundCall && !currentCallRef.current && !isCallActiveRef.current && (call.state === 'ringing' || call.state === 'new')) {
+  if (!isOurOutboundCall && !currentCallRef.current && !isCallActiveRef.current &&
+      (call.state === 'ringing' || call.state === 'new')) {
     const hasDestination = call.params?.destination_number || call.options?.destinationNumber
     const hasCaller = call.params?.caller_id_number || call.options?.remoteCallerNumber
-
     if (call.direction === 'outbound' || (hasDestination && !hasCaller)) {
-      console.log('Skipping outbound call from incoming detection:', call.id)
-      // fall through to main call handler
+      // outbound — skip
     } else {
-      // Filter: only ring if destination matches one of our workspace phone numbers
-      const incomingTo = call.params?.destination_number || call.params?.destinationNumber || ''
-      const incomingToDigits = incomingTo.replace(/\D/g, '').slice(-10)
-      const numbers = availablePhoneNumbersRef.current
-
-      // Block when numbers not loaded — prevents cross-workspace ring
-      if (numbers.length === 0) {
-        console.log('[WebRTC] Phone numbers not loaded, blocking callUpdate incoming')
-        return
-      }
-
-      const isOurNumber = numbers.some(p => p.phoneNumber?.replace(/\D/g, '').slice(-10) === incomingToDigits)
-      if (incomingToDigits && !isOurNumber) {
-        console.log('[WebRTC] callUpdate: incoming to', incomingTo, 'not our number, ignoring')
-        return
-      }
-
-      const callerNumber = call.params?.caller_id_number
-        || call.params?.callerIdNumber
-        || call.options?.remoteCallerNumber
-        || call.options?.caller_id_number
-        || call.remoteCallerNumber
-        || call.params?.from
-        || 'Unknown'
-      const destNumber = call.params?.destination_number
-        || call.params?.destinationNumber
-        || call.options?.destinationNumber
-        || call.options?.destination_number
-        || call.params?.to
-        || ''
-
-      console.log('Detected incoming call:', callerNumber, '->', destNumber)
-      setMissedCallNotice(null)
-      playRingtone()
-      showBrowserNotification(callerNumber)
-      setCurrentCall(call)
-      setIncomingCall({ from: callerNumber, to: destNumber, callId: call.id })
-      setIsCallActive(true)
-      setCallStatus('incoming')
+      // telnyx.call.receive already handled this — skip to avoid double state set
       return
     }
   }
@@ -374,34 +338,39 @@ const handleCallUpdate = (call) => {
         setCallStatus('trying')
         break
       case 'active':
-        if (callStatus !== 'conference') {
+        if (callStatusRef.current !== 'conference') {
           setCallStatus('active')
+          callStatusRef.current = 'active'
         }
         setIncomingCall(null)
+        incomingCallRef.current = null
         setupAudioRouting(call, false)
         startCallTimer()
         break
       case 'held':
         setCallStatus('held')
+        callStatusRef.current = 'held'
         setIsOnHold(true)
         break
       case 'ringing':
-        if (callStatus !== 'incoming') {
+        if (callStatusRef.current !== 'incoming') {
           setCallStatus('ringing')
+          callStatusRef.current = 'ringing'
         }
         break
       case 'hangup':
-        console.log('Main call hangup detected')
+        console.log('Main call hangup detected, callStatus was:', callStatusRef.current)
         stopRingtone()
         clearBrowserNotification()
-        // If still showing incoming, caller hung up before answer — show missed notice
-        if (callStatus === 'incoming') {
-          const missedFrom = incomingCall?.from || call.params?.caller_id_number || 'Unknown'
+        // Use refs — state is stale in this handler
+        if (callStatusRef.current === 'incoming') {
+          const missedFrom = incomingCallRef.current?.from || call.params?.caller_id_number || 'Unknown'
           setMissedCallNotice({ from: missedFrom, time: new Date() })
         }
-        // Sync refs now so any rapid next call isn't blocked
+        // Sync refs immediately
         currentCallRef.current = null
         isCallActiveRef.current = false
+        callStatusRef.current = 'ended'
         setCallStatus('ended')
         cleanupTimeoutRef.current = setTimeout(() => {
           performCompleteCleanup()
@@ -409,7 +378,8 @@ const handleCallUpdate = (call) => {
         break
       case 'destroy':
         console.log('Main call destroy detected')
-        // Cancel pending hangup cleanup to avoid double-run
+        stopRingtone()
+        clearBrowserNotification()
         if (cleanupTimeoutRef.current) {
           clearTimeout(cleanupTimeoutRef.current)
           cleanupTimeoutRef.current = null
@@ -608,11 +578,17 @@ const setupAudioRouting = (call, isParticipant = false) => {
           const destNumber = incomingTo
 
           console.log('Incoming call accepted:', callerNumber, '->', destNumber)
-          setMissedCallNotice(null) // clear any previous missed notice
+          const incomingData = { from: callerNumber, to: destNumber, callId: call.id }
+          // Sync refs immediately so hangup handler sees correct state
+          currentCallRef.current = call
+          isCallActiveRef.current = true
+          callStatusRef.current = 'incoming'
+          incomingCallRef.current = incomingData
+          setMissedCallNotice(null)
           playRingtone()
           showBrowserNotification(callerNumber)
           setCurrentCall(call)
-          setIncomingCall({ from: callerNumber, to: destNumber, callId: call.id })
+          setIncomingCall(incomingData)
           setIsCallActive(true)
           setCallStatus('incoming')
         })
