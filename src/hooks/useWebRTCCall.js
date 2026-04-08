@@ -37,6 +37,7 @@ export function useWebRTCCall() {
   const callStatusRef = useRef('idle')       // NEW — fixes stale callStatus in handlers
   const incomingCallRef = useRef(null)       // NEW — fixes stale incomingCall in hangup handler
   const handleCallUpdateRef = useRef(null)
+  const incomingHandledCallsRef = useRef(new Set()) // tracks calls already handled by telnyx.call.receive
 
   // Keep refs in sync with state every render
   availablePhoneNumbersRef.current = availablePhoneNumbers
@@ -227,6 +228,7 @@ const performCompleteCleanup = () => {
   outboundCallIdRef.current = null
   isInitiatingOutboundRef.current = false
   pendingParticipantRef.current = null
+  incomingHandledCallsRef.current.clear()
 
   // Reset all call-related state
   setIsCallActive(false)
@@ -315,17 +317,55 @@ const handleCallUpdate = (call) => {
     return // Don't process as main call
   }
   
-  // Incoming call detection is handled exclusively by telnyx.call.receive below.
-  // Here we only skip outbound calls to prevent them triggering incoming UI.
+  // Incoming call detection: primary handler is telnyx.call.receive (below).
+  // This block is the fallback — it fires when telnyx.call.receive does NOT fire.
+  // Dedup guard: if telnyx.call.receive already handled this call ID, skip.
   const isOurOutboundCall = isInitiatingOutboundRef.current || outboundCallIdRef.current === call.id
   if (!isOurOutboundCall && !currentCallRef.current && !isCallActiveRef.current &&
       (call.state === 'ringing' || call.state === 'new')) {
-    const hasDestination = call.params?.destination_number || call.options?.destinationNumber
-    const hasCaller = call.params?.caller_id_number || call.options?.remoteCallerNumber
-    if (call.direction === 'outbound' || (hasDestination && !hasCaller)) {
-      // outbound — skip
+    // Skip confirmed outbound calls
+    if (call.direction === 'outbound') {
+      // outbound — let fall through to normal state handling
     } else {
-      // telnyx.call.receive already handled this — skip to avoid double state set
+      // If telnyx.call.receive already handled this, skip
+      if (incomingHandledCallsRef.current.has(call.id)) {
+        return
+      }
+
+      // Fallback incoming detection — same logic as telnyx.call.receive
+      const incomingTo = call.params?.destination_number || call.params?.destinationNumber || ''
+      const incomingToDigits = incomingTo.replace(/\D/g, '').slice(-10)
+      const numbers = availablePhoneNumbersRef.current
+
+      if (numbers.length > 0) {
+        const isOurNumber = numbers.some(p => p.phoneNumber?.replace(/\D/g, '').slice(-10) === incomingToDigits)
+        if (!isOurNumber) {
+          console.log('[WebRTC] callUpdate: incoming to', incomingTo, 'not our number, ignoring')
+          return
+        }
+      }
+
+      const callerNumber = call.params?.caller_id_number
+        || call.params?.callerIdNumber
+        || call.options?.remoteCallerNumber
+        || call.params?.from
+        || 'Unknown'
+      const destNumber = incomingTo
+
+      console.log('[WebRTC] callUpdate fallback: incoming call from', callerNumber, '->', destNumber)
+      const incomingData = { from: callerNumber, to: destNumber, callId: call.id }
+      currentCallRef.current = call
+      isCallActiveRef.current = true
+      callStatusRef.current = 'incoming'
+      incomingCallRef.current = incomingData
+      incomingHandledCallsRef.current.add(call.id)
+      setMissedCallNotice(null)
+      playRingtone()
+      showBrowserNotification(callerNumber)
+      setCurrentCall(call)
+      setIncomingCall(incomingData)
+      setIsCallActive(true)
+      setCallStatus('incoming')
       return
     }
   }
@@ -584,6 +624,7 @@ const setupAudioRouting = (call, isParticipant = false) => {
           isCallActiveRef.current = true
           callStatusRef.current = 'incoming'
           incomingCallRef.current = incomingData
+          incomingHandledCallsRef.current.add(call.id) // prevent callUpdate fallback from double-firing
           setMissedCallNotice(null)
           playRingtone()
           showBrowserNotification(callerNumber)
