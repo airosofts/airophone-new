@@ -106,7 +106,7 @@ export default function LoginPage() {
         flexDirection: 'column',
         justifyContent: 'center',
         alignItems: 'flex-start',
-        padding: '72px 64px',
+        padding: '72px 80px 72px 10%',
         position: 'relative',
         overflow: 'hidden',
         borderRight: `1px solid ${COLORS.border}`,
@@ -199,11 +199,11 @@ export default function LoginPage() {
 
       {/* ═══ RIGHT PANEL — FORM ═══ */}
       <div style={{
-        width: 460, flexShrink: 0, background: COLORS.surface,
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '56px 48px',
+        width: 540, flexShrink: 0, background: COLORS.surface,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '56px 60px',
       }} className="max-lg:!w-full max-lg:!p-8">
 
-        <div style={{ width: '100%', maxWidth: 340 }}>
+        <div style={{ width: '100%', maxWidth: 400 }}>
 
           {/* Mobile logo */}
           <div className="lg:hidden" style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center', marginBottom: 40 }}>

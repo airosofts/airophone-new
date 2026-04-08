@@ -38,6 +38,9 @@ export function useWebRTCCall() {
   const incomingCallRef = useRef(null)       // NEW — fixes stale incomingCall in hangup handler
   const handleCallUpdateRef = useRef(null)
   const incomingHandledCallsRef = useRef(new Set()) // tracks calls already handled by telnyx.call.receive
+  const audioCtxRef = useRef(null)         // pre-initialized AudioContext (survives background tabs)
+  const ringtoneBufferRef = useRef(null)   // decoded AudioBuffer for call.mp3
+  const ringtoneSourceRef = useRef(null)   // current BufferSourceNode (for stopping)
 
   // Keep refs in sync with state every render
   availablePhoneNumbersRef.current = availablePhoneNumbers
@@ -83,38 +86,49 @@ export function useWebRTCCall() {
   }
 
   const showBrowserNotification = (from) => {
+    // Try to bring this window/tab to front (works in many browsers)
+    try { window.focus() } catch (_) {}
+
     // Change tab title — visible from any tab in the browser
     setTabTitle(`📞 Incoming Call — ${from}`)
 
     // Flash tab title to draw attention
-    let flashing = true
     const flashInterval = setInterval(() => {
-      if (!flashing) { clearInterval(flashInterval); return }
       document.title = document.title.startsWith('📞')
         ? (originalTitleRef.current || 'AiroPhone')
         : `📞 Incoming Call — ${from}`
-    }, 1000)
-    // Store so we can clear it
+    }, 800)
     showBrowserNotification._flashInterval = flashInterval
 
-    // Browser system notification
+    // Browser system notification — the ONLY way to alert user on another tab/window
     try {
       if (!('Notification' in window)) return
       const show = () => {
         const n = new Notification('📞 Incoming Call', {
-          body: `Call from ${from}`,
+          body: `Call from ${from} — tap to answer`,
           icon: '/favicon.ico',
           requireInteraction: true,
-          tag: 'incoming-call'
+          tag: 'incoming-call',
+          vibrate: [200, 100, 200]
         })
-        n.onclick = () => { window.focus(); n.close() }
+        n.onclick = () => {
+          window.focus()
+          n.close()
+        }
+        console.log('[Notification] Browser notification shown for call from', from)
       }
       if (Notification.permission === 'granted') {
         show()
-      } else if (Notification.permission !== 'denied') {
-        Notification.requestPermission().then(p => { if (p === 'granted') show() })
+      } else if (Notification.permission === 'default') {
+        // Request permission — note: browser may require this to happen from a user gesture
+        Notification.requestPermission().then(p => {
+          console.log('[Notification] Permission result:', p)
+          if (p === 'granted') show()
+        })
+      } else {
+        console.warn('[Notification] Permission denied — user will not see system notification')
       }
-    } catch (e) { /* notifications not supported */ }
+    } catch (e) { console.warn('[Notification] Error:', e.message) }
   }
 
   const clearBrowserNotification = () => {
@@ -128,44 +142,96 @@ export function useWebRTCCall() {
     try { new Notification('', { tag: 'incoming-call', silent: true }).close() } catch (e) {}
   }
 
-  const playRingtone = () => {
+  // Pre-load the ringtone into an AudioContext buffer.
+  // Must be called AFTER a user gesture (e.g. in telnyx.ready) so the AudioContext starts running.
+  // Once loaded, playRingtone() can play it even in background tabs.
+  const preloadRingtone = async () => {
     try {
-      if (ringtoneRef.current) return // already playing
+      const AC = window.AudioContext || window.webkitAudioContext
+      if (!AC) return
+      const ctx = new AC()
+      await ctx.resume()
+      const res = await fetch('/call.mp3')
+      const arrayBuf = await res.arrayBuffer()
+      const audioBuf = await ctx.decodeAudioData(arrayBuf)
+      audioCtxRef.current = ctx
+      ringtoneBufferRef.current = audioBuf
+      console.log('[Ringtone] Pre-loaded via AudioContext — ready for background playback')
+    } catch (e) {
+      console.warn('[Ringtone] Pre-load failed:', e.message)
+    }
+  }
+
+  const playRingtone = () => {
+    if (ringtoneRef.current) return // already playing
+
+    // --- Primary: AudioContext BufferSource (works in background tabs) ---
+    if (audioCtxRef.current && ringtoneBufferRef.current) {
+      try {
+        const ctx = audioCtxRef.current
+        if (ctx.state === 'suspended') ctx.resume()
+
+        const playLoop = () => {
+          if (!ringtoneRef.current) return // stopped while looping
+          const src = ctx.createBufferSource()
+          src.buffer = ringtoneBufferRef.current
+          src.connect(ctx.destination)
+          src.onended = () => { if (ringtoneRef.current === '__ctx__') playLoop() }
+          src.start(0)
+          ringtoneSourceRef.current = src
+        }
+
+        ringtoneRef.current = '__ctx__' // sentinel so stopRingtone knows which path
+        playLoop()
+        console.log('[Ringtone] Playing via AudioContext')
+        return
+      } catch (e) {
+        console.warn('[Ringtone] AudioContext playback failed, falling back:', e.message)
+        ringtoneRef.current = null
+      }
+    }
+
+    // --- Fallback: HTMLAudioElement ---
+    try {
       const audio = new Audio('/call.mp3')
       audio.loop = true
-      audio.volume = 0.7
+      audio.volume = 1.0
       ringtoneRef.current = audio
-      const attemptPlay = () => {
-        audio.play().catch(e => {
+
+      const tryPlay = () => {
+        if (ringtoneRef.current !== audio) return
+        console.log('[Ringtone] Attempting HTMLAudio play...')
+        audio.play().then(() => {
+          console.log('[Ringtone] HTMLAudio playing')
+        }).catch(e => {
+          console.warn('[Ringtone] HTMLAudio play failed:', e.name, e.message)
           if (e.name === 'NotAllowedError') {
-            // Tab not focused — retry on next user interaction
-            console.warn('Ringtone blocked (tab not focused), waiting for interaction')
-            const resume = () => {
-              if (ringtoneRef.current === audio) {
-                audio.play().catch(() => {})
-              }
-              document.removeEventListener('click', resume)
-              document.removeEventListener('keydown', resume)
-              document.removeEventListener('visibilitychange', resume)
-            }
-            document.addEventListener('click', resume, { once: true })
-            document.addEventListener('keydown', resume, { once: true })
-            document.addEventListener('visibilitychange', resume, { once: true })
-          } else {
-            console.warn('Ringtone play failed:', e.message)
+            const retry = () => { tryPlay() }
+            window.addEventListener('focus', retry, { once: true })
+            document.addEventListener('click', retry, { once: true })
+            document.addEventListener('keydown', retry, { once: true })
+            document.addEventListener('touchstart', retry, { once: true })
+            document.addEventListener('visibilitychange', () => {
+              if (document.visibilityState === 'visible') tryPlay()
+            }, { once: true })
           }
         })
       }
-      attemptPlay()
-    } catch (e) { console.warn('Ringtone error:', e) }
+      tryPlay()
+    } catch (e) { console.warn('[Ringtone] Error:', e) }
   }
 
   const stopRingtone = () => {
-    if (ringtoneRef.current) {
+    if (ringtoneRef.current === '__ctx__') {
+      // AudioContext path
+      try { ringtoneSourceRef.current?.stop() } catch (_) {}
+      ringtoneSourceRef.current = null
+    } else if (ringtoneRef.current) {
+      // HTMLAudio path
       ringtoneRef.current.pause()
       ringtoneRef.current.currentTime = 0
-      ringtoneRef.current = null
     }
+    ringtoneRef.current = null
   }
 
   const addToCallHistory = (callData) => {
@@ -228,6 +294,7 @@ const performCompleteCleanup = () => {
   outboundCallIdRef.current = null
   isInitiatingOutboundRef.current = false
   pendingParticipantRef.current = null
+  ringtoneSourceRef.current = null
   incomingHandledCallsRef.current.clear()
 
   // Reset all call-related state
@@ -567,9 +634,13 @@ const setupAudioRouting = (call, isParticipant = false) => {
           console.log('Telnyx WebRTC ready')
           setIsRegistered(true)
           setInitError(null)
+          // Pre-load ringtone into AudioContext so it can play in background tabs
+          preloadRingtone()
           // Request notification permission proactively while user is interacting
           if ('Notification' in window && Notification.permission === 'default') {
-            Notification.requestPermission()
+            Notification.requestPermission().then(p => console.log('[Notification] Permission:', p))
+          } else {
+            console.log('[Notification] Permission status:', typeof window !== 'undefined' ? Notification.permission : 'n/a')
           }
         })
 
