@@ -4,6 +4,45 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { loginWithEmailPassword } from '@/lib/auth'
 
+const COLORS = {
+  bg: '#F7F6F3',
+  bg2: '#EFEDE8',
+  surface: '#FFFFFF',
+  border: '#E3E1DB',
+  border2: '#D4D1C9',
+  text: '#131210',
+  text2: '#5C5A55',
+  text3: '#9B9890',
+  red: '#D63B1F',
+  redBg: 'rgba(214,59,31,0.07)',
+  redDim: 'rgba(214,59,31,0.14)',
+}
+
+function Logo({ size = 34 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="1" y="1" width="78" height="78" rx="17" stroke="#D63B1F" strokeWidth="2.5"/>
+      <path d="M22 58L40 22L58 58" stroke="#D63B1F" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M29 45H51" stroke="#D63B1F" strokeWidth="4.5" strokeLinecap="round"/>
+      <circle cx="57" cy="21" r="5" fill="#D63B1F"/>
+    </svg>
+  )
+}
+
+function CheckIcon() {
+  return (
+    <div style={{
+      width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
+      background: COLORS.redBg, border: `1px solid ${COLORS.redDim}`,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={COLORS.red} strokeWidth="2.5">
+        <polyline points="20 6 9 17 4 12" />
+      </svg>
+    </div>
+  )
+}
+
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -16,7 +55,6 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     setError('')
-
     try {
       await loginWithEmailPassword(email, password)
       router.push('/inbox')
@@ -27,138 +65,130 @@ export default function LoginPage() {
     }
   }
 
-  return (
-    <div className="min-h-screen flex overflow-hidden" style={{ fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>
+  const inputStyle = {
+    width: '100%',
+    height: 42,
+    border: `1px solid ${COLORS.border2}`,
+    borderRadius: 9,
+    background: COLORS.surface,
+    fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+    fontSize: 14,
+    color: COLORS.text,
+    padding: '0 14px',
+    outline: 'none',
+    transition: 'border-color 0.15s, box-shadow 0.15s',
+  }
 
-      {/* ── LEFT PANEL ── */}
-      <div
-        className="hidden lg:flex lg:flex-1 relative overflow-hidden flex-col justify-center items-start"
-        style={{
-          background: '#EFEDE8',
-          borderRight: '1px solid #E3E1DB',
-          padding: '72px 64px',
-        }}
-      >
+  const labelStyle = {
+    display: 'block',
+    fontFamily: "'JetBrains Mono', monospace",
+    fontSize: '10.5px',
+    color: COLORS.text2,
+    letterSpacing: '0.05em',
+    textTransform: 'uppercase',
+    marginBottom: 7,
+  }
+
+  return (
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      overflow: 'hidden',
+      fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+      WebkitFontSmoothing: 'antialiased',
+    }}>
+
+      {/* ═══ LEFT PANEL ═══ */}
+      <div style={{
+        flex: 1,
+        background: COLORS.bg2,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'flex-start',
+        padding: '72px 64px',
+        position: 'relative',
+        overflow: 'hidden',
+        borderRight: `1px solid ${COLORS.border}`,
+      }} className="hidden lg:flex">
+
         {/* Grid pattern */}
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            backgroundImage:
-              'linear-gradient(#E3E1DB 1px, transparent 1px), linear-gradient(90deg, #E3E1DB 1px, transparent 1px)',
-            backgroundSize: '40px 40px',
-            opacity: 0.5,
-          }}
-        />
-        {/* Gradient fade overlay */}
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background: 'linear-gradient(160deg, transparent 40%, rgba(239,237,232,0.95) 100%)',
-          }}
-        />
+        <div style={{
+          position: 'absolute', inset: 0, pointerEvents: 'none',
+          backgroundImage: `linear-gradient(${COLORS.border} 1px, transparent 1px), linear-gradient(90deg, ${COLORS.border} 1px, transparent 1px)`,
+          backgroundSize: '40px 40px',
+          opacity: 0.5,
+        }} />
+
+        {/* Gradient fade */}
+        <div style={{
+          position: 'absolute', inset: 0, pointerEvents: 'none',
+          background: 'linear-gradient(160deg, transparent 40%, rgba(239,237,232,0.95) 100%)',
+        }} />
 
         {/* Logo */}
-        <div className="relative z-10 flex items-center gap-2.5 mb-[52px]">
-          <svg width="34" height="34" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="1" y="1" width="78" height="78" rx="17" stroke="#D63B1F" strokeWidth="2.5"/>
-            <path d="M22 58L40 22L58 58" stroke="#D63B1F" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M29 45H51" stroke="#D63B1F" strokeWidth="4.5" strokeLinecap="round"/>
-            <circle cx="57" cy="21" r="5" fill="#D63B1F"/>
-          </svg>
-          <span className="text-[17px] font-semibold tracking-tight" style={{ color: '#131210', letterSpacing: '-0.03em' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 52, position: 'relative', zIndex: 1 }}>
+          <Logo size={34} />
+          <span style={{ fontSize: 17, fontWeight: 600, letterSpacing: '-0.03em', color: COLORS.text }}>
             AiroPhone
           </span>
         </div>
 
         {/* Content */}
-        <div className="relative z-10">
-          <div
-            className="mb-3.5"
-            style={{
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: '11px',
-              color: '#D63B1F',
-              letterSpacing: '0.1em',
-              textTransform: 'uppercase',
-            }}
-          >
-            // calls &middot; ai &middot; bulk sms &middot; all in one
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          {/* Kicker */}
+          <div className="mono" style={{
+            fontSize: 11, color: COLORS.red,
+            letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 14,
+          }}>
+            {'// calls · ai · bulk sms · all in one'}
           </div>
 
-          <h1
-            className="mb-3.5"
-            style={{
-              fontSize: 'clamp(26px, 2.6vw, 40px)',
-              fontWeight: 600,
-              color: '#131210',
-              lineHeight: 1.1,
-              letterSpacing: '-0.04em',
-            }}
-          >
-            Business calls &amp;<br />messaging, <span style={{ color: '#D63B1F' }}>automated.</span>
+          {/* Heading */}
+          <h1 style={{
+            fontSize: 'clamp(26px, 2.6vw, 40px)', fontWeight: 600,
+            color: COLORS.text, lineHeight: 1.1, letterSpacing: '-0.04em', marginBottom: 14,
+          }}>
+            Business calls &amp;<br />messaging, <span style={{ color: COLORS.red, fontStyle: 'normal' }}>automated.</span>
           </h1>
 
-          <p
-            className="mb-8"
-            style={{
-              fontSize: '14px',
-              color: '#5C5A55',
-              lineHeight: 1.72,
-              maxWidth: '340px',
-              fontWeight: 300,
-            }}
-          >
+          {/* Subtitle */}
+          <p style={{
+            fontSize: 14, color: COLORS.text2, lineHeight: 1.72,
+            maxWidth: 340, fontWeight: 300, marginBottom: 32,
+          }}>
             Manage all your business conversations, run bulk campaigns, and let AI handle replies — 24/7.
           </p>
 
-          {/* Feature checklist */}
-          <div className="flex flex-col gap-2.5 mb-11">
+          {/* Features */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 44 }}>
             {[
               'VoIP calling across multiple lines',
               'Bulk SMS with scheduling & personalization',
               'AI agent scenarios — custom auto-replies',
-            ].map((feature, i) => (
-              <div key={i} className="flex items-center gap-2.5" style={{ fontSize: '13.5px', color: '#5C5A55', fontWeight: 300 }}>
-                <div
-                  className="flex-shrink-0 flex items-center justify-center"
-                  style={{
-                    width: '20px',
-                    height: '20px',
-                    borderRadius: '50%',
-                    background: 'rgba(214,59,31,0.07)',
-                    border: '1px solid rgba(214,59,31,0.14)',
-                  }}
-                >
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#D63B1F" strokeWidth="2.5">
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                </div>
-                {feature}
+            ].map((f, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '13.5px', color: COLORS.text2, fontWeight: 300 }}>
+                <CheckIcon />
+                {f}
               </div>
             ))}
           </div>
 
           {/* Stats */}
-          <div className="flex gap-9 pt-7" style={{ borderTop: '1px solid #E3E1DB' }}>
+          <div style={{ display: 'flex', gap: 36, paddingTop: 28, borderTop: `1px solid ${COLORS.border}` }}>
             {[
               { val: '99.9', unit: '%', label: 'Uptime' },
               { val: '2', unit: 'M+', label: 'Messages' },
               { val: '24', unit: '/7', label: 'Support' },
             ].map((s, i) => (
               <div key={i}>
-                <div style={{ fontSize: '22px', fontWeight: 600, letterSpacing: '-0.04em', color: '#131210' }}>
-                  {s.val}<span style={{ color: '#D63B1F' }}>{s.unit}</span>
+                <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.04em', color: COLORS.text }}>
+                  {s.val}<span style={{ color: COLORS.red }}>{s.unit}</span>
                 </div>
-                <div
-                  style={{
-                    fontFamily: "'JetBrains Mono', monospace",
-                    fontSize: '10px',
-                    color: '#9B9890',
-                    letterSpacing: '0.05em',
-                    textTransform: 'uppercase',
-                    marginTop: '3px',
-                  }}
-                >
+                <div className="mono" style={{
+                  fontSize: 10, color: COLORS.text3,
+                  letterSpacing: '0.05em', textTransform: 'uppercase', marginTop: 3,
+                }}>
                   {s.label}
                 </div>
               </div>
@@ -167,143 +197,64 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* ── RIGHT PANEL — LOGIN FORM ── */}
-      <div
-        className="flex-shrink-0 flex items-center justify-center"
-        style={{
-          width: '460px',
-          background: '#FFFFFF',
-          padding: '56px 48px',
-        }}
-      >
-        {/* On mobile, take full width */}
-        <style jsx>{`
-          @media (max-width: 1023px) {
-            div[style*="width: 460px"] {
-              width: 100% !important;
-              padding: 32px 24px !important;
-            }
-          }
-        `}</style>
+      {/* ═══ RIGHT PANEL — FORM ═══ */}
+      <div style={{
+        width: 460, flexShrink: 0, background: COLORS.surface,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '56px 48px',
+      }} className="max-lg:!w-full max-lg:!p-8">
 
-        <div className="w-full" style={{ maxWidth: '340px' }}>
+        <div style={{ width: '100%', maxWidth: 340 }}>
+
           {/* Mobile logo */}
-          <div className="lg:hidden flex items-center gap-2 mb-10 justify-center">
-            <svg width="30" height="30" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="1" y="1" width="78" height="78" rx="17" stroke="#D63B1F" strokeWidth="2.5"/>
-              <path d="M22 58L40 22L58 58" stroke="#D63B1F" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M29 45H51" stroke="#D63B1F" strokeWidth="4.5" strokeLinecap="round"/>
-              <circle cx="57" cy="21" r="5" fill="#D63B1F"/>
-            </svg>
-            <span className="text-base font-semibold" style={{ color: '#131210', letterSpacing: '-0.03em' }}>AiroPhone</span>
+          <div className="lg:hidden" style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center', marginBottom: 40 }}>
+            <Logo size={30} />
+            <span style={{ fontSize: 16, fontWeight: 600, letterSpacing: '-0.03em', color: COLORS.text }}>AiroPhone</span>
           </div>
 
-          {/* Header */}
-          <h2
-            className="mb-1.5"
-            style={{
-              fontSize: '24px',
-              fontWeight: 600,
-              letterSpacing: '-0.03em',
-              color: '#131210',
-            }}
-          >
+          {/* Title */}
+          <div style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.03em', color: COLORS.text, marginBottom: 6 }}>
             Welcome back
-          </h2>
-          <p className="mb-8" style={{ fontSize: '13.5px', color: '#9B9890' }}>
+          </div>
+          <div style={{ fontSize: '13.5px', color: COLORS.text3, marginBottom: 32 }}>
             Sign in to your account
-          </p>
+          </div>
 
           {/* Form */}
           <form onSubmit={handleLogin}>
+
             {/* Email */}
-            <div className="mb-[18px]">
-              <label
-                className="block mb-[7px]"
-                style={{
-                  fontFamily: "'JetBrains Mono', monospace",
-                  fontSize: '10.5px',
-                  color: '#5C5A55',
-                  letterSpacing: '0.05em',
-                  textTransform: 'uppercase',
-                }}
-              >
-                Email
-              </label>
+            <div style={{ marginBottom: 18 }}>
+              <label style={labelStyle}>Email</label>
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@company.com"
-                className="w-full outline-none transition-all"
-                style={{
-                  height: '42px',
-                  border: '1px solid #D4D1C9',
-                  borderRadius: '9px',
-                  background: '#FFFFFF',
-                  fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
-                  fontSize: '14px',
-                  color: '#131210',
-                  padding: '0 14px',
-                }}
-                onFocus={(e) => {
-                  e.target.style.borderColor = '#D63B1F'
-                  e.target.style.boxShadow = '0 0 0 3px rgba(214,59,31,0.14)'
-                }}
-                onBlur={(e) => {
-                  e.target.style.borderColor = '#D4D1C9'
-                  e.target.style.boxShadow = 'none'
-                }}
+                style={inputStyle}
               />
             </div>
 
             {/* Password */}
-            <div className="mb-[18px]">
-              <label
-                className="block mb-[7px]"
-                style={{
-                  fontFamily: "'JetBrains Mono', monospace",
-                  fontSize: '10.5px',
-                  color: '#5C5A55',
-                  letterSpacing: '0.05em',
-                  textTransform: 'uppercase',
-                }}
-              >
-                Password
-              </label>
-              <div className="relative">
+            <div style={{ marginBottom: 18 }}>
+              <label style={labelStyle}>Password</label>
+              <div style={{ position: 'relative' }}>
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your password"
-                  className="w-full outline-none transition-all"
-                  style={{
-                    height: '42px',
-                    border: '1px solid #D4D1C9',
-                    borderRadius: '9px',
-                    background: '#FFFFFF',
-                    fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
-                    fontSize: '14px',
-                    color: '#131210',
-                    padding: '0 40px 0 14px',
-                  }}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = '#D63B1F'
-                    e.target.style.boxShadow = '0 0 0 3px rgba(214,59,31,0.14)'
-                  }}
-                  onBlur={(e) => {
-                    e.target.style.borderColor = '#D4D1C9'
-                    e.target.style.boxShadow = 'none'
-                  }}
+                  style={{ ...inputStyle, paddingRight: 40 }}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 flex"
-                  style={{ color: '#9B9890', cursor: 'pointer', background: 'none', border: 'none' }}
+                  style={{
+                    position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
+                    color: COLORS.text3, cursor: 'pointer', display: 'flex',
+                    background: 'none', border: 'none', padding: 0,
+                  }}
                 >
                   {showPassword ? (
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -322,15 +273,12 @@ export default function LoginPage() {
 
             {/* Error */}
             {error && (
-              <div
-                className="mb-4 flex items-center gap-2 px-3.5 py-3 rounded-[9px]"
-                style={{
-                  background: 'rgba(214,59,31,0.07)',
-                  border: '1px solid rgba(214,59,31,0.14)',
-                  fontSize: '13px',
-                  color: '#D63B1F',
-                }}
-              >
+              <div style={{
+                marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8,
+                padding: '10px 14px', borderRadius: 9,
+                background: COLORS.redBg, border: `1px solid ${COLORS.redDim}`,
+                fontSize: 13, color: COLORS.red,
+              }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <circle cx="12" cy="12" r="10" />
                   <line x1="15" y1="9" x2="9" y2="15" />
@@ -340,33 +288,30 @@ export default function LoginPage() {
               </div>
             )}
 
-            {/* Submit */}
+            {/* Button */}
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 transition-all"
               style={{
-                height: '42px',
-                borderRadius: '9px',
-                background: loading ? '#9B9890' : '#D63B1F',
-                color: '#fff',
-                border: 'none',
+                width: '100%', height: 42, borderRadius: 9,
+                background: loading ? COLORS.text3 : COLORS.red,
+                color: '#fff', border: 'none',
                 fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
-                fontSize: '14px',
-                fontWeight: 500,
+                fontSize: 14, fontWeight: 500,
                 cursor: loading ? 'not-allowed' : 'pointer',
-                marginTop: '6px',
+                marginTop: 6,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                 letterSpacing: '-0.01em',
-                opacity: loading ? 0.7 : 1,
+                transition: 'opacity 0.15s, transform 0.15s',
               }}
-              onMouseEnter={(e) => { if (!loading) e.target.style.opacity = '0.88' }}
-              onMouseLeave={(e) => { if (!loading) e.target.style.opacity = '1' }}
+              onMouseEnter={(e) => { if (!loading) { e.currentTarget.style.opacity = '0.88'; e.currentTarget.style.transform = 'translateY(-1px)' } }}
+              onMouseLeave={(e) => { if (!loading) { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'translateY(0)' } }}
             >
               {loading ? (
                 <>
-                  <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ animation: 'spin 1s linear infinite' }}>
+                    <circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                   </svg>
                   Signing in...
                 </>
@@ -382,12 +327,10 @@ export default function LoginPage() {
           </form>
 
           {/* Footer */}
-          <p className="text-center mt-5" style={{ fontSize: '13px', color: '#9B9890' }}>
+          <div style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: COLORS.text3 }}>
             Don&apos;t have an account?{' '}
-            <a href="#" style={{ color: '#D63B1F', textDecoration: 'none' }}>
-              Contact us
-            </a>
-          </p>
+            <a href="#" style={{ color: COLORS.red, textDecoration: 'none' }}>Contact us</a>
+          </div>
         </div>
       </div>
     </div>

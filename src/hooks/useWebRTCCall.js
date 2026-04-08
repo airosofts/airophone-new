@@ -332,12 +332,15 @@ const handleCallUpdate = (call) => {
         return
       }
 
-      // Fallback incoming detection — same logic as telnyx.call.receive
+      // Fallback incoming detection
+      // Per-workspace SIP creds already isolate calls at the Telnyx level, so any
+      // call reaching this SDK instance is for this workspace. Only filter by destination
+      // number if we actually have a non-empty destination to check.
       const incomingTo = call.params?.destination_number || call.params?.destinationNumber || ''
       const incomingToDigits = incomingTo.replace(/\D/g, '').slice(-10)
       const numbers = availablePhoneNumbersRef.current
 
-      if (numbers.length > 0) {
+      if (incomingToDigits.length > 0 && numbers.length > 0) {
         const isOurNumber = numbers.some(p => p.phoneNumber?.replace(/\D/g, '').slice(-10) === incomingToDigits)
         if (!isOurNumber) {
           console.log('[WebRTC] callUpdate: incoming to', incomingTo, 'not our number, ignoring')
@@ -599,15 +602,14 @@ const setupAudioRouting = (call, isParticipant = false) => {
           const incomingToDigits = incomingTo.replace(/\D/g, '').slice(-10)
           const numbers = availablePhoneNumbersRef.current
 
-          if (numbers.length === 0) {
-            console.log('[WebRTC] Phone numbers not loaded yet, blocking incoming call')
-            return
-          }
-
-          const isOurNumber = numbers.some(p => p.phoneNumber?.replace(/\D/g, '').slice(-10) === incomingToDigits)
-          if (!isOurNumber) {
-            console.log('[WebRTC] Incoming call to', incomingTo, 'not our number, ignoring')
-            return
+          // Per-workspace SIP creds isolate calls at the Telnyx level.
+          // Only apply destination filter if we have both a non-empty destination AND loaded numbers.
+          if (incomingToDigits.length > 0 && numbers.length > 0) {
+            const isOurNumber = numbers.some(p => p.phoneNumber?.replace(/\D/g, '').slice(-10) === incomingToDigits)
+            if (!isOurNumber) {
+              console.log('[WebRTC] Incoming call to', incomingTo, 'not our number, ignoring')
+              return
+            }
           }
 
           const callerNumber = call.params?.caller_id_number
