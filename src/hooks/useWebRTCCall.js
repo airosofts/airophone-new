@@ -66,21 +66,62 @@ export function useWebRTCCall() {
     }
   }
 
+  const originalTitleRef = useRef(null)
+
+  const setTabTitle = (title) => {
+    if (title) {
+      if (!originalTitleRef.current) originalTitleRef.current = document.title
+      document.title = title
+    } else {
+      if (originalTitleRef.current) document.title = originalTitleRef.current
+      originalTitleRef.current = null
+    }
+  }
+
   const showBrowserNotification = (from) => {
+    // Change tab title — visible from any tab in the browser
+    setTabTitle(`📞 Incoming Call — ${from}`)
+
+    // Flash tab title to draw attention
+    let flashing = true
+    const flashInterval = setInterval(() => {
+      if (!flashing) { clearInterval(flashInterval); return }
+      document.title = document.title.startsWith('📞')
+        ? (originalTitleRef.current || 'AiroPhone')
+        : `📞 Incoming Call — ${from}`
+    }, 1000)
+    // Store so we can clear it
+    showBrowserNotification._flashInterval = flashInterval
+
+    // Browser system notification
     try {
       if (!('Notification' in window)) return
-      const show = () => new Notification('Incoming Call', {
-        body: `Call from ${from}`,
-        icon: '/favicon.ico',
-        requireInteraction: true,
-        tag: 'incoming-call'
-      })
+      const show = () => {
+        const n = new Notification('📞 Incoming Call', {
+          body: `Call from ${from}`,
+          icon: '/favicon.ico',
+          requireInteraction: true,
+          tag: 'incoming-call'
+        })
+        n.onclick = () => { window.focus(); n.close() }
+      }
       if (Notification.permission === 'granted') {
         show()
       } else if (Notification.permission !== 'denied') {
         Notification.requestPermission().then(p => { if (p === 'granted') show() })
       }
     } catch (e) { /* notifications not supported */ }
+  }
+
+  const clearBrowserNotification = () => {
+    // Stop flashing and restore title
+    if (showBrowserNotification._flashInterval) {
+      clearInterval(showBrowserNotification._flashInterval)
+      showBrowserNotification._flashInterval = null
+    }
+    setTabTitle(null)
+    // Dismiss any system notification
+    try { new Notification('', { tag: 'incoming-call', silent: true }).close() } catch (e) {}
   }
 
   const playRingtone = () => {
@@ -141,8 +182,9 @@ export function useWebRTCCall() {
 const performCompleteCleanup = () => {
   console.log('Performing complete cleanup')
 
-  // Stop ringtone
+  // Stop ringtone and notifications
   stopRingtone()
+  clearBrowserNotification()
 
   // Clear all timers
   stopCallTimer()
@@ -351,6 +393,7 @@ const handleCallUpdate = (call) => {
       case 'hangup':
         console.log('Main call hangup detected')
         stopRingtone()
+        clearBrowserNotification()
         // If still showing incoming, caller hung up before answer — show missed notice
         if (callStatus === 'incoming') {
           const missedFrom = incomingCall?.from || call.params?.caller_id_number || 'Unknown'
@@ -511,6 +554,10 @@ const setupAudioRouting = (call, isParticipant = false) => {
           console.log('Telnyx WebRTC ready')
           setIsRegistered(true)
           setInitError(null)
+          // Request notification permission proactively while user is interacting
+          if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission()
+          }
         })
 
         telnyxClient.on('telnyx.socket.error', (error) => {
@@ -698,6 +745,7 @@ const setupAudioRouting = (call, isParticipant = false) => {
     if (!currentCall) return
     try {
       stopRingtone()
+      clearBrowserNotification()
       setMissedCallNotice(null)
       await currentCall.answer()
       setCallStatus('active')
@@ -712,6 +760,7 @@ const setupAudioRouting = (call, isParticipant = false) => {
     if (!currentCall) return
     try {
       stopRingtone()
+      clearBrowserNotification()
       await currentCall.hangup()
       performCompleteCleanup()
     } catch (error) {
