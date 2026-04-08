@@ -548,13 +548,12 @@ const setupAudioRouting = (call, isParticipant = false) => {
           const numRes = await fetch('/api/phone-numbers', { headers })
           const numData = await numRes.json()
           if (numData.success && numData.phoneNumbers) {
-            const voiceNums = numData.phoneNumbers.filter(p =>
-              p.capabilities?.includes('voice') || p.capabilities?.includes('Voice')
-            )
-            availablePhoneNumbersRef.current = voiceNums
-            setAvailablePhoneNumbers(voiceNums)
-            if (voiceNums.length > 0) setSelectedCallerNumber(voiceNums[0].phoneNumber)
-            console.log('[WebRTC] Loaded', voiceNums.length, 'phone numbers for call filtering')
+            // Accept all numbers — DB-cached numbers may not have capabilities populated
+            const allNums = numData.phoneNumbers
+            availablePhoneNumbersRef.current = allNums
+            setAvailablePhoneNumbers(allNums)
+            if (allNums.length > 0) setSelectedCallerNumber(allNums[0].phoneNumber)
+            console.log('[WebRTC] Loaded', allNums.length, 'phone numbers for call filtering:', allNums.map(p => p.phoneNumber))
           }
         } catch (e) {
           console.error('[WebRTC] Failed to load phone numbers:', e.message)
