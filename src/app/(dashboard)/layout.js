@@ -30,24 +30,41 @@ export default function DashboardLayout({ children }) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-        <div className="text-center">
-          <div className="relative w-16 h-16 mx-auto mb-6">
-            <div className="absolute inset-0 border-4 border-[#C54A3F]/20 rounded-full"></div>
-            <div className="absolute inset-0 border-4 border-[#C54A3F] border-t-transparent rounded-full animate-spin"></div>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        minHeight: '100vh', background: '#F7F6F3',
+        fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ position: 'relative', width: 48, height: 48, margin: '0 auto 20px' }}>
+            <div style={{
+              position: 'absolute', inset: 0,
+              border: '3px solid rgba(214,59,31,0.15)', borderRadius: '50%',
+            }} />
+            <div style={{
+              position: 'absolute', inset: 0,
+              border: '3px solid #D63B1F', borderTop: '3px solid transparent',
+              borderRadius: '50%', animation: 'spin 1s linear infinite',
+            }} />
           </div>
-          <p className="text-gray-600 font-medium">Loading your workspace...</p>
+          <p style={{ fontSize: 13, color: '#5C5A55', fontWeight: 400 }}>
+            Loading your workspace...
+          </p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
+    <div style={{
+      display: 'flex', height: '100vh', overflow: 'hidden',
+      background: '#F7F6F3',
+    }}>
       {/* Mobile Sidebar Backdrop */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-30 lg:hidden transition-opacity duration-300"
+          className="fixed inset-0 z-30 lg:hidden"
+          style={{ background: 'rgba(19,18,16,0.3)', transition: 'opacity 0.3s' }}
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -58,12 +75,10 @@ export default function DashboardLayout({ children }) {
           user={user}
           onClose={() => setSidebarOpen(false)}
           onNotificationNavigate={(conversationId, noteId, fromNumber) => {
-            // Navigate to inbox with the correct phone line, then dispatch event
             const inboxUrl = fromNumber
               ? `/inbox?from=${encodeURIComponent(fromNumber)}`
               : '/inbox'
             router.push(inboxUrl)
-            // Dispatch after a short delay to let inbox load the right phone line conversations
             setTimeout(() => {
               window.dispatchEvent(new CustomEvent('notification-navigate', {
                 detail: { conversationId, noteId }
@@ -74,26 +89,41 @@ export default function DashboardLayout({ children }) {
       </div>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col overflow-hidden relative">
+      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
         {/* Mobile Header */}
-        <div className="lg:hidden flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200 sticky top-0 z-20">
+        <div
+          className="lg:hidden"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '0 16px', height: 56,
+            background: '#FFFFFF', borderBottom: '1px solid #E3E1DB',
+            position: 'sticky', top: 0, zIndex: 20,
+          }}
+        >
           <button
             onClick={() => setSidebarOpen(true)}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            style={{
+              padding: 8, background: 'none', border: 'none',
+              cursor: 'pointer', display: 'flex', color: '#5C5A55',
+              borderRadius: 6, transition: 'background 0.15s',
+            }}
           >
-            <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <path d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-[#C54A3F] to-[#B73E34] rounded-lg flex items-center justify-center">
-              <i className="fas fa-comments text-white text-sm"></i>
-            </div>
-            <span className="text-lg font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <svg width="24" height="24" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="1" y="1" width="78" height="78" rx="17" stroke="#D63B1F" strokeWidth="2.5"/>
+              <path d="M22 58L40 22L58 58" stroke="#D63B1F" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M29 45H51" stroke="#D63B1F" strokeWidth="4.5" strokeLinecap="round"/>
+              <circle cx="57" cy="21" r="5" fill="#D63B1F"/>
+            </svg>
+            <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.02em', color: '#131210' }}>
               AiroPhone
             </span>
           </div>
-          <div className="w-10" /> {/* Spacer for centering */}
+          <div style={{ width: 36 }} /> {/* Spacer for centering */}
         </div>
 
         {children}

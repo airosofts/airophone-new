@@ -107,19 +107,32 @@ export default function NotificationPanel({ onNavigateToConversation }) {
   }
 
   return (
-    <div ref={panelRef} className="relative">
+    <div ref={panelRef} style={{ position: 'relative' }}>
       {/* Bell icon button */}
       <button
         onClick={handleToggle}
-        className="relative p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-md transition-colors"
+        style={{
+          position: 'relative', padding: 4, display: 'flex',
+          color: '#9B9890', cursor: 'pointer',
+          background: 'none', border: 'none', borderRadius: 4,
+          transition: 'color 0.15s',
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.color = '#5C5A55' }}
+        onMouseLeave={(e) => { e.currentTarget.style.color = '#9B9890' }}
         title="Notifications"
       >
-        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
           <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
           <path d="M13.73 21a2 2 0 0 1-3.46 0" />
         </svg>
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-[#C54A3F] text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+          <span style={{
+            position: 'absolute', top: -2, right: -2,
+            width: 16, height: 16, borderRadius: '50%',
+            background: '#D63B1F', color: '#fff',
+            fontSize: 9, fontWeight: 700,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
@@ -127,14 +140,30 @@ export default function NotificationPanel({ onNavigateToConversation }) {
 
       {/* Dropdown panel */}
       {isOpen && (
-        <div className="absolute left-full ml-2 top-0 w-80 bg-white rounded-lg shadow-xl border border-gray-200 z-50 max-h-[480px] flex flex-col">
+        <div style={{
+          position: 'absolute', left: '100%', marginLeft: 8, top: 0,
+          width: 320, background: '#FFFFFF',
+          border: '1px solid #E3E1DB', borderRadius: 12,
+          boxShadow: '0 8px 32px rgba(19,18,16,0.10)',
+          zIndex: 50, maxHeight: 480,
+          display: 'flex', flexDirection: 'column',
+          fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+        }}>
           {/* Header */}
-          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
-            <h3 className="text-sm font-semibold text-gray-900">Notifications</h3>
+          <div style={{
+            padding: '14px 16px', borderBottom: '1px solid #E3E1DB',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            flexShrink: 0,
+          }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#131210', letterSpacing: '-0.02em' }}>Notifications</span>
             {unreadCount > 0 && (
               <button
                 onClick={markAllAsRead}
-                className="text-[11px] text-[#C54A3F] hover:text-[#B73E34] font-medium"
+                style={{
+                  fontSize: 11, color: '#D63B1F', fontWeight: 500,
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.02em',
+                }}
               >
                 Mark all read
               </button>
@@ -142,17 +171,17 @@ export default function NotificationPanel({ onNavigateToConversation }) {
           </div>
 
           {/* Notification list */}
-          <div className="flex-1 overflow-y-auto">
+          <div style={{ flex: 1, overflowY: 'auto' }}>
             {loading && notifications.length === 0 ? (
-              <div className="p-6 text-center text-sm text-gray-400">Loading...</div>
+              <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: '#9B9890' }}>Loading...</div>
             ) : notifications.length === 0 ? (
-              <div className="p-8 text-center">
-                <svg className="w-8 h-8 text-gray-300 mx-auto mb-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <div style={{ padding: 32, textAlign: 'center' }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#D4D1C9" strokeWidth="1.5" style={{ margin: '0 auto 8px' }}>
                   <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
                   <path d="M13.73 21a2 2 0 0 1-3.46 0" />
                 </svg>
-                <p className="text-sm text-gray-400">No notifications yet</p>
-                <p className="text-xs text-gray-300 mt-1">Mentions will appear here</p>
+                <p style={{ fontSize: 13, color: '#9B9890' }}>No notifications yet</p>
+                <p style={{ fontSize: 11, color: '#D4D1C9', marginTop: 4 }}>Mentions will appear here</p>
               </div>
             ) : (
               <div>
@@ -160,43 +189,58 @@ export default function NotificationPanel({ onNavigateToConversation }) {
                   <button
                     key={notification.id}
                     onClick={() => handleNotificationClick(notification)}
-                    className={`w-full text-left px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors ${
-                      !notification.is_read ? 'bg-red-50/40' : ''
-                    }`}
+                    style={{
+                      width: '100%', textAlign: 'left',
+                      padding: '12px 16px',
+                      borderBottom: '1px solid #EFEDE8',
+                      background: !notification.is_read ? 'rgba(214,59,31,0.04)' : 'transparent',
+                      cursor: 'pointer', border: 'none',
+                      fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+                      transition: 'background 0.12s',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = '#F7F6F3' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = !notification.is_read ? 'rgba(214,59,31,0.04)' : 'transparent' }}
                   >
-                    <div className="flex gap-2.5">
+                    <div style={{ display: 'flex', gap: 10 }}>
                       {/* Unread dot */}
-                      <div className="pt-1.5 flex-shrink-0">
-                        <div className={`w-2 h-2 rounded-full ${
-                          !notification.is_read ? 'bg-[#C54A3F]' : 'bg-transparent'
-                        }`} />
+                      <div style={{ paddingTop: 6, flexShrink: 0 }}>
+                        <div style={{
+                          width: 7, height: 7, borderRadius: '50%',
+                          background: !notification.is_read ? '#D63B1F' : 'transparent',
+                        }} />
                       </div>
 
                       {/* Actor avatar */}
-                      <div className="flex-shrink-0">
+                      <div style={{ flexShrink: 0 }}>
                         {notification.actor?.profile_photo_url ? (
-                          <img src={notification.actor.profile_photo_url} alt="" className="w-7 h-7 rounded-full" />
+                          <img src={notification.actor.profile_photo_url} alt="" style={{ width: 26, height: 26, borderRadius: '50%' }} />
                         ) : (
-                          <div className="w-7 h-7 bg-[#C54A3F] rounded-full flex items-center justify-center">
-                            <span className="text-[10px] font-semibold text-white">
-                              {notification.actor?.name?.charAt(0)?.toUpperCase() || '?'}
-                            </span>
+                          <div style={{
+                            width: 26, height: 26, borderRadius: '50%',
+                            background: 'rgba(214,59,31,0.14)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: 9, fontWeight: 600, color: '#D63B1F',
+                          }}>
+                            {notification.actor?.name?.charAt(0)?.toUpperCase() || '?'}
                           </div>
                         )}
                       </div>
 
                       {/* Content */}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[13px] text-gray-800 leading-snug">
-                          <span className="font-semibold">{notification.actor?.name || 'Someone'}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: 12.5, color: '#131210', lineHeight: 1.4 }}>
+                          <span style={{ fontWeight: 600 }}>{notification.actor?.name || 'Someone'}</span>
                           {' mentioned you in a note'}
                         </p>
                         {notification.content && (
-                          <p className="text-[12px] text-gray-400 mt-0.5 truncate">
+                          <p style={{ fontSize: 11.5, color: '#9B9890', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             &ldquo;{notification.content}&rdquo;
                           </p>
                         )}
-                        <p className="text-[11px] text-gray-300 mt-1">
+                        <p style={{
+                          fontSize: 10, color: '#D4D1C9', marginTop: 4,
+                          fontFamily: "'JetBrains Mono', monospace",
+                        }}>
                           {formatTime(notification.created_at)}
                           {notification.conversation?.phone_number && (
                             <span> &middot; {notification.conversation.phone_number}</span>
@@ -211,10 +255,20 @@ export default function NotificationPanel({ onNavigateToConversation }) {
           </div>
 
           {/* See all link */}
-          <div className="px-4 py-2.5 border-t border-gray-100 flex-shrink-0">
+          <div style={{
+            padding: '10px 16px', borderTop: '1px solid #E3E1DB', flexShrink: 0,
+          }}>
             <button
               onClick={() => { setIsOpen(false); router.push('/notifications') }}
-              className="w-full text-center text-[12px] font-medium text-[#C54A3F] hover:text-[#B73E34] transition-colors"
+              style={{
+                width: '100%', textAlign: 'center',
+                fontSize: 12, fontWeight: 500, color: '#D63B1F',
+                background: 'none', border: 'none', cursor: 'pointer',
+                fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+                transition: 'opacity 0.15s',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.7' }}
+              onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
             >
               See all notifications
             </button>
