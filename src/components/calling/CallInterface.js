@@ -35,6 +35,7 @@ export default function CallInterface({
   const isOnHold = callHook?.isOnHold || false
   const conferenceStatus = callHook?.conferenceStatus || ''
   const participantCalls = callHook?.participantCalls || []
+  const missedCallNotice = callHook?.missedCallNotice || null
 
   useEffect(() => {
     if (callStatus === 'incoming' || callStatus === 'ringing' || callStatus === 'connecting') {
@@ -62,7 +63,37 @@ export default function CallInterface({
     if (showAddParticipant || showTransfer) fetchContacts()
   }, [showAddParticipant, showTransfer])
 
-  if (!isCallActive) return null
+  if (!isCallActive) {
+    if (!missedCallNotice) return null
+    return (
+      <div className="fixed bottom-6 right-6 z-50 w-72">
+        <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
+          <div className="bg-red-500 px-4 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                <Phone className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <p className="text-white text-sm font-semibold leading-tight">Missed Call</p>
+                <p className="text-white/80 text-xs leading-tight mt-0.5">
+                  {formatPhoneNumber ? formatPhoneNumber(missedCallNotice.from) : missedCallNotice.from}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => callHook?.dismissMissedCall?.()}
+              className="w-6 h-6 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+            >
+              <X className="w-3 h-3 text-white" />
+            </button>
+          </div>
+          <div className="px-4 py-2.5 text-xs text-gray-500">
+            Caller hung up before you could answer
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const handleMuteClick = async () => {
     try {

@@ -16,6 +16,7 @@ export function useWebRTCCall() {
   const [availablePhoneNumbers, setAvailablePhoneNumbers] = useState([])
   const [selectedCallerNumber, setSelectedCallerNumber] = useState(null)
   const [incomingCall, setIncomingCall] = useState(null)
+  const [missedCallNotice, setMissedCallNotice] = useState(null) // persists after caller hangs up
   const [initError, setInitError] = useState(null)
   const [isOnHold, setIsOnHold] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
@@ -63,6 +64,23 @@ export function useWebRTCCall() {
       clearInterval(callTimer.current)
       callTimer.current = null
     }
+  }
+
+  const showBrowserNotification = (from) => {
+    try {
+      if (!('Notification' in window)) return
+      const show = () => new Notification('Incoming Call', {
+        body: `Call from ${from}`,
+        icon: '/favicon.ico',
+        requireInteraction: true,
+        tag: 'incoming-call'
+      })
+      if (Notification.permission === 'granted') {
+        show()
+      } else if (Notification.permission !== 'denied') {
+        Notification.requestPermission().then(p => { if (p === 'granted') show() })
+      }
+    } catch (e) { /* notifications not supported */ }
   }
 
   const playRingtone = () => {
@@ -295,7 +313,9 @@ const handleCallUpdate = (call) => {
         || ''
 
       console.log('Detected incoming call:', callerNumber, '->', destNumber)
+      setMissedCallNotice(null)
       playRingtone()
+      showBrowserNotification(callerNumber)
       setCurrentCall(call)
       setIncomingCall({ from: callerNumber, to: destNumber, callId: call.id })
       setIsCallActive(true)
@@ -331,6 +351,11 @@ const handleCallUpdate = (call) => {
       case 'hangup':
         console.log('Main call hangup detected')
         stopRingtone()
+        // If still showing incoming, caller hung up before answer — show missed notice
+        if (callStatus === 'incoming') {
+          const missedFrom = incomingCall?.from || call.params?.caller_id_number || 'Unknown'
+          setMissedCallNotice({ from: missedFrom, time: new Date() })
+        }
         // Sync refs now so any rapid next call isn't blocked
         currentCallRef.current = null
         isCallActiveRef.current = false
@@ -536,7 +561,9 @@ const setupAudioRouting = (call, isParticipant = false) => {
           const destNumber = incomingTo
 
           console.log('Incoming call accepted:', callerNumber, '->', destNumber)
+          setMissedCallNotice(null) // clear any previous missed notice
           playRingtone()
+          showBrowserNotification(callerNumber)
           setCurrentCall(call)
           setIncomingCall({ from: callerNumber, to: destNumber, callId: call.id })
           setIsCallActive(true)
@@ -671,6 +698,7 @@ const setupAudioRouting = (call, isParticipant = false) => {
     if (!currentCall) return
     try {
       stopRingtone()
+      setMissedCallNotice(null)
       await currentCall.answer()
       setCallStatus('active')
       setIncomingCall(null)
@@ -1190,6 +1218,8 @@ const transferCallTo = async (phoneNumber, transferType = 'blind') => {
     availablePhoneNumbers,
     selectedCallerNumber,
     incomingCall,
+    missedCallNotice,
+    dismissMissedCall: () => setMissedCallNotice(null),
     initError,
     isOnHold,
     isMuted,
