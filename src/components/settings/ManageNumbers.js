@@ -286,10 +286,10 @@ export default function ManageNumbers() {
       {/* Success Toast */}
       {showSuccess && (
         <div className="fixed top-4 right-4 z-50">
-          <div className="bg-gray-900 text-white px-4 py-3 rounded-lg shadow-xl flex items-center gap-3 text-sm">
+          <div className="bg-[#131210] text-white px-4 py-3 rounded-lg shadow-xl flex items-center gap-3 text-sm">
             <i className="fas fa-check-circle text-green-400"></i>
             <span>Number purchased — ready to use</span>
-            <button onClick={() => setShowSuccess(false)} className="ml-2 text-gray-400 hover:text-white">
+            <button onClick={() => setShowSuccess(false)} className="ml-2 text-[#9B9890] hover:text-white">
               <i className="fas fa-times text-xs"></i>
             </button>
           </div>
@@ -299,23 +299,23 @@ export default function ManageNumbers() {
       {/* Confirmation Dialog */}
       {confirmPurchase && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-sm w-full mx-4">
-            <div className="px-5 py-4 border-b border-gray-100">
-              <h3 className="text-sm font-semibold text-gray-900">Confirm Purchase</h3>
-              <p className="text-sm text-gray-500 mt-0.5 font-mono">{formatPhoneNumber(confirmPurchase.number.phone_number)}</p>
+          <div className="bg-[#FFFFFF] rounded-lg shadow-xl max-w-sm w-full mx-4">
+            <div className="px-5 py-4 border-b border-[#E3E1DB]">
+              <h3 className="text-sm font-semibold text-[#131210]">Confirm Purchase</h3>
+              <p className="text-sm text-[#9B9890] mt-0.5 font-mono">{formatPhoneNumber(confirmPurchase.number.phone_number)}</p>
             </div>
             <div className="px-5 py-4 space-y-2 text-sm">
-              <div className="flex justify-between text-gray-600"><span>Setup fee</span><span>${confirmPurchase.oneTimeCost.toFixed(2)}</span></div>
-              <div className="flex justify-between text-gray-600"><span>First month</span><span>${confirmPurchase.monthlyCost.toFixed(2)}</span></div>
-              <div className="flex justify-between text-gray-600"><span>VAT (13%)</span><span>${confirmPurchase.vat.toFixed(2)}</span></div>
-              <div className="flex justify-between font-semibold text-gray-900 pt-2 border-t border-gray-100">
+              <div className="flex justify-between text-[#5C5A55]"><span>Setup fee</span><span>${confirmPurchase.oneTimeCost.toFixed(2)}</span></div>
+              <div className="flex justify-between text-[#5C5A55]"><span>First month</span><span>${confirmPurchase.monthlyCost.toFixed(2)}</span></div>
+              <div className="flex justify-between text-[#5C5A55]"><span>VAT (13%)</span><span>${confirmPurchase.vat.toFixed(2)}</span></div>
+              <div className="flex justify-between font-semibold text-[#131210] pt-2 border-t border-[#E3E1DB]">
                 <span>Total</span><span>${confirmPurchase.totalCost.toFixed(2)}</span>
               </div>
-              <p className="text-xs text-gray-400 pt-1">${confirmPurchase.monthlyCost.toFixed(2)}/month recurring after purchase</p>
+              <p className="text-xs text-[#9B9890] pt-1">${confirmPurchase.monthlyCost.toFixed(2)}/month recurring after purchase</p>
             </div>
-            <div className="px-5 py-3 border-t border-gray-100 flex justify-end gap-2">
-              <button onClick={() => setConfirmPurchase(null)} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">Cancel</button>
-              <button onClick={confirmPurchaseAction} className="px-3 py-1.5 text-sm font-medium text-white bg-[#C54A3F] hover:bg-[#B73E34] rounded-md">Confirm Purchase</button>
+            <div className="px-5 py-3 border-t border-[#E3E1DB] flex justify-end gap-2">
+              <button onClick={() => setConfirmPurchase(null)} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
+              <button onClick={confirmPurchaseAction} className="px-3 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md">Confirm Purchase</button>
             </div>
           </div>
         </div>
@@ -324,61 +324,61 @@ export default function ManageNumbers() {
       {/* Error Modal */}
       {showError && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-sm w-full mx-4">
-            <div className="px-5 py-4 border-b border-gray-100">
-              <h3 className="text-sm font-semibold text-gray-900">{showError.title}</h3>
+          <div className="bg-[#FFFFFF] rounded-lg shadow-xl max-w-sm w-full mx-4">
+            <div className="px-5 py-4 border-b border-[#E3E1DB]">
+              <h3 className="text-sm font-semibold text-[#131210]">{showError.title}</h3>
             </div>
             <div className="px-5 py-4">
-              <p className="text-sm text-gray-600">{showError.message}</p>
+              <p className="text-sm text-[#5C5A55]">{showError.message}</p>
               {showError.details && (
-                <pre className="mt-3 text-xs text-gray-500 bg-gray-50 p-3 rounded font-mono overflow-auto">
+                <pre className="mt-3 text-xs text-[#9B9890] bg-[#F7F6F3] p-3 rounded font-mono overflow-auto">
                   {JSON.stringify(showError.details, null, 2)}
                 </pre>
               )}
             </div>
-            <div className="px-5 py-3 border-t border-gray-100 flex justify-end gap-2">
+            <div className="px-5 py-3 border-t border-[#E3E1DB] flex justify-end gap-2">
               {showError.action === 'topup' && (
                 <button onClick={() => { setShowError(null); window.location.href = '/billing' }}
-                  className="px-3 py-1.5 text-sm font-medium text-white bg-[#C54A3F] hover:bg-[#B73E34] rounded-md">
+                  className="px-3 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md">
                   Go to Billing
                 </button>
               )}
-              <button onClick={() => setShowError(null)} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">Close</button>
+              <button onClick={() => setShowError(null)} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Close</button>
             </div>
           </div>
         </div>
       )}
 
       {/* My Phone Numbers */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-900">Phone Numbers</h3>
+      <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-[#E3E1DB] flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-[#131210]">Phone Numbers</h3>
           {!loadingMyNumbers && myNumbers.length > 0 && (
-            <span className="text-xs text-gray-400">{myNumbers.length} active</span>
+            <span className="text-xs text-[#9B9890]">{myNumbers.length} active</span>
           )}
         </div>
         {loadingMyNumbers ? (
           <div className="px-5 py-4 space-y-3">
             {[1,2].map(i => (
               <div key={i} className="flex items-center gap-3">
-                <div className="w-2 h-2 bg-gray-200 rounded-full animate-pulse" />
-                <div className="h-4 bg-gray-100 rounded w-40 animate-pulse" />
-                <div className="h-3 bg-gray-100 rounded w-24 animate-pulse ml-auto" />
+                <div className="w-2 h-2 bg-[#EFEDE8] rounded-full animate-pulse" />
+                <div className="h-4 bg-[#EFEDE8] rounded w-40 animate-pulse" />
+                <div className="h-3 bg-[#EFEDE8] rounded w-24 animate-pulse ml-auto" />
               </div>
             ))}
           </div>
         ) : myNumbers.length === 0 ? (
           <div className="px-5 py-8 text-center">
-            <p className="text-sm text-gray-500">No phone numbers yet</p>
-            <p className="text-xs text-gray-400 mt-1">Search and purchase a number below</p>
+            <p className="text-sm text-[#9B9890]">No phone numbers yet</p>
+            <p className="text-xs text-[#9B9890] mt-1">Search and purchase a number below</p>
           </div>
         ) : (
-          <div className="divide-y divide-gray-100">
+          <div className="divide-y divide-[#E3E1DB]">
             {myNumbers.map((number, index) => {
               const isEditing = editingNumberId === number.id
               return (
-                <div key={index} className="px-5 py-3 flex items-center gap-4 hover:bg-gray-50">
-                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${number.status === 'active' ? 'bg-green-500' : 'bg-gray-300'}`} />
+                <div key={index} className="px-5 py-3 flex items-center gap-4 hover:bg-[#F7F6F3]">
+                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${number.status === 'active' ? 'bg-green-500' : 'bg-[#D4D1C9]'}`} />
                   <div className="flex-1 min-w-0">
                     {isEditing ? (
                       <div className="flex gap-2">
@@ -387,7 +387,7 @@ export default function ManageNumbers() {
                           value={editingNumberName}
                           onChange={(e) => setEditingNumberName(e.target.value)}
                           placeholder="Custom name (e.g., California Office)"
-                          className="flex-1 px-2.5 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
+                          className="flex-1 px-2.5 py-1.5 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
                           autoFocus
                         />
                         <input
@@ -396,13 +396,13 @@ export default function ManageNumbers() {
                           onChange={(e) => setEditingNumberPrefix(e.target.value.replace(/\D/g, '').slice(0, 6))}
                           placeholder="Prefix e.g. 217615"
                           maxLength={6}
-                          className="w-36 px-2.5 py-1.5 border border-gray-300 rounded-md text-sm font-mono focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
+                          className="w-36 px-2.5 py-1.5 border border-[#D4D1C9] rounded-md text-sm font-mono focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
                         />
                       </div>
                     ) : (
                       <div>
-                        {number.custom_name && <p className="text-sm font-medium text-gray-900">{number.custom_name}</p>}
-                        <p className={`font-mono text-sm ${number.custom_name ? 'text-gray-500' : 'text-gray-900 font-medium'}`}>
+                        {number.custom_name && <p className="text-sm font-medium text-[#131210]">{number.custom_name}</p>}
+                        <p className={`font-mono text-sm ${number.custom_name ? 'text-[#9B9890]' : 'text-[#131210] font-medium'}`}>
                           {formatPhoneNumber(number.phoneNumber)}
                         </p>
                       </div>
@@ -417,22 +417,22 @@ export default function ManageNumbers() {
                           {number.prefix}
                         </span>
                       ) : (
-                        <span className="text-xs text-gray-300">—</span>
+                        <span className="text-xs text-[#D4D1C9]">—</span>
                       )}
                     </div>
                   )}
 
                   <div className="flex items-center gap-3 flex-shrink-0">
-                    <span className={`px-2 py-0.5 text-xs rounded-full ${number.status === 'active' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                    <span className={`px-2 py-0.5 text-xs rounded-full ${number.status === 'active' ? 'bg-green-50 text-green-700' : 'bg-[#EFEDE8] text-[#9B9890]'}`}>
                       {number.status}
                     </span>
                     {isEditing ? (
                       <div className="flex gap-1.5">
-                        <button onClick={() => saveCustomName(number.id)} className="px-2.5 py-1 text-xs font-medium text-white bg-[#C54A3F] hover:bg-[#B73E34] rounded">Save</button>
-                        <button onClick={cancelEditingNumber} className="px-2.5 py-1 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-50">Cancel</button>
+                        <button onClick={() => saveCustomName(number.id)} className="px-2.5 py-1 text-xs font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded">Save</button>
+                        <button onClick={cancelEditingNumber} className="px-2.5 py-1 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded hover:bg-[#F7F6F3]">Cancel</button>
                       </div>
                     ) : (
-                      <button onClick={() => startEditingNumber(number)} className="text-xs text-gray-400 hover:text-gray-700">
+                      <button onClick={() => startEditingNumber(number)} className="text-xs text-[#9B9890] hover:text-[#5C5A55]">
                         <i className="fas fa-pen mr-1"></i>Edit
                       </button>
                     )}
@@ -445,37 +445,37 @@ export default function ManageNumbers() {
       </div>
 
       {/* Search Filters */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-gray-100">
-          <h3 className="text-sm font-semibold text-gray-900">Search Available Numbers</h3>
+      <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-[#E3E1DB]">
+          <h3 className="text-sm font-semibold text-[#131210]">Search Available Numbers</h3>
         </div>
         <div className="px-5 py-4">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Country</label>
-            <div className="px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-sm text-gray-500">
+            <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Country</label>
+            <div className="px-3 py-2 border border-[#E3E1DB] rounded-md bg-[#F7F6F3] text-sm text-[#9B9890]">
               United States
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Area Code</label>
+            <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Area Code</label>
             <input
               type="text"
               value={filters.national_destination_code}
               onChange={(e) => handleFilterChange('national_destination_code', e.target.value.replace(/\D/g, ''))}
               placeholder="e.g., 212, 415"
               maxLength="3"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
+              className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">State</label>
+            <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">State</label>
             <select
               value={filters.administrative_area}
               onChange={(e) => handleFilterChange('administrative_area', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F] bg-white"
+              className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F] bg-[#FFFFFF]"
             >
               <option value="">All States</option>
               <option value="AL">Alabama</option>
@@ -533,34 +533,34 @@ export default function ManageNumbers() {
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">City</label>
+            <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">City</label>
             <input
               type="text"
               value={filters.locality}
               onChange={(e) => handleFilterChange('locality', e.target.value)}
               placeholder="e.g., Miami, Dallas"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
+              className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
             />
           </div>
         </div>
 
         {/* Exact number search */}
         <div className="flex items-center gap-3 mb-4">
-          <div className="flex-1 h-px bg-gray-100" />
-          <span className="text-xs text-gray-400 whitespace-nowrap">or search exact number</span>
-          <div className="flex-1 h-px bg-gray-100" />
+          <div className="flex-1 h-px bg-[#EFEDE8]" />
+          <span className="text-xs text-[#9B9890] whitespace-nowrap">or search exact number</span>
+          <div className="flex-1 h-px bg-[#EFEDE8]" />
         </div>
         <div className="mb-4">
-          <label className="block text-xs font-medium text-gray-600 mb-1.5">Number prefix or exact number</label>
+          <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Number prefix or exact number</label>
           <input
             type="text"
             value={filters.exact_number}
             onChange={(e) => handleFilterChange('exact_number', e.target.value)}
             placeholder="e.g., 212555 or +12125551234"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
+            className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
           />
           {filters.exact_number && (
-            <p className="text-xs text-gray-400 mt-1">
+            <p className="text-xs text-[#9B9890] mt-1">
               <i className="fas fa-info-circle mr-1"></i>
               Enter first 6+ digits to browse a range, or full number to check availability
             </p>
@@ -570,7 +570,7 @@ export default function ManageNumbers() {
         <button
           onClick={searchNumbers}
           disabled={loading}
-          className="px-4 py-2 bg-[#C54A3F] hover:bg-[#B73E34] text-white text-sm font-medium rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="px-4 py-2 bg-[#D63B1F] hover:bg-[#c23119] text-white text-sm font-medium rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {loading ? <><i className="fas fa-spinner fa-spin mr-1.5"></i>Searching…</> : <><i className="fas fa-search mr-1.5"></i>Search Numbers</>}
         </button>
@@ -579,23 +579,23 @@ export default function ManageNumbers() {
 
       {/* Results */}
       {searchPerformed && (
-        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-900">Available Numbers</h3>
-            {!loading && <span className="text-xs text-gray-400">{availableNumbers.length} found</span>}
+        <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-[#E3E1DB] flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-[#131210]">Available Numbers</h3>
+            {!loading && <span className="text-xs text-[#9B9890]">{availableNumbers.length} found</span>}
           </div>
 
           {loading ? (
-            <div className="px-5 py-8 text-center text-sm text-gray-400">
+            <div className="px-5 py-8 text-center text-sm text-[#9B9890]">
               <i className="fas fa-spinner fa-spin mr-2"></i>Searching…
             </div>
           ) : availableNumbers.length === 0 ? (
             <div className="px-5 py-8 text-center">
-              <p className="text-sm text-gray-500">No numbers found</p>
-              <p className="text-xs text-gray-400 mt-1">Try adjusting your filters</p>
+              <p className="text-sm text-[#9B9890]">No numbers found</p>
+              <p className="text-xs text-[#9B9890] mt-1">Try adjusting your filters</p>
             </div>
           ) : (
-            <div className="divide-y divide-gray-100">
+            <div className="divide-y divide-[#E3E1DB]">
               {availableNumbers.map((number, index) => {
                 const oneTimeCost = 1.00
                 const monthlyCost = 1.00
@@ -605,11 +605,11 @@ export default function ManageNumbers() {
                 const canAfford = wallet && wallet.balance >= totalCost
 
                 return (
-                  <div key={index} className="px-5 py-3 flex items-center gap-4 hover:bg-gray-50">
+                  <div key={index} className="px-5 py-3 flex items-center gap-4 hover:bg-[#F7F6F3]">
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 font-mono">{formatPhoneNumber(number.phone_number)}</p>
+                      <p className="text-sm font-medium text-[#131210] font-mono">{formatPhoneNumber(number.phone_number)}</p>
                       <div className="flex items-center gap-3 mt-0.5">
-                        <span className="text-xs text-gray-500">{number.locality}, {number.administrative_area}</span>
+                        <span className="text-xs text-[#9B9890]">{number.locality}, {number.administrative_area}</span>
                         <div className="flex gap-1">
                           {number.features?.voice && <span className="px-1.5 py-0.5 bg-blue-50 text-blue-600 text-[10px] font-medium rounded">Voice</span>}
                           {number.features?.sms && <span className="px-1.5 py-0.5 bg-green-50 text-green-600 text-[10px] font-medium rounded">SMS</span>}
@@ -619,16 +619,16 @@ export default function ManageNumbers() {
                     </div>
                     <div className="flex items-center gap-4 flex-shrink-0">
                       <div className="text-right">
-                        <p className="text-sm font-semibold text-gray-900">${totalCost.toFixed(2)}</p>
-                        <p className="text-[10px] text-gray-400">setup + 1st month</p>
+                        <p className="text-sm font-semibold text-[#131210]">${totalCost.toFixed(2)}</p>
+                        <p className="text-[10px] text-[#9B9890]">setup + 1st month</p>
                       </div>
                       <button
                         onClick={() => handlePurchase(number)}
                         disabled={isPurchasing || !canAfford}
                         className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                          isPurchasing ? 'bg-gray-100 text-gray-400 cursor-wait'
-                          : canAfford ? 'bg-[#C54A3F] hover:bg-[#B73E34] text-white'
-                          : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          isPurchasing ? 'bg-[#EFEDE8] text-[#9B9890] cursor-wait'
+                          : canAfford ? 'bg-[#D63B1F] hover:bg-[#c23119] text-white'
+                          : 'bg-[#EFEDE8] text-[#9B9890] cursor-not-allowed'
                         }`}
                       >
                         {isPurchasing ? <><i className="fas fa-spinner fa-spin mr-1"></i>Buying…</>

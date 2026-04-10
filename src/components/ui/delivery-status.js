@@ -21,19 +21,19 @@ export default function DeliveryStatus({ message, onStatusUpdate }) {
       case 'queued':
         return (
           <div className="flex items-center">
-            <svg className="h-3 w-3 text-gray-400 animate-spin mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="h-3 w-3 text-[#9B9890] animate-spin mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
-            <span className="text-xs text-gray-500">Sending...</span>
+            <span className="text-xs text-[#9B9890]">Sending...</span>
           </div>
         )
       case 'sent':
         return (
           <div className="flex items-center cursor-pointer" onClick={() => setShowDetails(!showDetails)}>
-            <svg className="h-3 w-3 text-gray-400 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="h-3 w-3 text-[#9B9890] mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
-            <span className="text-xs text-gray-500">Sent</span>
+            <span className="text-xs text-[#9B9890]">Sent</span>
           </div>
         )
       case 'delivered':
@@ -66,10 +66,10 @@ export default function DeliveryStatus({ message, onStatusUpdate }) {
       default:
         return (
           <div className="flex items-center">
-            <svg className="h-3 w-3 text-gray-400 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="h-3 w-3 text-[#9B9890] mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
             </svg>
-            <span className="text-xs text-gray-500">Unknown</span>
+            <span className="text-xs text-[#9B9890]">Unknown</span>
           </div>
         )
     }
@@ -90,7 +90,7 @@ export default function DeliveryStatus({ message, onStatusUpdate }) {
   return (
     <div className="mt-1">
       <div className="flex items-center justify-between">
-        <span className="text-xs text-gray-500">
+        <span className="text-xs text-[#9B9890]">
           {formatTimestamp(message.created_at)}
         </span>
         {getStatusIcon(status)}
@@ -99,10 +99,10 @@ export default function DeliveryStatus({ message, onStatusUpdate }) {
       {/* Delivery Details Modal */}
       {showDetails && deliveryDetails && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowDetails(false)}>
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-[#FFFFFF] rounded-lg p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-medium">Delivery Report</h3>
-              <button onClick={() => setShowDetails(false)} className="text-gray-400 hover:text-gray-600">
+              <button onClick={() => setShowDetails(false)} className="text-[#9B9890] hover:text-[#5C5A55]">
                 <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -112,33 +112,33 @@ export default function DeliveryStatus({ message, onStatusUpdate }) {
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <span className="text-gray-500">Message ID:</span>
+                  <span className="text-[#9B9890]">Message ID:</span>
                   <p className="font-mono text-xs break-all">{message.telnyx_message_id}</p>
                 </div>
                 <div>
-                  <span className="text-gray-500">Status:</span>
+                  <span className="text-[#9B9890]">Status:</span>
                   <p className={`font-medium ${
                     status === 'delivered' ? 'text-green-600' :
                     status === 'failed' ? 'text-red-600' :
-                    status === 'sent' ? 'text-blue-600' : 'text-gray-600'
+                    status === 'sent' ? 'text-blue-600' : 'text-[#5C5A55]'
                   }`}>{status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Unknown'}</p>
                 </div>
                 <div>
-                  <span className="text-gray-500">Sent:</span>
+                  <span className="text-[#9B9890]">Sent:</span>
                   <p>{formatTimestamp(message.created_at)}</p>
                 </div>
                 {message.delivered_at && (
                   <div>
-                    <span className="text-gray-500">Delivered:</span>
+                    <span className="text-[#9B9890]">Delivered:</span>
                     <p>{formatTimestamp(message.delivered_at)}</p>
                   </div>
                 )}
                 <div>
-                  <span className="text-gray-500">From:</span>
+                  <span className="text-[#9B9890]">From:</span>
                   <p>{message.from_number}</p>
                 </div>
                 <div>
-                  <span className="text-gray-500">To:</span>
+                  <span className="text-[#9B9890]">To:</span>
                   <p>{message.to_number}</p>
                 </div>
               </div>
@@ -155,12 +155,12 @@ export default function DeliveryStatus({ message, onStatusUpdate }) {
               )}
 
               {deliveryDetails.carrier_info && (
-                <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                  <p className="text-sm text-gray-700">
+                <div className="mt-4 p-3 bg-[#F7F6F3] rounded-lg">
+                  <p className="text-sm text-[#5C5A55]">
                     <strong>Carrier:</strong> {deliveryDetails.carrier_info.name || 'Unknown'}
                   </p>
                   {deliveryDetails.carrier_info.type && (
-                    <p className="text-xs text-gray-600">Type: {deliveryDetails.carrier_info.type}</p>
+                    <p className="text-xs text-[#5C5A55]">Type: {deliveryDetails.carrier_info.type}</p>
                   )}
                 </div>
               )}

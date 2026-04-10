@@ -81,13 +81,13 @@ export default function ConversationItem({
     switch (message.status) {
       case 'sending':
         return (
-          <svg className="h-3 w-3 text-gray-400 animate-pulse ml-1 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="h-3 w-3 text-[#9B9890] animate-pulse ml-1 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
           </svg>
         )
       case 'sent':
         return (
-          <svg className="h-3 w-3 text-gray-400 ml-1 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="h-3 w-3 text-[#9B9890] ml-1 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
         )
@@ -115,10 +115,10 @@ export default function ConversationItem({
 
   return (
     <div 
-      className={`group hover:bg-gray-50 transition-colors cursor-pointer border-l-4 ${
+      className={`group hover:bg-[#F7F6F3] transition-colors cursor-pointer border-l-4 ${
         isSelected 
           ? 'bg-blue-50 border-blue-500' 
-          : 'border-transparent hover:border-gray-200'
+          : 'border-transparent hover:border-[#E3E1DB]'
       }`}
       onClick={onClick}
     >
@@ -138,7 +138,7 @@ export default function ConversationItem({
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2 min-w-0 flex-1">
                 <h3 className={`text-sm font-medium truncate ${
-                  isUnread() ? 'text-gray-900 font-semibold' : 'text-gray-700'
+                  isUnread() ? 'text-[#131210] font-semibold' : 'text-[#5C5A55]'
                 }`}>
                   {getDisplayName(conversation)}
                 </h3>
@@ -152,7 +152,7 @@ export default function ConversationItem({
                 )}
               </div>
               <div className="flex items-center space-x-1 flex-shrink-0">
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-[#9B9890]">
                   {formatTimestamp(conversation.last_message_at)}
                 </span>
                 {getStatusIcon(lastMessage)}
@@ -163,7 +163,7 @@ export default function ConversationItem({
             <div className="mt-1">
               <div className="flex items-start">
                 <p className={`text-sm truncate flex-1 ${
-                  isUnread() ? 'text-gray-900 font-medium' : 'text-gray-600'
+                  isUnread() ? 'text-[#131210] font-medium' : 'text-[#5C5A55]'
                 }`}>
                   {getMessagePreview()}
                 </p>

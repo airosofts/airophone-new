@@ -5,14 +5,12 @@ import { useState, useRef, useEffect } from 'react'
 import MessageBubble from '../ui/message-bubble'
 import CallBubble from '../ui/call-bubble'
 import CallInterface from '../calling/CallInterface'
-import { PhoneNumberSelector } from '../calling/PhoneNumberSelector'
 import { apiPost } from '@/lib/api-client'
 import { getAvatarColor, getInitials } from '@/lib/avatar-color'
 
 export default function ChatWindow({
   conversation,
   messages,
-  loading,
   phoneNumber,
   formatPhoneNumber,
   addOptimisticMessage,
@@ -22,10 +20,8 @@ export default function ChatWindow({
   user,
   // Call-related props
   callHook,
-  onInitiateCall,
   // Mobile props
   onBackToList,
-  mobileView,
   // Action handlers
   onMarkAsRead,
   onMarkAsUnread,
@@ -38,10 +34,8 @@ export default function ChatWindow({
 }) {
   const [newMessage, setNewMessage] = useState('')
   const [sending, setSending] = useState(false)
-  const [showPhoneSelector, setShowPhoneSelector] = useState(false)
   const [showMoreMenu, setShowMoreMenu] = useState(false)
   const messagesEndRef = useRef(null)
-  const inputRef = useRef(null)
   const textareaRef = useRef(null)
   const moreMenuRef = useRef(null)
 
@@ -221,11 +215,11 @@ export default function ChatWindow({
   const isWebRTCReady = callHook?.isRegistered && !callHook?.isInitializing
 
   return (
-    <div className="flex h-full bg-white">
+    <div className="flex h-full bg-[#FFFFFF]">
       {/* Main Chat Area */}
       <div className="flex flex-col flex-1 relative">
         {/* Header */}
-        <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+        <div className="bg-[#FFFFFF] border-b border-[#E3E1DB] sticky top-0 z-10">
           <div className="px-4 py-3">
             <div className="flex items-center justify-between gap-3">
               {/* Left: Back button (mobile) + Avatar + Info */}
@@ -234,7 +228,7 @@ export default function ChatWindow({
                 {onBackToList && (
                   <button
                     onClick={onBackToList}
-                    className="md:hidden p-2 -ml-2 text-gray-600 hover:text-gray-900"
+                    className="md:hidden p-2 -ml-2 text-[#5C5A55] hover:text-[#131210]"
                     aria-label="Back to conversations"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -255,10 +249,10 @@ export default function ChatWindow({
 
                 {/* Contact Info */}
                 <div className="flex-1 min-w-0">
-                  <h2 className="text-base font-semibold text-gray-900 truncate">
+                  <h2 className="text-base font-semibold text-[#131210] truncate">
                     {displayName}
                   </h2>
-                  <p className="text-sm text-gray-500 truncate">
+                  <p className="text-sm text-[#5C5A55] truncate">
                     {conversation.phone_number}
                   </p>
                 </div>
@@ -272,8 +266,8 @@ export default function ChatWindow({
                   disabled={(callHook?.isCallActive && !isOnCall) || !isWebRTCReady}
                   className={`relative p-2 rounded-lg transition-colors disabled:opacity-40 ${
                     isWebRTCReady
-                      ? 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
-                      : 'text-gray-300 cursor-not-allowed'
+                      ? 'text-[#5C5A55] hover:text-[#131210] hover:bg-[#F7F6F3]'
+                      : 'text-[#D4D1C9] cursor-not-allowed'
                   }`}
                   title={
                     callHook?.isInitializing ? 'Connecting phone system...' :
@@ -305,7 +299,7 @@ export default function ChatWindow({
                       onMarkAsDone?.(conversation.id)
                     }
                   }}
-                  className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="p-2 text-[#5C5A55] hover:text-[#131210] hover:bg-[#F7F6F3] rounded-lg transition-colors"
                   title={conversation.status === 'closed' ? 'Mark as open' : 'Mark as done'}
                 >
                   <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
@@ -316,7 +310,7 @@ export default function ChatWindow({
                 {/* Mark as unread */}
                 <button
                   onClick={() => onMarkAsUnread?.(conversation.id)}
-                  className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="p-2 text-[#5C5A55] hover:text-[#131210] hover:bg-[#F7F6F3] rounded-lg transition-colors"
                   title="Mark as unread"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 20 20" fill="currentColor">
@@ -328,7 +322,7 @@ export default function ChatWindow({
                 <div className="relative" ref={moreMenuRef}>
                   <button
                     onClick={() => setShowMoreMenu(v => !v)}
-                    className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                    className="p-2 text-[#5C5A55] hover:text-[#131210] hover:bg-[#F7F6F3] rounded-lg transition-colors"
                     title="More options"
                   >
                     <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="currentColor">
@@ -339,13 +333,13 @@ export default function ChatWindow({
                   </button>
 
                   {showMoreMenu && (
-                    <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                    <div className="absolute right-0 top-full mt-1 w-56 bg-[#FFFFFF] rounded-lg shadow-lg border border-[#E3E1DB] py-1 z-50">
                       {onAssignScenario && (
                         <button
                           onClick={() => { onAssignScenario(conversation.id, conversation.phone_number); setShowMoreMenu(false) }}
-                          className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3"
+                          className="w-full px-4 py-2.5 text-left text-sm text-[#5C5A55] hover:bg-[#F7F6F3] flex items-center gap-3"
                         >
-                          <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                          <svg className="w-4 h-4 text-[#9B9890]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
                             <rect x="2" y="3" width="20" height="14" rx="2"/>
                             <path d="M8 21h8M12 17v4"/>
                           </svg>
@@ -354,24 +348,24 @@ export default function ChatWindow({
                       )}
                       <button
                         onClick={() => { onPinConversation?.(conversation.id); setShowMoreMenu(false) }}
-                        className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3"
+                        className="w-full px-4 py-2.5 text-left text-sm text-[#5C5A55] hover:bg-[#F7F6F3] flex items-center gap-3"
                       >
-                        <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                        <svg className="w-4 h-4 text-[#9B9890]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
                         </svg>
                         {conversation.pinned ? 'Unpin' : 'Pin'} conversation
                       </button>
                       <button
                         onClick={() => { onBlockContact?.(conversation.id, conversation.phone_number); setShowMoreMenu(false) }}
-                        className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3"
+                        className="w-full px-4 py-2.5 text-left text-sm text-[#5C5A55] hover:bg-[#F7F6F3] flex items-center gap-3"
                       >
-                        <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                        <svg className="w-4 h-4 text-[#9B9890]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
                           <circle cx="12" cy="12" r="10"/>
                           <path d="M4.93 4.93l14.14 14.14"/>
                         </svg>
                         Block contact
                       </button>
-                      <div className="my-1 border-t border-gray-100" />
+                      <div className="my-1 border-t border-[#E3E1DB]" />
                       <button
                         onClick={() => { onDeleteConversation?.(conversation.id); setShowMoreMenu(false) }}
                         className="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-3"
@@ -390,33 +384,11 @@ export default function ChatWindow({
               </div>
             </div>
 
-            {/* Desktop: Phone Number Selector - Always visible */}
-            {callHook?.availablePhoneNumbers?.length > 0 && (
-              <div className={`${showPhoneSelector ? 'block' : 'hidden md:block'} mt-3 pt-3 border-t border-gray-100 transition-all duration-300`}>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Calling from
-                  </label>
-                  {findMatchingCallerNumber() !== callHook.selectedCallerNumber && (
-                    <span className="text-xs font-medium text-[#C54A3F] bg-[#C54A3F]/10 px-2 py-0.5 rounded-md">
-                      Auto-selected
-                    </span>
-                  )}
-                </div>
-                <PhoneNumberSelector
-                  availableNumbers={callHook.availablePhoneNumbers}
-                  selectedNumber={callHook.selectedCallerNumber}
-                  onNumberSelect={callHook.setSelectedCallerNumber}
-                  isCallActive={callHook.isCallActive}
-                  formatPhoneNumber={formatPhoneNumber}
-                />
-              </div>
-            )}
           </div>
         </div>
 
         {/* Messages Area - Instant like OpenPhone, NO loading or empty state */}
-        <div className="flex-1 overflow-y-auto bg-white">
+        <div className="flex-1 overflow-y-auto bg-[#FFFFFF]">
           <div className="p-4 space-y-2">
             {messages.map((item) => (
               item._type === 'call'
@@ -428,7 +400,7 @@ export default function ChatWindow({
         </div>
 
         {/* Input Area */}
-        <div className="bg-white border-t border-gray-200 sticky bottom-0 z-10">
+        <div className="bg-[#FFFFFF] border-t border-[#E3E1DB] sticky bottom-0 z-10">
           <div className="p-4">
             <form onSubmit={sendMessage} className="flex items-center gap-2">
               <textarea
@@ -441,7 +413,7 @@ export default function ChatWindow({
                 onInput={handleTextareaInput}
                 placeholder="Type a message..."
                 disabled={sending || !phoneNumber}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg resize-none focus:outline-none focus:border-gray-400 text-sm"
+                className="flex-1 px-3 py-2 border border-[#D4D1C9] rounded-lg resize-none focus:outline-none focus:border-[#D4D1C9] text-sm"
                 style={{
                   height: 'auto',
                   minHeight: '36px',
@@ -452,11 +424,11 @@ export default function ChatWindow({
               <button
                 type="submit"
                 disabled={!newMessage.trim() || sending || !phoneNumber}
-                className="p-2 text-gray-600 hover:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="p-2 text-[#5C5A55] hover:text-[#131210] disabled:opacity-50 disabled:cursor-not-allowed"
                 aria-label="Send message"
               >
                 {sending ? (
-                  <div className="w-5 h-5 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                  <div className="w-5 h-5 border-2 border-[#D4D1C9] border-t-[#5C5A55] rounded-full animate-spin"></div>
                 ) : (
                   <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
                     <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />

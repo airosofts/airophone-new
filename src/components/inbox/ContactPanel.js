@@ -17,7 +17,7 @@ const FIELD_TYPES = [
   { type: 'tags',     label: 'Tags' },
 ]
 
-function Icon({ type, className = 'w-4 h-4 text-gray-400' }) {
+function Icon({ type, className = 'w-4 h-4 text-[#9B9890]' }) {
   const p = { className, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: '1.8' }
   switch (type) {
     case 'company': return <svg {...p}><rect x="3" y="7" width="18" height="14" rx="1.5"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
@@ -180,10 +180,10 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user, on
   const customFields = getCustomFields()
 
   return (
-    <div className="w-full bg-white flex flex-col h-full overflow-y-auto">
+    <div className="w-full bg-[#FFFFFF] flex flex-col h-full overflow-y-auto">
 
       {/* ── Header ── */}
-      <div className="flex flex-col items-center px-6 pt-7 pb-5 border-b border-gray-100">
+      <div className="flex flex-col items-center px-6 pt-7 pb-5 border-b border-[#E3E1DB]">
         <div
           className="w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-xl mb-3 select-none"
           style={{ backgroundColor: getAvatarColor(conversation.phone_number) }}
@@ -201,7 +201,7 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user, on
                 placeholder="First name"
                 autoFocus
                 onKeyDown={(e) => { if (e.key === 'Enter') saveNameEdit(); if (e.key === 'Escape') setEditingName(false) }}
-                className="flex-1 text-sm px-2.5 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:border-blue-400 min-w-0"
+                className="flex-1 text-sm px-2.5 py-1.5 border border-[#D4D1C9] rounded-md focus:outline-none focus:border-[#D63B1F] min-w-0"
               />
               <input
                 type="text"
@@ -209,34 +209,34 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user, on
                 onChange={(e) => setNameEdit(n => ({ ...n, last_name: e.target.value }))}
                 placeholder="Last name"
                 onKeyDown={(e) => { if (e.key === 'Enter') saveNameEdit(); if (e.key === 'Escape') setEditingName(false) }}
-                className="flex-1 text-sm px-2.5 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:border-blue-400 min-w-0"
+                className="flex-1 text-sm px-2.5 py-1.5 border border-[#D4D1C9] rounded-md focus:outline-none focus:border-[#D63B1F] min-w-0"
               />
             </div>
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setEditingName(false)} className="text-xs px-3 py-1.5 text-gray-500 hover:text-gray-700 rounded-md hover:bg-gray-50">Cancel</button>
-              <button onClick={saveNameEdit} disabled={loading} className="text-xs px-3 py-1.5 bg-[#C54A3F] text-white rounded-md hover:bg-[#B73E34]">Save</button>
+              <button onClick={() => setEditingName(false)} className="text-xs px-3 py-1.5 text-[#9B9890] hover:text-[#5C5A55] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
+              <button onClick={saveNameEdit} disabled={loading} className="text-xs px-3 py-1.5 bg-[#D63B1F] text-white rounded-md hover:bg-[#c23119]">Save</button>
             </div>
           </div>
         ) : (
          
           <button
             onClick={() => { setEditingName(true); setNameEdit({ first_name: contact?.first_name || '', last_name: contact?.last_name || '' }) }}
-            className={`text-lg leading-tight text-center hover:opacity-70 transition-opacity ${personalName ? 'text-gray-900 font-semibold' : 'text-gray-400 font-normal'}`}
+            className={`text-lg leading-tight text-center hover:opacity-70 transition-opacity ${personalName ? 'text-[#131210] font-semibold' : 'text-[#9B9890] font-normal'}`}
           >
             {personalName || 'Add a name…'}
           </button>
         )}
 
         {!editingName && (
-          <p className="text-sm text-gray-400 mt-0.5">{formatPhoneNumber(conversation.phone_number)}</p>
+          <p className="text-sm text-[#9B9890] mt-0.5">{formatPhoneNumber(conversation.phone_number)}</p>
         )}
       </div>
 
       {/* ── AI Scenario ── */}
-      <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+      <div className="px-5 py-3 border-b border-[#E3E1DB] flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
-          <Icon type="ai" className="w-4 h-4 text-gray-400 flex-shrink-0" />
-          <span className="text-sm text-gray-500 truncate">
+          <Icon type="ai" className="w-4 h-4 text-[#9B9890] flex-shrink-0" />
+          <span className="text-sm text-[#9B9890] truncate">
             {assignedScenario ? assignedScenario.name : 'Default matching'}
           </span>
         </div>
@@ -283,8 +283,8 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user, on
         {/* Phone — read only */}
         <div className="flex items-center gap-3 py-2.5">
           <span className="flex-shrink-0"><Icon type="phone" /></span>
-          <span className="text-sm text-gray-400 w-16 flex-shrink-0">Phone</span>
-          <span className="text-sm text-gray-800">{formatPhoneNumber(conversation.phone_number)}</span>
+          <span className="text-sm text-[#9B9890] w-16 flex-shrink-0">Phone</span>
+          <span className="text-sm text-[#131210]">{formatPhoneNumber(conversation.phone_number)}</span>
         </div>
         <ContactField
           icon={<Icon type="email" />}
@@ -322,8 +322,8 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user, on
 
         {/* Add a property */}
         {showAddProp ? (
-          <div className="mt-3 rounded-xl border border-gray-200 overflow-hidden bg-white shadow-sm">
-            <div className="px-4 py-3 border-b border-gray-100">
+          <div className="mt-3 rounded-xl border border-[#E3E1DB] overflow-hidden bg-[#FFFFFF] shadow-sm">
+            <div className="px-4 py-3 border-b border-[#E3E1DB]">
               <input
                 type="text"
                 value={newPropLabel}
@@ -334,7 +334,7 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user, on
                   if (e.key === 'Enter') addCustomField()
                   if (e.key === 'Escape') { setShowAddProp(false); setNewPropLabel('') }
                 }}
-                className="w-full text-sm focus:outline-none bg-transparent placeholder-gray-400"
+                className="w-full text-sm focus:outline-none bg-transparent placeholder-[#9B9890]"
               />
             </div>
             <div className="px-3 py-2 grid grid-cols-2 gap-0.5">
@@ -344,24 +344,24 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user, on
                   onClick={() => setNewPropType(ft.type)}
                   className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm transition-colors text-left ${
                     newPropType === ft.type
-                      ? 'bg-[#C54A3F]/10 text-[#C54A3F] font-medium'
-                      : 'text-gray-600 hover:bg-gray-50'
+                      ? 'bg-[#D63B1F]/10 text-[#D63B1F] font-medium'
+                      : 'text-[#5C5A55] hover:bg-[#F7F6F3]'
                   }`}
                 >
-                  <Icon type={ft.type} className={`w-4 h-4 flex-shrink-0 ${newPropType === ft.type ? 'text-[#C54A3F]' : 'text-gray-400'}`} />
+                  <Icon type={ft.type} className={`w-4 h-4 flex-shrink-0 ${newPropType === ft.type ? 'text-[#D63B1F]' : 'text-[#9B9890]'}`} />
                   {ft.label}
                 </button>
               ))}
             </div>
-            <div className="px-4 py-2.5 border-t border-gray-100 flex gap-2 justify-end">
-              <button onClick={() => { setShowAddProp(false); setNewPropLabel('') }} className="text-sm px-3 py-1.5 text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-50">Cancel</button>
-              <button onClick={addCustomField} disabled={!newPropLabel.trim()} className="text-sm px-3 py-1.5 bg-[#C54A3F] text-white rounded-lg hover:bg-[#B73E34] disabled:opacity-40">Add</button>
+            <div className="px-4 py-2.5 border-t border-[#E3E1DB] flex gap-2 justify-end">
+              <button onClick={() => { setShowAddProp(false); setNewPropLabel('') }} className="text-sm px-3 py-1.5 text-[#9B9890] hover:text-[#5C5A55] rounded-lg hover:bg-[#F7F6F3]">Cancel</button>
+              <button onClick={addCustomField} disabled={!newPropLabel.trim()} className="text-sm px-3 py-1.5 bg-[#D63B1F] text-white rounded-lg hover:bg-[#c23119] disabled:opacity-40">Add</button>
             </div>
           </div>
         ) : (
           <button
             onClick={() => setShowAddProp(true)}
-            className="flex items-center gap-2 mt-2 text-sm text-gray-400 hover:text-gray-600 transition-colors py-1"
+            className="flex items-center gap-2 mt-2 text-sm text-[#9B9890] hover:text-[#5C5A55] transition-colors py-1"
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M12 5v14M5 12h14"/>
@@ -372,16 +372,16 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user, on
       </div>
 
       {/* ── Notes ── */}
-      <div className="px-5 py-4 border-t border-gray-100">
+      <div className="px-5 py-4 border-t border-[#E3E1DB]">
         <div className="flex items-center justify-between mb-3">
-          <span className="text-sm font-semibold text-gray-700">Notes</span>
+          <span className="text-sm font-semibold text-[#5C5A55]">Notes</span>
           {notes.length > 0 && (
-            <span className="text-[11px] text-gray-400 bg-gray-100 rounded-full px-2 py-0.5 font-medium">{notes.length}</span>
+            <span className="text-[11px] text-[#9B9890] bg-[#EFEDE8] rounded-full px-2 py-0.5 font-medium">{notes.length}</span>
           )}
         </div>
 
         {/* Note input with @mention support */}
-        <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50 focus-within:border-gray-300 focus-within:bg-white transition-all">
+        <div className="border border-[#E3E1DB] rounded-lg overflow-hidden bg-[#F7F6F3] focus-within:border-[#D4D1C9] focus-within:bg-[#FFFFFF] transition-all">
           <MentionTextarea
             value={newNote}
             onChange={(text, userIds) => { setNewNote(text); if (userIds) setMentionedUsers(userIds) }}
@@ -389,11 +389,11 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user, on
             placeholder="Write a note... use @ to mention"
           />
           <div className="flex items-center justify-between px-2.5 pb-2">
-            <span className="text-[10px] text-gray-300">@ to mention</span>
+            <span className="text-[10px] text-[#D4D1C9]">@ to mention</span>
             {newNote.trim() && (
               <button
                 onClick={addNote}
-                className="text-[11px] font-medium px-3 py-1 bg-[#C54A3F] text-white rounded-md hover:bg-[#B73E34] transition-colors"
+                className="text-[11px] font-medium px-3 py-1 bg-[#D63B1F] text-white rounded-md hover:bg-[#c23119] transition-colors"
               >
                 Save
               </button>
@@ -408,15 +408,15 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user, on
               <div
                 key={note.id}
                 id={`note-${note.id}`}
-                className={`group px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors ${
-                  highlightNoteId === note.id ? 'ring-2 ring-[#C54A3F]/30 bg-red-50/30' : ''
+                className={`group px-3 py-2.5 rounded-lg hover:bg-[#F7F6F3] transition-colors ${
+                  highlightNoteId === note.id ? 'ring-2 ring-[#D63B1F]/30 bg-red-50/30' : ''
                 }`}
               >
-                <p className="text-[13px] text-gray-700 whitespace-pre-wrap leading-snug">{renderNoteWithMentions(note.content)}</p>
+                <p className="text-[13px] text-[#5C5A55] whitespace-pre-wrap leading-snug">{renderNoteWithMentions(note.content)}</p>
                 <div className="flex items-center gap-1.5 mt-1.5">
-                  <span className="text-[11px] text-gray-400 font-medium">{note.created_by_name || 'Team'}</span>
-                  <span className="text-[11px] text-gray-300">·</span>
-                  <span className="text-[11px] text-gray-400">{formatDate(note.created_at)}</span>
+                  <span className="text-[11px] text-[#9B9890] font-medium">{note.created_by_name || 'Team'}</span>
+                  <span className="text-[11px] text-[#D4D1C9]">·</span>
+                  <span className="text-[11px] text-[#9B9890]">{formatDate(note.created_at)}</span>
                 </div>
               </div>
             ))}
@@ -424,7 +424,7 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user, on
         )}
 
         {notes.length === 0 && !newNote && (
-          <p className="text-[12px] text-gray-400 text-center py-3">No notes yet</p>
+          <p className="text-[12px] text-[#9B9890] text-center py-3">No notes yet</p>
         )}
       </div>
 
@@ -437,7 +437,7 @@ function ContactField({ icon, label, value, placeholder, editing, editValue, onE
   return (
     <div className="flex items-center gap-3 py-2.5 group">
       <span className="flex-shrink-0">{icon}</span>
-      <span className="text-sm text-gray-400 w-16 flex-shrink-0">{label}</span>
+      <span className="text-sm text-[#9B9890] w-16 flex-shrink-0">{label}</span>
       <div className="flex-1 min-w-0">
         {editing ? (
           <input
@@ -447,13 +447,13 @@ function ContactField({ icon, label, value, placeholder, editing, editValue, onE
             onKeyDown={(e) => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel() }}
             onBlur={onSave}
             autoFocus
-            className="w-full text-sm text-gray-900 bg-transparent border-0 border-b border-blue-400 focus:outline-none py-0.5"
+            className="w-full text-sm text-[#131210] bg-transparent border-0 border-b border-blue-400 focus:outline-none py-0.5"
           />
         ) : (
           <button
             onClick={onStartEdit}
             className={`text-sm text-left w-full truncate transition-colors ${
-              value ? 'text-gray-800 hover:text-[#C54A3F]' : 'text-gray-400 hover:text-gray-500'
+              value ? 'text-[#131210] hover:text-[#D63B1F]' : 'text-[#9B9890] hover:text-[#9B9890]'
             }`}
           >
             {value || placeholder}
@@ -473,11 +473,11 @@ function CustomField({ field, editing, editValue, onEditValueChange, onStartEdit
   return (
     <div className="flex items-center gap-3 py-2.5 group">
       <span className="flex-shrink-0"><Icon type={field.type} /></span>
-      <span className="text-sm text-gray-400 w-16 flex-shrink-0 truncate" title={field.label}>{field.label}</span>
+      <span className="text-sm text-[#9B9890] w-16 flex-shrink-0 truncate" title={field.label}>{field.label}</span>
       <div className="flex-1 min-w-0">
         {field.type === 'checkbox' ? (
           <button onClick={onToggle} className="flex items-center">
-            <div className={`w-4 h-4 rounded border-2 transition-colors flex items-center justify-center ${field.value ? 'bg-[#C54A3F] border-[#C54A3F]' : 'border-gray-300 hover:border-gray-400'}`}>
+            <div className={`w-4 h-4 rounded border-2 transition-colors flex items-center justify-center ${field.value ? 'bg-[#D63B1F] border-[#D63B1F]' : 'border-[#D4D1C9] hover:border-[#9B9890]'}`}>
               {field.value && <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="m5 12 5 5 9-9"/></svg>}
             </div>
           </button>
@@ -490,18 +490,18 @@ function CustomField({ field, editing, editValue, onEditValueChange, onStartEdit
             onBlur={onSave}
             autoFocus
             placeholder={`Add ${field.label.toLowerCase()}`}
-            className="w-full text-sm text-gray-900 bg-transparent border-0 border-b border-blue-400 focus:outline-none py-0.5"
+            className="w-full text-sm text-[#131210] bg-transparent border-0 border-b border-blue-400 focus:outline-none py-0.5"
           />
         ) : (
           <button
             onClick={onStartEdit}
-            className={`text-sm text-left w-full truncate transition-colors ${displayVal ? 'text-gray-800 hover:text-[#C54A3F]' : 'text-gray-400 hover:text-gray-500'}`}
+            className={`text-sm text-left w-full truncate transition-colors ${displayVal ? 'text-[#131210] hover:text-[#D63B1F]' : 'text-[#9B9890] hover:text-[#9B9890]'}`}
           >
             {displayVal || `Set ${field.label.toLowerCase()}…`}
           </button>
         )}
       </div>
-      <button onClick={onDelete} className="opacity-0 group-hover:opacity-100 flex-shrink-0 text-gray-300 hover:text-red-400 transition-all p-0.5">
+      <button onClick={onDelete} className="opacity-0 group-hover:opacity-100 flex-shrink-0 text-[#D4D1C9] hover:text-red-400 transition-all p-0.5">
         <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M18 6 6 18M6 6l12 12"/>
         </svg>

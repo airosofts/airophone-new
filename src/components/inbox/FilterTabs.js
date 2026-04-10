@@ -43,75 +43,96 @@ export default function FilterTabs({ currentFilter, onFilterChange, conversation
 
   const isStatusActive = currentFilter === 'open' || currentFilter === 'done'
 
+  const tabBase = {
+    fontSize: 12, padding: '4px 10px', borderRadius: 6,
+    cursor: 'pointer', border: 'none',
+    fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+    transition: 'all 0.15s', fontWeight: 400,
+  }
+  const tabActive = { background: 'rgba(214,59,31,0.07)', color: '#D63B1F', fontWeight: 500 }
+  const tabInactive = { background: 'transparent', color: '#9B9890' }
+
   return (
-    <div className="flex items-center gap-0.5">
-      {/* Open / Done dropdown — always shown as a pill (it's the primary filter) */}
-      <div className="relative" ref={dropdownRef}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+      {/* Open / Done dropdown */}
+      <div style={{ position: 'relative' }} ref={dropdownRef}>
         <button
           onClick={() => setShowStatusDropdown(!showStatusDropdown)}
-          className={`flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium transition-colors ${
-            isStatusActive
-              ? 'bg-gray-100 text-gray-800'
-              : 'text-gray-400 hover:text-gray-600'
-          }`}
+          style={{
+            ...tabBase,
+            ...(isStatusActive ? tabActive : tabInactive),
+            display: 'flex', alignItems: 'center', gap: 4,
+          }}
+          onMouseEnter={(e) => { if (!isStatusActive) { e.currentTarget.style.background = '#EFEDE8'; e.currentTarget.style.color = '#5C5A55' } }}
+          onMouseLeave={(e) => { if (!isStatusActive) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#9B9890' } }}
         >
           <span>{getStatusLabel()}</span>
-          <svg className="w-3 h-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+          <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ opacity: 0.5 }}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
           </svg>
         </button>
 
         {showStatusDropdown && (
-          <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50 min-w-[120px]">
-            <button
-              onClick={() => handleStatusSelect('open')}
-              className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-50 ${
-                currentFilter === 'open' ? 'text-gray-900 font-medium' : 'text-gray-700'
-              }`}
-            >
-              Open
-            </button>
-            <button
-              onClick={() => handleStatusSelect('done')}
-              className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-50 ${
-                currentFilter === 'done' ? 'text-gray-900 font-medium' : 'text-gray-700'
-              }`}
-            >
-              Done
-            </button>
+          <div style={{
+            position: 'absolute', top: '100%', left: 0, marginTop: 4,
+            background: '#FFFFFF', border: '1px solid #E3E1DB', borderRadius: 8,
+            boxShadow: '0 8px 32px rgba(19,18,16,0.10)', padding: '4px 0',
+            zIndex: 50, minWidth: 120,
+          }}>
+            {['open', 'done'].map(s => (
+              <button
+                key={s}
+                onClick={() => handleStatusSelect(s)}
+                style={{
+                  width: '100%', padding: '8px 14px', textAlign: 'left',
+                  fontSize: 12.5, border: 'none', cursor: 'pointer',
+                  background: 'transparent',
+                  color: currentFilter === s ? '#131210' : '#5C5A55',
+                  fontWeight: currentFilter === s ? 500 : 400,
+                  fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+                  transition: 'background 0.12s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = '#F7F6F3' }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+              >
+                {s.charAt(0).toUpperCase() + s.slice(1)}
+              </button>
+            ))}
           </div>
         )}
       </div>
 
-      {/* Unread — pill when active, plain text when inactive */}
+      {/* Unread */}
       <button
         onClick={() => onFilterChange('unread')}
-        className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
-          currentFilter === 'unread'
-            ? 'bg-gray-100 text-gray-800'
-            : 'text-gray-400 hover:text-gray-600'
-        }`}
+        style={{
+          ...tabBase,
+          ...(currentFilter === 'unread' ? tabActive : tabInactive),
+        }}
+        onMouseEnter={(e) => { if (currentFilter !== 'unread') { e.currentTarget.style.background = '#EFEDE8'; e.currentTarget.style.color = '#5C5A55' } }}
+        onMouseLeave={(e) => { if (currentFilter !== 'unread') { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#9B9890' } }}
       >
         Unread
         {counts.unread > 0 && (
-          <span className={`ml-1 text-xs ${currentFilter === 'unread' ? 'text-gray-500' : 'text-gray-400'}`}>
+          <span style={{ marginLeft: 4, fontSize: 11, color: currentFilter === 'unread' ? '#D63B1F' : '#9B9890' }}>
             {counts.unread}
           </span>
         )}
       </button>
 
-      {/* Unresponded — pill when active, plain text when inactive */}
+      {/* Unresponded */}
       <button
         onClick={() => onFilterChange('unresponded')}
-        className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
-          currentFilter === 'unresponded'
-            ? 'bg-gray-100 text-gray-800'
-            : 'text-gray-400 hover:text-gray-600'
-        }`}
+        style={{
+          ...tabBase,
+          ...(currentFilter === 'unresponded' ? tabActive : tabInactive),
+        }}
+        onMouseEnter={(e) => { if (currentFilter !== 'unresponded') { e.currentTarget.style.background = '#EFEDE8'; e.currentTarget.style.color = '#5C5A55' } }}
+        onMouseLeave={(e) => { if (currentFilter !== 'unresponded') { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#9B9890' } }}
       >
         Unresponded
         {counts.unresponded > 0 && (
-          <span className={`ml-1 text-xs ${currentFilter === 'unresponded' ? 'text-gray-500' : 'text-gray-400'}`}>
+          <span style={{ marginLeft: 4, fontSize: 11, color: currentFilter === 'unresponded' ? '#D63B1F' : '#9B9890' }}>
             {counts.unresponded}
           </span>
         )}

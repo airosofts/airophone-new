@@ -128,16 +128,16 @@ export default function PhoneNumberSelectorDiagnostic({ selectedNumber, onNumber
       case 'purchased': return 'bg-green-100 text-green-800'
       case 'active': return 'bg-green-100 text-green-800'
       case 'pending': return 'bg-yellow-100 text-yellow-800'
-      default: return 'bg-gray-100 text-gray-800'
+      default: return 'bg-[#EFEDE8] text-[#131210]'
     }
   }
 
   if (loading) {
     return (
       <div className="relative">
-        <div className="flex items-center p-3 bg-gray-100 rounded-lg">
+        <div className="flex items-center p-3 bg-[#EFEDE8] rounded-lg">
           <div className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full mr-2"></div>
-          <span className="text-sm text-gray-600">Loading phone numbers...</span>
+          <span className="text-sm text-[#5C5A55]">Loading phone numbers...</span>
         </div>
         {debugInfo && (
           <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs">
@@ -206,17 +206,17 @@ export default function PhoneNumberSelectorDiagnostic({ selectedNumber, onNumber
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between p-3 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        className="w-full flex items-center justify-between p-3 bg-[#FFFFFF] border border-[#D4D1C9] rounded-lg shadow-sm hover:bg-[#F7F6F3] focus:outline-none focus:ring-2 focus:ring-[#D63B1F] focus:border-transparent"
       >
         <div className="flex items-center">
           <div className="flex items-center">
             <div className="h-2 w-2 bg-green-400 rounded-full mr-3"></div>
             <div>
-              <p className="text-sm font-medium text-gray-900">
+              <p className="text-sm font-medium text-[#131210]">
                 {selectedPhoneData ? formatPhoneNumber(selectedPhoneData.phoneNumber) : 'Select a number'}
               </p>
               {selectedPhoneData && (
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-[#9B9890]">
                   {selectedPhoneData.status} • {selectedPhoneData.capabilities?.includes('sms') ? 'SMS' : ''} 
                   {selectedPhoneData.capabilities?.includes('voice') ? ' • Voice' : ''}
                 </p>
@@ -224,13 +224,13 @@ export default function PhoneNumberSelectorDiagnostic({ selectedNumber, onNumber
             </div>
           </div>
         </div>
-        <svg className={`h-5 w-5 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg className={`h-5 w-5 text-[#9B9890] transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
+        <div className="absolute top-full left-0 right-0 mt-1 bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
           {phoneNumbers.map((phone) => (
             <button
               key={phone.id}
@@ -239,7 +239,7 @@ export default function PhoneNumberSelectorDiagnostic({ selectedNumber, onNumber
                 onNumberChange(phone.phoneNumber)
                 setIsOpen(false)
               }}
-              className={`w-full text-left p-3 hover:bg-gray-50 transition-colors first:rounded-t-lg last:rounded-b-lg ${
+              className={`w-full text-left p-3 hover:bg-[#F7F6F3] transition-colors first:rounded-t-lg last:rounded-b-lg ${
                 selectedNumber === phone.phoneNumber ? 'bg-blue-50 border-l-4 border-blue-500' : ''
               }`}
             >
@@ -249,7 +249,7 @@ export default function PhoneNumberSelectorDiagnostic({ selectedNumber, onNumber
                     phone.status === 'purchased' || phone.status === 'active' ? 'bg-green-400' : 'bg-yellow-400'
                   }`}></div>
                   <div>
-                    <p className="text-sm font-medium text-gray-900">
+                    <p className="text-sm font-medium text-[#131210]">
                       {formatPhoneNumber(phone.phoneNumber)}
                     </p>
                     <div className="flex items-center space-x-2 mt-1">

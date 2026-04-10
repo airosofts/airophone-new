@@ -45,7 +45,7 @@ export default function CallBubble({ call }) {
   const getColors = () => {
     if (isForwarded) return { bg: 'bg-blue-50', border: 'border-blue-100', icon: 'text-blue-500', text: 'text-blue-700' }
     if (isMissed) return { bg: 'bg-red-50', border: 'border-red-100', icon: 'text-red-500', text: 'text-red-700' }
-    if (isOutbound) return { bg: 'bg-gray-50', border: 'border-gray-200', icon: 'text-[#C54A3F]', text: 'text-gray-700' }
+    if (isOutbound) return { bg: 'bg-[#F7F6F3]', border: 'border-[#E3E1DB]', icon: 'text-[#D63B1F]', text: 'text-[#5C5A55]' }
     return { bg: 'bg-emerald-50', border: 'border-emerald-100', icon: 'text-emerald-500', text: 'text-emerald-700' }
   }
 
@@ -64,17 +64,17 @@ export default function CallBubble({ call }) {
         <span className={`text-xs font-medium ${colors.text}`}>{getCallLabel()}</span>
         {duration && (
           <>
-            <span className="text-gray-300">·</span>
-            <span className="text-xs text-gray-500">{duration}</span>
+            <span className="text-[#D4D1C9]">·</span>
+            <span className="text-xs text-[#9B9890]">{duration}</span>
           </>
         )}
         {isForwarded && call.forwarded_to && (
           <>
-            <span className="text-gray-300">·</span>
+            <span className="text-[#D4D1C9]">·</span>
             <span className="text-xs text-blue-600">{call.forwarded_to}</span>
           </>
         )}
-        <span className="text-[10px] text-gray-400">{formatTimestamp(call.created_at)}</span>
+        <span className="text-[10px] text-[#9B9890]">{formatTimestamp(call.created_at)}</span>
       </div>
     </div>
   )

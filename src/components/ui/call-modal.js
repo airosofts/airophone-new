@@ -56,11 +56,11 @@ export default function CallModal({ call, onAccept, onReject, onEnd }) {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
+      <div className="bg-[#FFFFFF] rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
         {/* Call Header */}
         <div className="bg-gradient-to-br from-blue-500 to-blue-600 px-6 py-8 text-center text-white">
           <div className="mb-4">
-            <div className="w-20 h-20 bg-white bg-opacity-20 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="w-20 h-20 bg-[#FFFFFF] bg-opacity-20 rounded-full flex items-center justify-center mx-auto mb-4">
               <svg className="w-10 h-10" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
               </svg>
@@ -82,9 +82,9 @@ export default function CallModal({ call, onAccept, onReject, onEnd }) {
           <div className="flex justify-center">
             {call.status === 'ringing' && (
               <div className="flex space-x-1">
-                <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-                <div className="w-2 h-2 bg-white rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
-                <div className="w-2 h-2 bg-white rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
+                <div className="w-2 h-2 bg-[#FFFFFF] rounded-full animate-pulse"></div>
+                <div className="w-2 h-2 bg-[#FFFFFF] rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+                <div className="w-2 h-2 bg-[#FFFFFF] rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
               </div>
             )}
           </div>
@@ -120,7 +120,7 @@ export default function CallModal({ call, onAccept, onReject, onEnd }) {
                 <button
                   onClick={toggleMute}
                   className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${
-                    isMuted ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    isMuted ? 'bg-red-100 text-red-600' : 'bg-[#EFEDE8] text-[#5C5A55] hover:bg-[#EFEDE8]'
                   }`}
                 >
                   {isMuted ? (
@@ -138,7 +138,7 @@ export default function CallModal({ call, onAccept, onReject, onEnd }) {
                 <button
                   onClick={() => setShowKeypad(!showKeypad)}
                   className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${
-                    showKeypad ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    showKeypad ? 'bg-blue-100 text-blue-600' : 'bg-[#EFEDE8] text-[#5C5A55] hover:bg-[#EFEDE8]'
                   }`}
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -149,7 +149,7 @@ export default function CallModal({ call, onAccept, onReject, onEnd }) {
                 <button
                   onClick={toggleHold}
                   className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${
-                    isOnHold ? 'bg-yellow-100 text-yellow-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    isOnHold ? 'bg-yellow-100 text-yellow-600' : 'bg-[#EFEDE8] text-[#5C5A55] hover:bg-[#EFEDE8]'
                   }`}
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -165,7 +165,7 @@ export default function CallModal({ call, onAccept, onReject, onEnd }) {
                     <button
                       key={digit}
                       onClick={() => handleKeypadDigit(digit)}
-                      className="aspect-square bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center justify-center text-xl font-semibold text-gray-700 transition-colors"
+                      className="aspect-square bg-[#EFEDE8] hover:bg-[#EFEDE8] rounded-lg flex items-center justify-center text-xl font-semibold text-[#5C5A55] transition-colors"
                     >
                       {digit}
                     </button>

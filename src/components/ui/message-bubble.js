@@ -55,7 +55,7 @@ export default function MessageBubble({ message, user }) {
           href={part.content}
           target="_blank"
           rel="noopener noreferrer"
-          className={isOutbound ? 'underline text-white/90 hover:text-white break-all' : 'underline text-[#C54A3F] hover:text-[#B73E34] break-all'}
+          className={isOutbound ? 'underline text-white/90 hover:text-white break-all' : 'underline text-[#D63B1F] hover:text-[#c23119] break-all'}
           onClick={(e) => e.stopPropagation()}
         >
           {part.content}
@@ -113,8 +113,8 @@ export default function MessageBubble({ message, user }) {
           <div
             className={`px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-2xl relative ${
               isOutbound
-                ? `bg-[#C54A3F] text-white ${isOptimistic ? 'opacity-60' : ''}`
-                : 'bg-gray-100 text-gray-900'
+                ? `bg-[#D63B1F] text-white ${isOptimistic ? 'opacity-60' : ''}`
+                : 'bg-[#EFEDE8] text-[#131210]'
             }`}
           >
             {/* Message Text */}
@@ -125,7 +125,7 @@ export default function MessageBubble({ message, user }) {
         </div>
 
         {/* Timestamp & Status */}
-        <div className={`flex items-center mt-1.5 px-1 text-[11px] sm:text-xs text-gray-500 transition-opacity duration-200 ${
+        <div className={`flex items-center mt-1.5 px-1 text-[11px] sm:text-xs text-[#9B9890] transition-opacity duration-200 ${
           isOutbound ? 'justify-end' : 'justify-start'
         }`}>
           <span className="font-medium">{formatTimestamp(message.created_at)}</span>
@@ -137,7 +137,7 @@ export default function MessageBubble({ message, user }) {
               {!isOptimistic && message.status !== 'sending' && (
                 <button
                   onClick={() => setShowDeliveryDetails(!showDeliveryDetails)}
-                  className="ml-1.5 p-0.5 text-gray-400 hover:text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded hover:bg-gray-100"
+                  className="ml-1.5 p-0.5 text-[#9B9890] hover:text-[#5C5A55] opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded hover:bg-[#F7F6F3]"
                   title="Message details"
                 >
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -156,15 +156,15 @@ export default function MessageBubble({ message, user }) {
             onClick={() => setShowDeliveryDetails(false)}
           >
             <div
-              className="bg-white rounded-2xl p-5 sm:p-6 max-w-md w-full shadow-2xl transform transition-all duration-200 animate-scaleIn"
+              className="bg-[#FFFFFF] rounded-2xl p-5 sm:p-6 max-w-md w-full shadow-2xl transform transition-all duration-200 animate-scaleIn"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Modal Header */}
               <div className="flex items-center justify-between mb-5">
-                <h3 className="text-lg font-semibold text-gray-900">Message Details</h3>
+                <h3 className="text-lg font-semibold text-[#131210]">Message Details</h3>
                 <button
                   onClick={() => setShowDeliveryDetails(false)}
-                  className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors duration-200"
+                  className="p-1.5 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded-lg transition-colors duration-200"
                   aria-label="Close"
                 >
                   <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -176,14 +176,14 @@ export default function MessageBubble({ message, user }) {
               {/* Modal Content */}
               <div className="space-y-4">
                 {/* Message Preview */}
-                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
-                  <p className="text-sm text-gray-700 line-clamp-3">{message.body}</p>
+                <div className="p-3 bg-[#F7F6F3] rounded-xl border border-[#E3E1DB]">
+                  <p className="text-sm text-[#5C5A55] line-clamp-3">{message.body}</p>
                 </div>
 
                 {/* Status Information */}
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                    <span className="text-xs text-gray-500 font-medium uppercase tracking-wider">Status</span>
+                  <div className="p-3 bg-[#FFFFFF] border border-[#E3E1DB] rounded-xl">
+                    <span className="text-xs text-[#9B9890] font-medium uppercase tracking-wider">Status</span>
                     <div className="flex items-center gap-1.5 mt-1">
                       {message.status === 'delivered' && (
                         <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
@@ -197,34 +197,34 @@ export default function MessageBubble({ message, user }) {
                       <p className={`font-semibold capitalize text-sm ${
                         message.status === 'delivered' ? 'text-emerald-600' :
                         message.status === 'failed' ? 'text-red-600' :
-                        message.status === 'sent' ? 'text-blue-600' : 'text-gray-600'
+                        message.status === 'sent' ? 'text-blue-600' : 'text-[#5C5A55]'
                       }`}>{message.status}</p>
                     </div>
                   </div>
 
-                  <div className="p-3 bg-white border border-gray-200 rounded-xl">
-                    <span className="text-xs text-gray-500 font-medium uppercase tracking-wider">Sent</span>
-                    <p className="text-sm font-semibold text-gray-900 mt-1">{formatTimestamp(message.created_at)}</p>
+                  <div className="p-3 bg-[#FFFFFF] border border-[#E3E1DB] rounded-xl">
+                    <span className="text-xs text-[#9B9890] font-medium uppercase tracking-wider">Sent</span>
+                    <p className="text-sm font-semibold text-[#131210] mt-1">{formatTimestamp(message.created_at)}</p>
                   </div>
 
                   {message.delivered_at && (
-                    <div className="p-3 bg-white border border-gray-200 rounded-xl col-span-2">
-                      <span className="text-xs text-gray-500 font-medium uppercase tracking-wider">Delivered</span>
-                      <p className="text-sm font-semibold text-gray-900 mt-1">{formatTimestamp(message.delivered_at)}</p>
+                    <div className="p-3 bg-[#FFFFFF] border border-[#E3E1DB] rounded-xl col-span-2">
+                      <span className="text-xs text-[#9B9890] font-medium uppercase tracking-wider">Delivered</span>
+                      <p className="text-sm font-semibold text-[#131210] mt-1">{formatTimestamp(message.delivered_at)}</p>
                     </div>
                   )}
                 </div>
 
                 {/* From/To Information */}
-                <div className="pt-3 border-t border-gray-200">
+                <div className="pt-3 border-t border-[#E3E1DB]">
                   <div className="grid grid-cols-2 gap-3 text-xs">
                     <div>
-                      <span className="text-gray-500 font-medium">From:</span>
-                      <p className="text-gray-900 font-mono mt-0.5">{message.from_number}</p>
+                      <span className="text-[#9B9890] font-medium">From:</span>
+                      <p className="text-[#131210] font-mono mt-0.5">{message.from_number}</p>
                     </div>
                     <div>
-                      <span className="text-gray-500 font-medium">To:</span>
-                      <p className="text-gray-900 font-mono mt-0.5">{message.to_number}</p>
+                      <span className="text-[#9B9890] font-medium">To:</span>
+                      <p className="text-[#131210] font-mono mt-0.5">{message.to_number}</p>
                     </div>
                   </div>
                 </div>
@@ -233,7 +233,7 @@ export default function MessageBubble({ message, user }) {
               {/* Close Button */}
               <button
                 onClick={() => setShowDeliveryDetails(false)}
-                className="mt-5 w-full py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-colors duration-200"
+                className="mt-5 w-full py-2.5 bg-[#EFEDE8] hover:bg-[#EFEDE8] text-[#5C5A55] font-medium rounded-xl transition-colors duration-200"
               >
                 Close
               </button>

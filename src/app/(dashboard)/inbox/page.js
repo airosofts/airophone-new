@@ -21,6 +21,7 @@ export default function InboxPage() {
   const [isCreatingNewConversation, setIsCreatingNewConversation] = useState(false)
 
   const [filter, setFilter] = useState('all')
+  const [searchQuery, setSearchQuery] = useState('')
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const [mobileView, setMobileView] = useState('list') // 'list' | 'chat' | 'contact'
@@ -385,6 +386,14 @@ export default function InboxPage() {
           return true
       }
     })
+    .filter(conv => {
+      if (!searchQuery.trim()) return true
+      const q = searchQuery.toLowerCase()
+      const name = [conv.contact_first_name, conv.contact_last_name, conv.name].filter(Boolean).join(' ').toLowerCase()
+      const phone = (conv.phone_number || '').toLowerCase()
+      const preview = (conv.lastMessage?.body || '').toLowerCase()
+      return name.includes(q) || phone.includes(q) || preview.includes(q)
+    })
     .sort((a, b) => {
       if (a.pinned && !b.pinned) return -1
       if (!a.pinned && b.pinned) return 1
@@ -414,75 +423,112 @@ export default function InboxPage() {
 
   if (!user) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center h-screen" style={{ background: '#F7F6F3' }}>
         <div className="text-center">
-          <div className="relative w-16 h-16 mx-auto mb-6">
-            <div className="absolute inset-0 border-4 border-[#C54A3F]/20 rounded-full"></div>
-            <div className="absolute inset-0 border-4 border-[#C54A3F] border-t-transparent rounded-full animate-spin"></div>
+          <div style={{ position: 'relative', width: 48, height: 48, margin: '0 auto 20px' }}>
+            <div style={{ position: 'absolute', inset: 0, border: '3px solid rgba(214,59,31,0.15)', borderRadius: '50%' }} />
+            <div style={{ position: 'absolute', inset: 0, border: '3px solid #D63B1F', borderTop: '3px solid transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
           </div>
-          <p className="text-gray-600 font-medium">Loading user session...</p>
+          <p style={{ fontSize: 13, color: '#5C5A55' }}>Loading user session...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="flex h-full bg-white">
+    <div className="flex h-full" style={{ background: '#FFFFFF' }}>
       {/* Conversation List - Hidden on mobile when chat is open */}
-      <div className={`${mobileView === 'chat' ? 'hidden' : 'flex'} md:flex w-full md:w-96 border-r border-gray-200 flex-col`}>
-        <div className="bg-white sticky top-0 z-10">
+      <div className={`${mobileView === 'chat' ? 'hidden' : 'flex'} md:flex w-full md:w-96 flex-col`} style={{ borderRight: '1px solid #E3E1DB' }}>
+        <div className="sticky top-0 z-10" style={{ background: '#FFFFFF' }}>
           {/* Row 1: Chats tab + compose icon */}
-          <div className="px-4 pt-3 pb-2 flex items-center justify-between">
-            <span className="text-sm font-semibold text-gray-900">Chats</span>
+          <div className="flex items-center justify-between" style={{ padding: '12px 16px 8px' }}>
+            <span style={{ fontSize: 14, fontWeight: 600, letterSpacing: '-0.02em', color: '#131210' }}>Chats</span>
             <button
               onClick={() => {
                 setIsCreatingNewConversation(true)
                 setSelectedConversation(null)
                 setMobileView('chat')
               }}
-              className="p-1.5 hover:bg-red-50 rounded-lg transition-colors"
+              style={{
+                width: 26, height: 26, borderRadius: 6,
+                border: '1px solid #E3E1DB', background: 'transparent',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#5C5A55', cursor: 'pointer', transition: 'all 0.15s',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = '#F7F6F3'; e.currentTarget.style.borderColor = '#D4D1C9' }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = '#E3E1DB' }}
               title="New conversation"
             >
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-[#C54A3F]">
-                <path fillRule="evenodd" clipRule="evenodd" d="M15.1285 1.66675C16.8917 1.66675 18.3337 3.03489 18.3337 4.73971V12.8489L18.3282 13.0303C18.2303 14.6497 16.8287 15.9219 15.1285 15.9219L14.0608 15.9212L14.0602 18.5254L14.0532 18.6219C13.985 19.09 13.4269 19.3354 13.0313 19.0351L8.92956 15.9212L4.87212 15.9219C3.109 15.9219 1.66699 14.5537 1.66699 12.8489V4.73971C1.66699 3.03489 3.109 1.66675 4.87212 1.66675H15.1285ZM15.1285 2.94715H4.87212C3.80276 2.94715 2.94904 3.75714 2.94904 4.73971V12.8489C2.94904 13.8315 3.80276 14.6415 4.87212 14.6415H9.14562L9.24965 14.65C9.3523 14.6668 9.44984 14.7085 9.5335 14.772L12.7788 17.2344L12.7781 15.2817C12.7781 14.9281 13.0651 14.6415 13.4191 14.6415H15.1285C16.1979 14.6415 17.0516 13.8315 17.0516 12.8489V4.73971C17.0516 3.75714 16.1979 2.94715 15.1285 2.94715ZM14.1077 8.27685C14.0672 8.21813 14.0175 8.16426 13.9588 8.11741C13.6052 7.83486 13.06 7.85665 12.7502 8.2433L12.6925 8.3264L12.6618 8.38077C12.4778 8.71014 12.526 9.13374 12.8063 9.41372C13.1245 9.73151 13.6276 9.75084 13.969 9.47806L14.0585 9.3795C14.3042 9.07481 14.3451 8.69488 14.1808 8.39597L14.1077 8.27685ZM10.5415 8.11741C10.6002 8.16426 10.6499 8.21813 10.6904 8.27685L10.7635 8.39597C10.9278 8.69488 10.8869 9.07481 10.6412 9.3795L10.5517 9.47806C10.2103 9.75084 9.70723 9.73151 9.38903 9.41372C9.10869 9.13374 9.06051 8.71014 9.24452 8.38077L9.27516 8.3264L9.33294 8.2433C9.64266 7.85665 10.1879 7.83486 10.5415 8.11741ZM7.2701 8.27685C7.22957 8.21813 7.17986 8.16426 7.12122 8.11741C6.76759 7.83486 6.22236 7.85665 5.91264 8.2433L5.85486 8.3264L5.82422 8.38077C5.64021 8.71014 5.68839 9.13374 5.96873 9.41372C6.28693 9.73151 6.79 9.75084 7.1314 9.47806L7.2209 9.3795C7.46664 9.07481 7.50748 8.69488 7.34316 8.39597L7.2701 8.27685Z" fill="currentColor" />
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
               </svg>
             </button>
           </div>
 
-          {/* Row 2: Filter chips */}
-          <div className="px-3 pb-2.5">
+          {/* Row 2: Filter tabs */}
+          <div style={{ padding: '8px 12px', borderBottom: '1px solid #E3E1DB' }}>
             <FilterTabs currentFilter={filter} onFilterChange={setFilter} conversations={filteredConversations} />
           </div>
 
-          <div className="border-b border-gray-100" />
+          {/* Row 3: Search */}
+          <div style={{ padding: '8px 12px', borderBottom: '1px solid #E3E1DB' }}>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search conversations..."
+              style={{
+                width: '100%', height: 32,
+                border: '1px solid #E3E1DB', borderRadius: 7,
+                background: '#F7F6F3',
+                fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+                fontSize: 12, color: '#131210',
+                padding: '0 10px 0 30px',
+                outline: 'none',
+                backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239B9890' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='M21 21l-4.35-4.35'/%3E%3C/svg%3E\")",
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: '10px center',
+                transition: 'border-color 0.15s',
+              }}
+              onFocus={(e) => { e.target.style.borderColor = '#D4D1C9' }}
+              onBlur={(e) => { e.target.style.borderColor = '#E3E1DB' }}
+            />
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto scrollbar-thin">
           {phoneNumbers.length === 0 ? (
             <div className="p-8 text-center">
-              <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+              <div className="mx-auto mb-4 flex items-center justify-center" style={{ width: 48, height: 48, borderRadius: 13, background: '#EFEDE8', border: '1px solid #E3E1DB' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9B9890" strokeWidth="1.5">
+                  <path d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
                 </svg>
               </div>
-              <p className="text-sm font-medium text-gray-900 mb-2">No phone numbers available</p>
-              <p className="text-xs text-gray-500 mb-4">Purchase phone numbers to start messaging</p>
+              <p style={{ fontSize: 14, fontWeight: 600, letterSpacing: '-0.02em', color: '#131210', marginBottom: 4 }}>No phone numbers available</p>
+              <p style={{ fontSize: '12.5px', color: '#9B9890', marginBottom: 16 }}>Purchase phone numbers to start messaging</p>
               <button
                 onClick={() => router.push('/settings?tab=numbers')}
-                className="px-4 py-2 bg-[#C54A3F] hover:bg-[#B73E34] text-white text-sm font-medium rounded-md transition-colors"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 7,
+                  background: '#D63B1F', color: '#fff', padding: '9px 18px',
+                  borderRadius: 8, fontSize: '12.5px', fontWeight: 500,
+                  border: 'none', cursor: 'pointer', transition: 'opacity 0.15s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.88' }}
+                onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
               >
                 Buy Phone Number
               </button>
             </div>
           ) : !selectedPhoneNumber ? (
             <div className="p-8 text-center">
-              <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+              <div className="mx-auto mb-4 flex items-center justify-center" style={{ width: 48, height: 48, borderRadius: 13, background: '#EFEDE8', border: '1px solid #E3E1DB' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9B9890" strokeWidth="1.5">
+                  <path d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
                 </svg>
               </div>
-              <p className="text-sm font-medium text-gray-900 mb-1">No phone number selected</p>
-              <p className="text-xs text-gray-500">Choose a phone number from the sidebar</p>
+              <p style={{ fontSize: 14, fontWeight: 600, letterSpacing: '-0.02em', color: '#131210', marginBottom: 4 }}>No phone number selected</p>
+              <p style={{ fontSize: '12.5px', color: '#9B9890' }}>Choose a phone number from the sidebar</p>
             </div>
           ) : conversationsLoading ? (
             <SkeletonLoader type="conversations" />
@@ -553,7 +599,7 @@ export default function InboxPage() {
             </div>
 
             {/* Contact Panel - Always visible on desktop, hidden on mobile */}
-            <div className="hidden lg:block w-[340px] border-l border-gray-200 bg-white overflow-y-auto">
+            <div className="hidden lg:block w-[340px] overflow-y-auto" style={{ borderLeft: '1px solid #E3E1DB', background: '#FFFFFF' }}>
               <ContactPanel
                 conversation={activeConversation}
                 formatPhoneNumber={formatPhoneNumber}
@@ -577,20 +623,29 @@ export default function InboxPage() {
             </div>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center bg-white p-8">
-            <div className="text-center max-w-md">
-              <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center mx-auto mb-5">
-                <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          <div className="flex-1 flex items-center justify-center p-8" style={{ background: '#F7F6F3' }}>
+            <div className="text-center" style={{ maxWidth: 280 }}>
+              <div className="mx-auto mb-4 flex items-center justify-center" style={{ width: 48, height: 48, borderRadius: 13, background: '#EFEDE8', border: '1px solid #E3E1DB' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9B9890" strokeWidth="1.5">
+                  <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+                  <path d="M8 10h.01M12 10h.01M16 10h.01"/>
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-1">Select a conversation</h3>
-              <p className="text-sm text-gray-500 mb-6">Choose a conversation from the list to start messaging</p>
+              <h3 style={{ fontSize: 14, fontWeight: 600, letterSpacing: '-0.02em', color: '#131210', marginBottom: 4 }}>Select a conversation</h3>
+              <p style={{ fontSize: '12.5px', color: '#9B9890', lineHeight: 1.6, marginBottom: 20 }}>Choose a conversation from the list to start messaging</p>
               {selectedPhoneNumber && (
                 <button
                   onClick={() => setIsCreatingNewConversation(true)}
-                  className="px-4 py-2 bg-[#C54A3F] hover:bg-[#B73E34] text-white text-sm font-medium rounded-md transition-colors"
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 7,
+                    background: '#D63B1F', color: '#fff', padding: '9px 18px',
+                    borderRadius: 8, fontSize: '12.5px', fontWeight: 500,
+                    border: 'none', cursor: 'pointer', transition: 'opacity 0.15s',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.88' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
                 >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                   Start new conversation
                 </button>
               )}
@@ -685,41 +740,39 @@ function AssignScenarioModal({ conversationId, phoneNumber, onClose }) {
   const hasChange = selected !== currentScenarioId
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-sm">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+    <div className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{ background: 'rgba(19,18,16,0.3)' }}>
+      <div style={{ background: '#FFFFFF', border: '1px solid #E3E1DB', borderRadius: 14, width: '100%', maxWidth: 400, boxShadow: '0 20px 56px rgba(19,18,16,0.12)', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 24px', borderBottom: '1px solid #E3E1DB' }}>
           <div>
-            <h3 className="text-sm font-semibold text-gray-900">Assign Scenario</h3>
-            <p className="text-xs text-gray-400 mt-0.5">{phoneNumber}</p>
+            <h3 style={{ fontSize: 16, fontWeight: 600, letterSpacing: '-0.02em', color: '#131210' }}>Assign Scenario</h3>
+            <p style={{ fontSize: 11, color: '#9B9890', marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>{phoneNumber}</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1">
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-          </button>
+          <button onClick={onClose} style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid #E3E1DB', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9B9890', cursor: 'pointer', fontSize: 14 }}>✕</button>
         </div>
 
-        <div className="px-5 py-4">
+        <div style={{ padding: '20px 24px' }}>
           {loading ? (
-            <div className="py-6 text-center text-sm text-gray-400">
-              <i className="fas fa-spinner fa-spin mr-2"></i>Loading scenarios…
+            <div style={{ padding: '24px 0', textAlign: 'center', fontSize: 13, color: '#9B9890' }}>
+              Loading scenarios…
             </div>
           ) : scenarios.length === 0 ? (
-            <p className="text-sm text-gray-500 text-center py-4">No active scenarios found.</p>
+            <p style={{ fontSize: 13, color: '#5C5A55', textAlign: 'center', padding: '16px 0' }}>No active scenarios found.</p>
           ) : (
             <div className="space-y-2">
               {/* None option */}
-              <label className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${selected === null ? 'border-[#C54A3F] bg-red-50' : 'border-gray-200 hover:bg-gray-50'}`}>
-                <input type="radio" name="scenario" value="" checked={selected === null} onChange={() => setSelected(null)} className="accent-[#C54A3F]" />
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 13px', border: `1px solid ${selected === null ? '#D63B1F' : '#E3E1DB'}`, borderRadius: 8, cursor: 'pointer', transition: 'all 0.15s', background: selected === null ? 'rgba(214,59,31,0.07)' : 'transparent' }}>
+                <input type="radio" name="scenario" value="" checked={selected === null} onChange={() => setSelected(null)} style={{ accentColor: '#D63B1F' }} />
                 <div>
-                  <p className="text-sm font-medium text-gray-700">None</p>
-                  <p className="text-xs text-gray-400">Use default scenario matching</p>
+                  <p style={{ fontSize: '12.5px', fontWeight: 500, color: '#131210' }}>None</p>
+                  <p style={{ fontSize: '11.5px', color: '#9B9890', marginTop: 2 }}>Use default scenario matching</p>
                 </div>
               </label>
               {scenarios.map(s => (
-                <label key={s.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${selected === s.id ? 'border-[#C54A3F] bg-red-50' : 'border-gray-200 hover:bg-gray-50'}`}>
-                  <input type="radio" name="scenario" value={s.id} checked={selected === s.id} onChange={() => setSelected(s.id)} className="accent-[#C54A3F]" />
+                <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 13px', border: `1px solid ${selected === s.id ? '#D63B1F' : '#E3E1DB'}`, borderRadius: 8, cursor: 'pointer', transition: 'all 0.15s', background: selected === s.id ? 'rgba(214,59,31,0.07)' : 'transparent' }}>
+                  <input type="radio" name="scenario" value={s.id} checked={selected === s.id} onChange={() => setSelected(s.id)} style={{ accentColor: '#D63B1F' }} />
                   <div>
-                    <p className="text-sm font-medium text-gray-900">{s.name}</p>
-                    {s.instructions && <p className="text-xs text-gray-400 truncate max-w-[200px]">{s.instructions}</p>}
+                    <p style={{ fontSize: '12.5px', fontWeight: 500, color: '#131210' }}>{s.name}</p>
+                    {s.instructions && <p style={{ fontSize: '11.5px', color: '#9B9890', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>{s.instructions}</p>}
                   </div>
                 </label>
               ))}
@@ -727,14 +780,14 @@ function AssignScenarioModal({ conversationId, phoneNumber, onClose }) {
           )}
         </div>
 
-        <div className="px-5 py-3 border-t border-gray-100 flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">Cancel</button>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 9, padding: '14px 24px', borderTop: '1px solid #E3E1DB', background: '#F7F6F3' }}>
+          <button onClick={onClose} style={{ background: 'transparent', border: '1px solid #D4D1C9', color: '#5C5A55', padding: '8px 18px', borderRadius: 7, fontSize: '12.5px', cursor: 'pointer', transition: 'all 0.15s' }}>Cancel</button>
           <button
             onClick={handleSave}
             disabled={saving || !hasChange || loading}
-            className="px-4 py-1.5 text-sm font-medium text-white bg-[#C54A3F] hover:bg-[#B73E34] rounded-md disabled:opacity-50"
+            style={{ background: '#D63B1F', color: '#fff', border: 'none', padding: '8px 18px', borderRadius: 7, fontSize: '12.5px', fontWeight: 500, cursor: saving || !hasChange || loading ? 'not-allowed' : 'pointer', opacity: saving || !hasChange || loading ? 0.5 : 1, transition: 'opacity 0.15s' }}
           >
-            {saving ? <><i className="fas fa-spinner fa-spin mr-1.5"></i>Saving…</> : 'Assign'}
+            {saving ? 'Saving…' : 'Assign'}
           </button>
         </div>
       </div>

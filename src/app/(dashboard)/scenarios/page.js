@@ -108,39 +108,39 @@ export default function ScenariosPage() {
 
   if (loading) {
     return (
-      <div className="h-full bg-gray-50 flex items-center justify-center">
+      <div className="h-full bg-[#F7F6F3] flex items-center justify-center">
         <div className="text-center">
-          <i className="fas fa-spinner fa-spin text-2xl text-gray-400 mb-3"></i>
-          <p className="text-sm text-gray-500">Loading scenarios…</p>
+          <i className="fas fa-spinner fa-spin text-2xl text-[#9B9890] mb-3"></i>
+          <p className="text-sm text-[#9B9890]">Loading scenarios…</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="h-full bg-gray-50 overflow-auto">
+    <div className="h-full bg-[#F7F6F3] overflow-auto">
       <div className="p-6 space-y-4">
 
         {/* Main Card */}
-        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg overflow-hidden">
           {/* Card Header */}
-          <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between gap-4">
+          <div className="px-5 py-3.5 border-b border-[#E3E1DB] flex items-center justify-between gap-4">
             <div className="flex items-center gap-3 flex-1 min-w-0">
-              <h3 className="text-sm font-semibold text-gray-900 flex-shrink-0">AI Scenarios</h3>
+              <h3 className="text-sm font-semibold text-[#131210] flex-shrink-0">AI Scenarios</h3>
               <div className="relative flex-1 max-w-xs">
-                <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+                <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-[#9B9890] text-xs"></i>
                 <input
                   type="text"
                   placeholder="Search scenarios…"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
+                  className="w-full pl-8 pr-3 py-1.5 border border-[#E3E1DB] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
                 />
               </div>
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-3 py-1.5 border border-gray-200 rounded-md text-sm text-gray-600 focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
+                className="px-3 py-1.5 border border-[#E3E1DB] rounded-md text-sm text-[#5C5A55] focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
               >
                 <option value="all">All statuses</option>
                 <option value="active">Active</option>
@@ -149,7 +149,7 @@ export default function ScenariosPage() {
             </div>
             <button
               onClick={() => setShowCreateModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#C54A3F] hover:bg-[#B73E34] text-white text-sm font-medium rounded-md transition-colors flex-shrink-0"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#D63B1F] hover:bg-[#c23119] text-white text-sm font-medium rounded-md transition-colors flex-shrink-0"
             >
               <i className="fas fa-plus text-xs"></i>
               New Scenario
@@ -159,8 +159,8 @@ export default function ScenariosPage() {
           {/* Table */}
           {paginatedScenarios.length === 0 ? (
             <div className="px-5 py-10 text-center">
-              <p className="text-sm text-gray-500">No scenarios found</p>
-              <p className="text-xs text-gray-400 mt-1">
+              <p className="text-sm text-[#9B9890]">No scenarios found</p>
+              <p className="text-xs text-[#9B9890] mt-1">
                 {scenarios.length === 0 ? 'Create your first AI scenario to get started' : 'Try adjusting your filters'}
               </p>
             </div>
@@ -169,36 +169,36 @@ export default function ScenariosPage() {
               <div className="overflow-x-auto">
                 <table className="min-w-full">
                   <thead>
-                    <tr className="bg-gray-50 border-b border-gray-100">
-                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Scenario</th>
-                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Phone Numbers</th>
-                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Follow-ups</th>
-                      <th className="px-5 py-3 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                    <tr className="bg-[#F7F6F3] border-b border-[#E3E1DB]">
+                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Scenario</th>
+                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Status</th>
+                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Phone Numbers</th>
+                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Follow-ups</th>
+                      <th className="px-5 py-3 text-right text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-[#E3E1DB]">
                     {paginatedScenarios.map((scenario) => (
                       <tr
                         key={scenario.id}
-                        className="hover:bg-gray-50 cursor-pointer"
+                        className="hover:bg-[#F7F6F3] cursor-pointer"
                         onClick={() => { setSelectedScenario(scenario); setShowViewModal(true) }}
                       >
                         <td className="px-5 py-3">
-                          <p className="text-sm font-medium text-gray-900">{scenario.name}</p>
-                          <p className="text-xs text-gray-400 truncate max-w-xs mt-0.5">{scenario.description || scenario.instructions?.slice(0, 60) + '…'}</p>
+                          <p className="text-sm font-medium text-[#131210]">{scenario.name}</p>
+                          <p className="text-xs text-[#9B9890] truncate max-w-xs mt-0.5">{scenario.description || scenario.instructions?.slice(0, 60) + '…'}</p>
                         </td>
                         <td className="px-5 py-3">
                           <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                            scenario.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'
+                            scenario.is_active ? 'bg-green-50 text-green-700' : 'bg-[#EFEDE8] text-[#5C5A55]'
                           }`}>
                             {scenario.is_active ? 'Active' : 'Inactive'}
                           </span>
                         </td>
-                        <td className="px-5 py-3 text-sm text-gray-600">
+                        <td className="px-5 py-3 text-sm text-[#5C5A55]">
                           {scenario.scenario_phone_numbers?.length > 0
                             ? scenario.scenario_phone_numbers.map(spn => spn.phone_numbers?.phone_number || spn.phone_number_id).join(', ')
-                            : <span className="text-gray-400 text-xs">None assigned</span>
+                            : <span className="text-[#9B9890] text-xs">None assigned</span>
                           }
                         </td>
                         <td className="px-5 py-3">
@@ -208,7 +208,7 @@ export default function ScenariosPage() {
                               Enabled
                             </span>
                           ) : (
-                            <span className="text-xs text-gray-400">Disabled</span>
+                            <span className="text-xs text-[#9B9890]">Disabled</span>
                           )}
                         </td>
                         <td className="px-5 py-3 text-right">
@@ -216,42 +216,42 @@ export default function ScenariosPage() {
                             <button
                               title="View"
                               onClick={(e) => { e.stopPropagation(); setSelectedScenario(scenario); setShowViewModal(true) }}
-                              className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
+                              className="p-1.5 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded transition-colors"
                             >
                               <i className="fas fa-eye text-[13px]"></i>
                             </button>
                             <button
                               title="Execution Logs"
                               onClick={(e) => { e.stopPropagation(); setSelectedScenario(scenario); setShowExecutionsModal(true) }}
-                              className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                              className="p-1.5 text-[#9B9890] hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
                             >
                               <i className="fas fa-list-alt text-[13px]"></i>
                             </button>
                             <button
                               title="Follow-up Stages"
                               onClick={(e) => { e.stopPropagation(); setSelectedScenario(scenario); setShowFollowupModal(true) }}
-                              className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded transition-colors"
+                              className="p-1.5 text-[#9B9890] hover:text-purple-600 hover:bg-purple-50 rounded transition-colors"
                             >
                               <i className="fas fa-layer-group text-[13px]"></i>
                             </button>
                             <button
                               title="Analytics"
                               onClick={(e) => { e.stopPropagation(); setSelectedScenario(scenario); setShowAnalyticsModal(true) }}
-                              className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded transition-colors"
+                              className="p-1.5 text-[#9B9890] hover:text-green-600 hover:bg-green-50 rounded transition-colors"
                             >
                               <i className="fas fa-chart-bar text-[13px]"></i>
                             </button>
                             <button
                               title={scenario.is_active ? 'Deactivate' : 'Activate'}
                               onClick={(e) => { e.stopPropagation(); handleToggleActive(scenario) }}
-                              className={`p-1.5 rounded transition-colors ${scenario.is_active ? 'text-gray-400 hover:text-yellow-600 hover:bg-yellow-50' : 'text-gray-400 hover:text-green-600 hover:bg-green-50'}`}
+                              className={`p-1.5 rounded transition-colors ${scenario.is_active ? 'text-[#9B9890] hover:text-yellow-600 hover:bg-yellow-50' : 'text-[#9B9890] hover:text-green-600 hover:bg-green-50'}`}
                             >
                               <i className={`fas ${scenario.is_active ? 'fa-pause' : 'fa-play'} text-[13px]`}></i>
                             </button>
                             <button
                               title="Delete"
                               onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ scenarioId: scenario.id, scenarioName: scenario.name }) }}
-                              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                              className="p-1.5 text-[#9B9890] hover:text-red-600 hover:bg-red-50 rounded transition-colors"
                             >
                               <i className="fas fa-trash text-[13px]"></i>
                             </button>
@@ -264,15 +264,15 @@ export default function ScenariosPage() {
               </div>
 
               {totalPages > 1 && (
-                <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between bg-gray-50">
-                  <p className="text-xs text-gray-500">
+                <div className="px-5 py-3 border-t border-[#E3E1DB] flex items-center justify-between bg-[#F7F6F3]">
+                  <p className="text-xs text-[#9B9890]">
                     {(currentPage - 1) * itemsPerPage + 1}–{Math.min(currentPage * itemsPerPage, filteredScenarios.length)} of {filteredScenarios.length}
                   </p>
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                       disabled={currentPage === 1}
-                      className="px-2.5 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-50"
+                      className="px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded hover:bg-[#F7F6F3] disabled:opacity-50"
                     >
                       <i className="fas fa-angle-left"></i>
                     </button>
@@ -282,8 +282,8 @@ export default function ScenariosPage() {
                         onClick={() => setCurrentPage(page)}
                         className={`px-2.5 py-1.5 text-xs rounded border transition-colors ${
                           currentPage === page
-                            ? 'bg-[#C54A3F] text-white border-[#C54A3F]'
-                            : 'text-gray-600 border-gray-200 hover:bg-gray-50'
+                            ? 'bg-[#D63B1F] text-white border-[#D63B1F]'
+                            : 'text-[#5C5A55] border-[#E3E1DB] hover:bg-[#F7F6F3]'
                         }`}
                       >
                         {page}
@@ -292,7 +292,7 @@ export default function ScenariosPage() {
                     <button
                       onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                       disabled={currentPage === totalPages}
-                      className="px-2.5 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-50"
+                      className="px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded hover:bg-[#F7F6F3] disabled:opacity-50"
                     >
                       <i className="fas fa-angle-right"></i>
                     </button>
@@ -430,14 +430,14 @@ function CreateScenarioModal({ phoneNumbers, onClose, onSuccess }) {
   if (created) {
     return (
       <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-lg shadow-xl w-full max-w-sm">
+        <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-sm">
           <div className="px-5 py-8 text-center">
             <div className="w-10 h-10 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-3">
               <i className="fas fa-check text-green-600"></i>
             </div>
-            <h3 className="text-sm font-semibold text-gray-900 mb-1">Scenario Created</h3>
-            <p className="text-xs text-gray-500 mb-4">Your AI scenario has been created successfully.</p>
-            <button onClick={onSuccess} className="px-4 py-1.5 text-sm font-medium text-white bg-[#C54A3F] hover:bg-[#B73E34] rounded-md">
+            <h3 className="text-sm font-semibold text-[#131210] mb-1">Scenario Created</h3>
+            <p className="text-xs text-[#9B9890] mb-4">Your AI scenario has been created successfully.</p>
+            <button onClick={onSuccess} className="px-4 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md">
               Done
             </button>
           </div>
@@ -448,10 +448,10 @@ function CreateScenarioModal({ phoneNumbers, onClose, onSuccess }) {
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl my-8">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 sticky top-0 bg-white z-10">
-          <h3 className="text-sm font-semibold text-gray-900">New Scenario</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1">
+      <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-2xl my-8">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#E3E1DB] sticky top-0 bg-[#FFFFFF] z-10">
+          <h3 className="text-sm font-semibold text-[#131210]">New Scenario</h3>
+          <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1">
             <i className="fas fa-times text-sm"></i>
           </button>
         </div>
@@ -459,45 +459,45 @@ function CreateScenarioModal({ phoneNumbers, onClose, onSuccess }) {
         <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">Scenario Name *</label>
+              <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Scenario Name *</label>
               <input
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="e.g., Real Estate Lead Follow-up"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
+                className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
               />
               {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
             </div>
 
             <div className="col-span-2">
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">Description</label>
+              <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Description</label>
               <input
                 type="text"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 placeholder="Brief description (optional)"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
+                className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
               />
             </div>
 
             <div className="col-span-2">
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">AI Instructions *</label>
+              <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">AI Instructions *</label>
               <textarea
                 value={formData.instructions}
                 onChange={(e) => setFormData({ ...formData, instructions: e.target.value })}
                 placeholder="You are a helpful assistant for XYZ company. When a customer messages, respond professionally and…"
                 rows="5"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F] resize-none"
+                className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F] resize-none"
               />
               {errors.instructions && <p className="text-red-500 text-xs mt-1">{errors.instructions}</p>}
             </div>
 
             <div className="col-span-2">
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">Assign Phone Numbers</label>
-              <div className="space-y-1.5 max-h-28 overflow-y-auto border border-gray-200 rounded-md p-2">
+              <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Assign Phone Numbers</label>
+              <div className="space-y-1.5 max-h-28 overflow-y-auto border border-[#E3E1DB] rounded-md p-2">
                 {phoneNumbers.length === 0 ? (
-                  <p className="text-xs text-gray-400 py-1">No phone numbers available</p>
+                  <p className="text-xs text-[#9B9890] py-1">No phone numbers available</p>
                 ) : phoneNumbers.map((pn) => (
                   <label key={pn.id} className="flex items-center gap-2 cursor-pointer">
                     <input
@@ -510,9 +510,9 @@ function CreateScenarioModal({ phoneNumbers, onClose, onSuccess }) {
                           setFormData({ ...formData, phoneNumbers: formData.phoneNumbers.filter(id => id !== pn.id) })
                         }
                       }}
-                      className="text-[#C54A3F]"
+                      className="text-[#D63B1F]"
                     />
-                    <span className="text-sm text-gray-700">{pn.custom_name || pn.phoneNumber}</span>
+                    <span className="text-sm text-[#5C5A55]">{pn.custom_name || pn.phoneNumber}</span>
                   </label>
                 ))}
               </div>
@@ -520,29 +520,29 @@ function CreateScenarioModal({ phoneNumbers, onClose, onSuccess }) {
           </div>
 
           {/* Follow-up Settings */}
-          <div className="border border-gray-200 rounded-md p-3 space-y-3">
+          <div className="border border-[#E3E1DB] rounded-md p-3 space-y-3">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-semibold text-gray-700">Automatic Follow-ups</p>
-                <p className="text-[11px] text-gray-400 mt-0.5">Send follow-up messages if no response</p>
+                <p className="text-xs font-semibold text-[#5C5A55]">Automatic Follow-ups</p>
+                <p className="text-[11px] text-[#9B9890] mt-0.5">Send follow-up messages if no response</p>
               </div>
               <button
                 type="button"
                 onClick={() => setFormData({ ...formData, enable_followups: !formData.enable_followups })}
-                className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${formData.enable_followups ? 'bg-[#C54A3F]' : 'bg-gray-200'}`}
+                className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${formData.enable_followups ? 'bg-[#D63B1F]' : 'bg-[#EFEDE8]'}`}
               >
-                <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${formData.enable_followups ? 'translate-x-4' : 'translate-x-0'}`} />
+                <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-[#FFFFFF] shadow ring-0 transition duration-200 ease-in-out ${formData.enable_followups ? 'translate-x-4' : 'translate-x-0'}`} />
               </button>
             </div>
 
             {formData.enable_followups && (
               <div className="grid grid-cols-2 gap-3 pt-1">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Max Follow-up Attempts</label>
+                  <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Max Follow-up Attempts</label>
                   <select
                     value={formData.max_followup_attempts}
                     onChange={(e) => setFormData({ ...formData, max_followup_attempts: parseInt(e.target.value) })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
+                    className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
                   >
                     {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
                       <option key={n} value={n}>{n}</option>
@@ -550,13 +550,13 @@ function CreateScenarioModal({ phoneNumbers, onClose, onSuccess }) {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Stop Keywords</label>
+                  <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Stop Keywords</label>
                   <input
                     type="text"
                     value={formData.auto_stop_keywords}
                     onChange={(e) => setFormData({ ...formData, auto_stop_keywords: e.target.value })}
                     placeholder="STOP,UNSUBSCRIBE"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
+                    className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
                   />
                 </div>
               </div>
@@ -564,47 +564,47 @@ function CreateScenarioModal({ phoneNumbers, onClose, onSuccess }) {
           </div>
 
           {/* Business Hours */}
-          <div className="border border-gray-200 rounded-md p-3 space-y-3">
+          <div className="border border-[#E3E1DB] rounded-md p-3 space-y-3">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-semibold text-gray-700">Business Hours Restriction</p>
-                <p className="text-[11px] text-gray-400 mt-0.5">Only respond during business hours</p>
+                <p className="text-xs font-semibold text-[#5C5A55]">Business Hours Restriction</p>
+                <p className="text-[11px] text-[#9B9890] mt-0.5">Only respond during business hours</p>
               </div>
               <button
                 type="button"
                 onClick={() => setFormData({ ...formData, enable_business_hours: !formData.enable_business_hours })}
-                className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${formData.enable_business_hours ? 'bg-[#C54A3F]' : 'bg-gray-200'}`}
+                className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${formData.enable_business_hours ? 'bg-[#D63B1F]' : 'bg-[#EFEDE8]'}`}
               >
-                <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${formData.enable_business_hours ? 'translate-x-4' : 'translate-x-0'}`} />
+                <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-[#FFFFFF] shadow ring-0 transition duration-200 ease-in-out ${formData.enable_business_hours ? 'translate-x-4' : 'translate-x-0'}`} />
               </button>
             </div>
 
             {formData.enable_business_hours && (
               <div className="grid grid-cols-3 gap-3 pt-1">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Start Time</label>
+                  <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Start Time</label>
                   <input
                     type="time"
                     value={formData.business_hours_start}
                     onChange={(e) => setFormData({ ...formData, business_hours_start: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
+                    className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">End Time</label>
+                  <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">End Time</label>
                   <input
                     type="time"
                     value={formData.business_hours_end}
                     onChange={(e) => setFormData({ ...formData, business_hours_end: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
+                    className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">Timezone</label>
+                  <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Timezone</label>
                   <select
                     value={formData.business_hours_timezone}
                     onChange={(e) => setFormData({ ...formData, business_hours_timezone: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
+                    className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
                   >
                     <option value="America/New_York">Eastern (ET)</option>
                     <option value="America/Chicago">Central (CT)</option>
@@ -627,10 +627,10 @@ function CreateScenarioModal({ phoneNumbers, onClose, onSuccess }) {
           )}
 
           <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">Cancel</button>
+            <button type="button" onClick={onClose} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
             <button
               type="submit" disabled={isSubmitting}
-              className="px-4 py-1.5 text-sm font-medium text-white bg-[#C54A3F] hover:bg-[#B73E34] rounded-md disabled:opacity-50"
+              className="px-4 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md disabled:opacity-50"
             >
               {isSubmitting ? <><i className="fas fa-spinner fa-spin mr-1.5"></i>Creating…</> : 'Create Scenario'}
             </button>
@@ -705,10 +705,10 @@ function ViewScenarioModal({ scenario, phoneNumbers, onClose, onUpdated, onToggl
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl my-8">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 sticky top-0 bg-white z-10">
-          <h3 className="text-sm font-semibold text-gray-900">{isEditing ? 'Edit Scenario' : 'Scenario Details'}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1">
+      <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-2xl my-8">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#E3E1DB] sticky top-0 bg-[#FFFFFF] z-10">
+          <h3 className="text-sm font-semibold text-[#131210]">{isEditing ? 'Edit Scenario' : 'Scenario Details'}</h3>
+          <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1">
             <i className="fas fa-times text-sm"></i>
           </button>
         </div>
@@ -716,38 +716,38 @@ function ViewScenarioModal({ scenario, phoneNumbers, onClose, onUpdated, onToggl
         {isEditing ? (
           <form onSubmit={handleEditSubmit} className="px-5 py-4 space-y-4">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">Scenario Name *</label>
+              <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Scenario Name *</label>
               <input
                 type="text"
                 value={editData.name}
                 onChange={(e) => setEditData({ ...editData, name: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
+                className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
               />
               {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">Description</label>
+              <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Description</label>
               <input
                 type="text"
                 value={editData.description}
                 onChange={(e) => setEditData({ ...editData, description: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
+                className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">AI Instructions *</label>
+              <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">AI Instructions *</label>
               <textarea
                 value={editData.instructions}
                 onChange={(e) => setEditData({ ...editData, instructions: e.target.value })}
                 rows="5"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F] resize-none"
+                className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F] resize-none"
               />
               {errors.instructions && <p className="text-red-500 text-xs mt-1">{errors.instructions}</p>}
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">Assign Phone Numbers</label>
-              <div className="space-y-1.5 max-h-28 overflow-y-auto border border-gray-200 rounded-md p-2">
+              <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Assign Phone Numbers</label>
+              <div className="space-y-1.5 max-h-28 overflow-y-auto border border-[#E3E1DB] rounded-md p-2">
                 {phoneNumbers.map((pn) => (
                   <label key={pn.id} className="flex items-center gap-2 cursor-pointer">
                     <input
@@ -760,48 +760,48 @@ function ViewScenarioModal({ scenario, phoneNumbers, onClose, onUpdated, onToggl
                           setEditData({ ...editData, phoneNumbers: editData.phoneNumbers.filter(id => id !== pn.id) })
                         }
                       }}
-                      className="text-[#C54A3F]"
+                      className="text-[#D63B1F]"
                     />
-                    <span className="text-sm text-gray-700">{pn.custom_name || pn.phoneNumber}</span>
+                    <span className="text-sm text-[#5C5A55]">{pn.custom_name || pn.phoneNumber}</span>
                   </label>
                 ))}
               </div>
             </div>
 
             {/* Follow-up Settings */}
-            <div className="border border-gray-200 rounded-md p-3 space-y-3">
+            <div className="border border-[#E3E1DB] rounded-md p-3 space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-semibold text-gray-700">Automatic Follow-ups</p>
-                  <p className="text-[11px] text-gray-400 mt-0.5">Send follow-up messages if no response</p>
+                  <p className="text-xs font-semibold text-[#5C5A55]">Automatic Follow-ups</p>
+                  <p className="text-[11px] text-[#9B9890] mt-0.5">Send follow-up messages if no response</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setEditData({ ...editData, enable_followups: !editData.enable_followups })}
-                  className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${editData.enable_followups ? 'bg-[#C54A3F]' : 'bg-gray-200'}`}
+                  className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${editData.enable_followups ? 'bg-[#D63B1F]' : 'bg-[#EFEDE8]'}`}
                 >
-                  <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${editData.enable_followups ? 'translate-x-4' : 'translate-x-0'}`} />
+                  <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-[#FFFFFF] shadow ring-0 transition duration-200 ease-in-out ${editData.enable_followups ? 'translate-x-4' : 'translate-x-0'}`} />
                 </button>
               </div>
               {editData.enable_followups && (
                 <div className="grid grid-cols-2 gap-3 pt-1">
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Max Attempts</label>
+                    <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Max Attempts</label>
                     <select
                       value={editData.max_followup_attempts}
                       onChange={(e) => setEditData({ ...editData, max_followup_attempts: parseInt(e.target.value) })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
+                      className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
                     >
                       {[1,2,3,4,5,6,7,8,9,10].map(n => <option key={n} value={n}>{n}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Stop Keywords</label>
+                    <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Stop Keywords</label>
                     <input
                       type="text"
                       value={editData.auto_stop_keywords}
                       onChange={(e) => setEditData({ ...editData, auto_stop_keywords: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
+                      className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
                     />
                   </div>
                 </div>
@@ -809,32 +809,32 @@ function ViewScenarioModal({ scenario, phoneNumbers, onClose, onUpdated, onToggl
             </div>
 
             {/* Business Hours */}
-            <div className="border border-gray-200 rounded-md p-3 space-y-3">
+            <div className="border border-[#E3E1DB] rounded-md p-3 space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-semibold text-gray-700">Business Hours</p>
+                  <p className="text-xs font-semibold text-[#5C5A55]">Business Hours</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setEditData({ ...editData, enable_business_hours: !editData.enable_business_hours })}
-                  className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${editData.enable_business_hours ? 'bg-[#C54A3F]' : 'bg-gray-200'}`}
+                  className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${editData.enable_business_hours ? 'bg-[#D63B1F]' : 'bg-[#EFEDE8]'}`}
                 >
-                  <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${editData.enable_business_hours ? 'translate-x-4' : 'translate-x-0'}`} />
+                  <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-[#FFFFFF] shadow ring-0 transition duration-200 ease-in-out ${editData.enable_business_hours ? 'translate-x-4' : 'translate-x-0'}`} />
                 </button>
               </div>
               {editData.enable_business_hours && (
                 <div className="grid grid-cols-3 gap-3 pt-1">
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Start</label>
-                    <input type="time" value={editData.business_hours_start} onChange={(e) => setEditData({ ...editData, business_hours_start: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]" />
+                    <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Start</label>
+                    <input type="time" value={editData.business_hours_start} onChange={(e) => setEditData({ ...editData, business_hours_start: e.target.value })} className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1.5">End</label>
-                    <input type="time" value={editData.business_hours_end} onChange={(e) => setEditData({ ...editData, business_hours_end: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]" />
+                    <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">End</label>
+                    <input type="time" value={editData.business_hours_end} onChange={(e) => setEditData({ ...editData, business_hours_end: e.target.value })} className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Timezone</label>
-                    <select value={editData.business_hours_timezone} onChange={(e) => setEditData({ ...editData, business_hours_timezone: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]">
+                    <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Timezone</label>
+                    <select value={editData.business_hours_timezone} onChange={(e) => setEditData({ ...editData, business_hours_timezone: e.target.value })} className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]">
                       <option value="America/New_York">Eastern (ET)</option>
                       <option value="America/Chicago">Central (CT)</option>
                       <option value="America/Denver">Mountain (MT)</option>
@@ -850,8 +850,8 @@ function ViewScenarioModal({ scenario, phoneNumbers, onClose, onUpdated, onToggl
               <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2.5 rounded-md text-sm">{errors.submit}</div>
             )}
             <div className="flex justify-end gap-2 pt-2">
-              <button type="button" onClick={() => { setIsEditing(false); setErrors({}) }} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">Cancel</button>
-              <button type="submit" disabled={isSubmitting} className="px-4 py-1.5 text-sm font-medium text-white bg-[#C54A3F] hover:bg-[#B73E34] rounded-md disabled:opacity-50">
+              <button type="button" onClick={() => { setIsEditing(false); setErrors({}) }} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
+              <button type="submit" disabled={isSubmitting} className="px-4 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md disabled:opacity-50">
                 {isSubmitting ? <><i className="fas fa-spinner fa-spin mr-1.5"></i>Saving…</> : 'Save Changes'}
               </button>
             </div>
@@ -860,43 +860,43 @@ function ViewScenarioModal({ scenario, phoneNumbers, onClose, onUpdated, onToggl
           <>
             <div className="px-5 py-4 space-y-4">
               <div>
-                <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Name</p>
-                <p className="text-sm font-medium text-gray-900">{scenario.name}</p>
+                <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Name</p>
+                <p className="text-sm font-medium text-[#131210]">{scenario.name}</p>
               </div>
               {scenario.description && (
                 <div>
-                  <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Description</p>
-                  <p className="text-sm text-gray-700">{scenario.description}</p>
+                  <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Description</p>
+                  <p className="text-sm text-[#5C5A55]">{scenario.description}</p>
                 </div>
               )}
               <div>
-                <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">AI Instructions</p>
-                <p className="text-sm text-gray-700 bg-gray-50 border border-gray-100 rounded px-3 py-2 whitespace-pre-wrap max-h-32 overflow-y-auto">{scenario.instructions}</p>
+                <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">AI Instructions</p>
+                <p className="text-sm text-[#5C5A55] bg-[#F7F6F3] border border-[#E3E1DB] rounded px-3 py-2 whitespace-pre-wrap max-h-32 overflow-y-auto">{scenario.instructions}</p>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Status</p>
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${scenario.is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                  <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Status</p>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${scenario.is_active ? 'bg-green-50 text-green-700' : 'bg-[#EFEDE8] text-[#5C5A55]'}`}>
                     {scenario.is_active ? 'Active' : 'Inactive'}
                   </span>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Follow-ups</p>
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${scenario.enable_followups ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
+                  <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Follow-ups</p>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${scenario.enable_followups ? 'bg-blue-50 text-blue-700' : 'bg-[#EFEDE8] text-[#9B9890]'}`}>
                     {scenario.enable_followups ? `Enabled (max ${scenario.max_followup_attempts})` : 'Disabled'}
                   </span>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Phone Numbers</p>
-                  <p className="text-sm text-gray-700">
+                  <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Phone Numbers</p>
+                  <p className="text-sm text-[#5C5A55]">
                     {scenario.scenario_phone_numbers?.length > 0
                       ? scenario.scenario_phone_numbers.map(spn => spn.phone_numbers?.phone_number).join(', ')
                       : 'None assigned'}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Business Hours</p>
-                  <p className="text-sm text-gray-700">
+                  <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Business Hours</p>
+                  <p className="text-sm text-[#5C5A55]">
                     {scenario.enable_business_hours
                       ? `${scenario.business_hours_start?.slice(0, 5)} – ${scenario.business_hours_end?.slice(0, 5)}`
                       : 'Not restricted'}
@@ -905,22 +905,22 @@ function ViewScenarioModal({ scenario, phoneNumbers, onClose, onUpdated, onToggl
               </div>
             </div>
 
-            <div className="border-t border-gray-100 px-5 py-3.5 flex flex-wrap items-center gap-2">
-              <button onClick={() => setIsEditing(true)} className="px-3 py-1.5 text-sm font-medium text-white bg-[#C54A3F] hover:bg-[#B73E34] rounded-md">Edit</button>
-              <button onClick={onToggleActive} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">
+            <div className="border-t border-[#E3E1DB] px-5 py-3.5 flex flex-wrap items-center gap-2">
+              <button onClick={() => setIsEditing(true)} className="px-3 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md">Edit</button>
+              <button onClick={onToggleActive} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">
                 {scenario.is_active ? 'Deactivate' : 'Activate'}
               </button>
-              <button onClick={onFollowups} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">
+              <button onClick={onFollowups} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">
                 <i className="fas fa-layer-group mr-1.5 text-[11px]"></i>Follow-up Stages
               </button>
-              <button onClick={onExecutions} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">
+              <button onClick={onExecutions} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">
                 <i className="fas fa-list-alt mr-1.5 text-[11px]"></i>Logs
               </button>
-              <button onClick={onAnalytics} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">
+              <button onClick={onAnalytics} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">
                 <i className="fas fa-chart-bar mr-1.5 text-[11px]"></i>Analytics
               </button>
               <button onClick={onDelete} className="px-3 py-1.5 text-sm text-red-600 border border-red-100 rounded-md hover:bg-red-50">Delete</button>
-              <button onClick={onClose} className="ml-auto px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">Close</button>
+              <button onClick={onClose} className="ml-auto px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Close</button>
             </div>
           </>
         )}
@@ -999,13 +999,13 @@ function FollowupStagesModal({ scenario, onClose, onSuccess }) {
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl my-8">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 sticky top-0 bg-white z-10">
+      <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-2xl my-8">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#E3E1DB] sticky top-0 bg-[#FFFFFF] z-10">
           <div>
-            <h3 className="text-sm font-semibold text-gray-900">Follow-up Stages</h3>
-            <p className="text-xs text-gray-400 mt-0.5">{scenario.name}</p>
+            <h3 className="text-sm font-semibold text-[#131210]">Follow-up Stages</h3>
+            <p className="text-xs text-[#9B9890] mt-0.5">{scenario.name}</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1">
+          <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1">
             <i className="fas fa-times text-sm"></i>
           </button>
         </div>
@@ -1013,37 +1013,37 @@ function FollowupStagesModal({ scenario, onClose, onSuccess }) {
         <div className="px-5 py-4">
           {loading ? (
             <div className="text-center py-8">
-              <i className="fas fa-spinner fa-spin text-gray-400 text-xl"></i>
+              <i className="fas fa-spinner fa-spin text-[#9B9890] text-xl"></i>
             </div>
           ) : (
             <div className="space-y-3">
               {stages.map((stage, index) => (
-                <div key={index} className="border border-gray-200 rounded-md p-3">
+                <div key={index} className="border border-[#E3E1DB] rounded-md p-3">
                   <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-semibold text-gray-700 uppercase tracking-wider">Stage {stage.stage_number}</span>
+                    <span className="text-xs font-semibold text-[#5C5A55] uppercase tracking-wider">Stage {stage.stage_number}</span>
                     {stages.length > 1 && (
-                      <button onClick={() => removeStage(index)} className="text-gray-400 hover:text-red-500 p-1">
+                      <button onClick={() => removeStage(index)} className="text-[#9B9890] hover:text-red-500 p-1">
                         <i className="fas fa-times text-xs"></i>
                       </button>
                     )}
                   </div>
                   <div className="grid grid-cols-3 gap-3 mb-3">
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1.5">Wait Duration</label>
+                      <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Wait Duration</label>
                       <input
                         type="number"
                         min="1"
                         value={stage.wait_duration}
                         onChange={(e) => updateStage(index, 'wait_duration', parseInt(e.target.value))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
+                        className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1.5">Unit</label>
+                      <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Unit</label>
                       <select
                         value={stage.wait_unit}
                         onChange={(e) => updateStage(index, 'wait_unit', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
+                        className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
                       >
                         <option value="minutes">Minutes</option>
                         <option value="hours">Hours</option>
@@ -1052,20 +1052,20 @@ function FollowupStagesModal({ scenario, onClose, onSuccess }) {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1.5">Effective Wait</label>
-                      <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-sm text-gray-600">
+                      <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Effective Wait</label>
+                      <div className="px-3 py-2 bg-[#F7F6F3] border border-[#E3E1DB] rounded-md text-sm text-[#5C5A55]">
                         {formatWaitLabel(stage.wait_duration, stage.wait_unit)}
                       </div>
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1.5">Stage AI Instructions</label>
+                    <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Stage AI Instructions</label>
                     <textarea
                       value={stage.instructions}
                       onChange={(e) => updateStage(index, 'instructions', e.target.value)}
                       placeholder={`Instructions for follow-up stage ${stage.stage_number}…`}
                       rows="3"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F] resize-none"
+                      className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F] resize-none"
                     />
                   </div>
                 </div>
@@ -1074,7 +1074,7 @@ function FollowupStagesModal({ scenario, onClose, onSuccess }) {
               <button
                 type="button"
                 onClick={addStage}
-                className="w-full py-2 border border-dashed border-gray-300 rounded-md text-sm text-gray-500 hover:border-[#C54A3F] hover:text-[#C54A3F] transition-colors"
+                className="w-full py-2 border border-dashed border-[#D4D1C9] rounded-md text-sm text-[#9B9890] hover:border-[#D63B1F] hover:text-[#D63B1F] transition-colors"
               >
                 <i className="fas fa-plus mr-1.5 text-xs"></i>Add Stage
               </button>
@@ -1086,12 +1086,12 @@ function FollowupStagesModal({ scenario, onClose, onSuccess }) {
           )}
         </div>
 
-        <div className="px-5 py-3.5 border-t border-gray-100 flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">Cancel</button>
+        <div className="px-5 py-3.5 border-t border-[#E3E1DB] flex justify-end gap-2">
+          <button onClick={onClose} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
           <button
             onClick={handleSave}
             disabled={saving || loading}
-            className="px-4 py-1.5 text-sm font-medium text-white bg-[#C54A3F] hover:bg-[#B73E34] rounded-md disabled:opacity-50"
+            className="px-4 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md disabled:opacity-50"
           >
             {saving ? <><i className="fas fa-spinner fa-spin mr-1.5"></i>Saving…</> : 'Save Stages'}
           </button>
@@ -1126,23 +1126,23 @@ function AnalyticsModal({ scenario, onClose }) {
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl my-8">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 sticky top-0 bg-white z-10">
+      <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-2xl my-8">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#E3E1DB] sticky top-0 bg-[#FFFFFF] z-10">
           <div>
-            <h3 className="text-sm font-semibold text-gray-900">Analytics</h3>
-            <p className="text-xs text-gray-400 mt-0.5">{scenario.name}</p>
+            <h3 className="text-sm font-semibold text-[#131210]">Analytics</h3>
+            <p className="text-xs text-[#9B9890] mt-0.5">{scenario.name}</p>
           </div>
           <div className="flex items-center gap-2">
             <select
               value={days}
               onChange={(e) => setDays(parseInt(e.target.value))}
-              className="px-2 py-1 border border-gray-200 rounded text-xs text-gray-600 focus:outline-none focus:ring-1 focus:ring-[#C54A3F]"
+              className="px-2 py-1 border border-[#E3E1DB] rounded text-xs text-[#5C5A55] focus:outline-none focus:ring-1 focus:ring-[#D63B1F]"
             >
               <option value={7}>Last 7 days</option>
               <option value={30}>Last 30 days</option>
               <option value={90}>Last 90 days</option>
             </select>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1">
+            <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1">
               <i className="fas fa-times text-sm"></i>
             </button>
           </div>
@@ -1151,23 +1151,23 @@ function AnalyticsModal({ scenario, onClose }) {
         <div className="px-5 py-4">
           {loading ? (
             <div className="text-center py-8">
-              <i className="fas fa-spinner fa-spin text-gray-400 text-xl"></i>
+              <i className="fas fa-spinner fa-spin text-[#9B9890] text-xl"></i>
             </div>
           ) : analytics ? (
             <div className="space-y-4">
               {/* Conversations */}
               <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Conversations</p>
+                <p className="text-xs font-semibold text-[#9B9890] uppercase tracking-wider mb-2">Conversations</p>
                 <div className="grid grid-cols-4 gap-3">
                   {[
-                    { label: 'Total', value: analytics.conversations.total, color: 'text-gray-900' },
+                    { label: 'Total', value: analytics.conversations.total, color: 'text-[#131210]' },
                     { label: 'Active', value: analytics.conversations.active, color: 'text-blue-600' },
                     { label: 'Stopped', value: analytics.conversations.stopped, color: 'text-red-500' },
                     { label: 'Response Rate', value: analytics.conversations.responseRate, color: 'text-green-600' },
                   ].map((item) => (
-                    <div key={item.label} className="bg-gray-50 border border-gray-100 rounded px-3 py-2 text-center">
+                    <div key={item.label} className="bg-[#F7F6F3] border border-[#E3E1DB] rounded px-3 py-2 text-center">
                       <p className={`text-lg font-bold ${item.color}`}>{item.value}</p>
-                      <p className="text-[11px] text-gray-400 mt-0.5">{item.label}</p>
+                      <p className="text-[11px] text-[#9B9890] mt-0.5">{item.label}</p>
                     </div>
                   ))}
                 </div>
@@ -1175,17 +1175,17 @@ function AnalyticsModal({ scenario, onClose }) {
 
               {/* Messages */}
               <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Messages</p>
+                <p className="text-xs font-semibold text-[#9B9890] uppercase tracking-wider mb-2">Messages</p>
                 <div className="grid grid-cols-4 gap-3">
                   {[
-                    { label: 'Total', value: analytics.messages.total, color: 'text-gray-900' },
+                    { label: 'Total', value: analytics.messages.total, color: 'text-[#131210]' },
                     { label: 'Successful', value: analytics.messages.successful, color: 'text-green-600' },
                     { label: 'Failed', value: analytics.messages.failed, color: 'text-red-500' },
                     { label: 'Success Rate', value: analytics.messages.successRate, color: 'text-blue-600' },
                   ].map((item) => (
-                    <div key={item.label} className="bg-gray-50 border border-gray-100 rounded px-3 py-2 text-center">
+                    <div key={item.label} className="bg-[#F7F6F3] border border-[#E3E1DB] rounded px-3 py-2 text-center">
                       <p className={`text-lg font-bold ${item.color}`}>{item.value}</p>
-                      <p className="text-[11px] text-gray-400 mt-0.5">{item.label}</p>
+                      <p className="text-[11px] text-[#9B9890] mt-0.5">{item.label}</p>
                     </div>
                   ))}
                 </div>
@@ -1193,17 +1193,17 @@ function AnalyticsModal({ scenario, onClose }) {
 
               {/* Performance */}
               <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Performance</p>
+                <p className="text-xs font-semibold text-[#9B9890] uppercase tracking-wider mb-2">Performance</p>
                 <div className="grid grid-cols-4 gap-3">
                   {[
-                    { label: 'Total Tokens', value: analytics.performance.totalTokens.toLocaleString(), color: 'text-gray-900' },
-                    { label: 'Avg Tokens/Msg', value: analytics.performance.avgTokensPerMessage, color: 'text-gray-700' },
-                    { label: 'Avg Response', value: `${analytics.performance.avgProcessingTimeMs}ms`, color: 'text-gray-700' },
-                    { label: 'Est. Cost', value: analytics.performance.estimatedCost, color: 'text-[#C54A3F]' },
+                    { label: 'Total Tokens', value: analytics.performance.totalTokens.toLocaleString(), color: 'text-[#131210]' },
+                    { label: 'Avg Tokens/Msg', value: analytics.performance.avgTokensPerMessage, color: 'text-[#5C5A55]' },
+                    { label: 'Avg Response', value: `${analytics.performance.avgProcessingTimeMs}ms`, color: 'text-[#5C5A55]' },
+                    { label: 'Est. Cost', value: analytics.performance.estimatedCost, color: 'text-[#D63B1F]' },
                   ].map((item) => (
-                    <div key={item.label} className="bg-gray-50 border border-gray-100 rounded px-3 py-2 text-center">
+                    <div key={item.label} className="bg-[#F7F6F3] border border-[#E3E1DB] rounded px-3 py-2 text-center">
                       <p className={`text-lg font-bold ${item.color}`}>{item.value}</p>
-                      <p className="text-[11px] text-gray-400 mt-0.5">{item.label}</p>
+                      <p className="text-[11px] text-[#9B9890] mt-0.5">{item.label}</p>
                     </div>
                   ))}
                 </div>
@@ -1212,18 +1212,18 @@ function AnalyticsModal({ scenario, onClose }) {
               {/* Follow-up Stage Distribution */}
               {Object.keys(analytics.followupStages).length > 0 && (
                 <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Follow-up Stage Distribution</p>
+                  <p className="text-xs font-semibold text-[#9B9890] uppercase tracking-wider mb-2">Follow-up Stage Distribution</p>
                   <div className="space-y-1.5">
                     {Object.entries(analytics.followupStages).map(([stage, count]) => (
                       <div key={stage} className="flex items-center gap-2">
-                        <span className="text-xs text-gray-500 w-16 flex-shrink-0">Stage {stage}</span>
-                        <div className="flex-1 bg-gray-100 rounded-full h-2">
+                        <span className="text-xs text-[#9B9890] w-16 flex-shrink-0">Stage {stage}</span>
+                        <div className="flex-1 bg-[#EFEDE8] rounded-full h-2">
                           <div
-                            className="bg-[#C54A3F] h-2 rounded-full"
+                            className="bg-[#D63B1F] h-2 rounded-full"
                             style={{ width: `${(count / analytics.conversations.total) * 100}%` }}
                           />
                         </div>
-                        <span className="text-xs text-gray-600 w-6 text-right">{count}</span>
+                        <span className="text-xs text-[#5C5A55] w-6 text-right">{count}</span>
                       </div>
                     ))}
                   </div>
@@ -1231,12 +1231,12 @@ function AnalyticsModal({ scenario, onClose }) {
               )}
             </div>
           ) : (
-            <p className="text-sm text-gray-400 text-center py-8">No analytics data available</p>
+            <p className="text-sm text-[#9B9890] text-center py-8">No analytics data available</p>
           )}
         </div>
 
-        <div className="px-5 py-3.5 border-t border-gray-100 flex justify-end">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">Close</button>
+        <div className="px-5 py-3.5 border-t border-[#E3E1DB] flex justify-end">
+          <button onClick={onClose} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Close</button>
         </div>
       </div>
     </div>
@@ -1274,23 +1274,23 @@ function ExecutionsModal({ scenario, onClose }) {
     const map = {
       success: 'bg-green-50 text-green-700',
       failed: 'bg-red-50 text-red-700',
-      no_reply: 'bg-gray-100 text-gray-600',
+      no_reply: 'bg-[#EFEDE8] text-[#5C5A55]',
       human_needed: 'bg-orange-50 text-orange-700',
       skipped_business_hours: 'bg-yellow-50 text-yellow-700',
       processing: 'bg-blue-50 text-blue-700',
     }
-    return map[status] || 'bg-gray-100 text-gray-600'
+    return map[status] || 'bg-[#EFEDE8] text-[#5C5A55]'
   }
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl my-8">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 sticky top-0 bg-white z-10">
+      <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-2xl my-8">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#E3E1DB] sticky top-0 bg-[#FFFFFF] z-10">
           <div>
-            <h3 className="text-sm font-semibold text-gray-900">Execution Logs</h3>
-            <p className="text-xs text-gray-400 mt-0.5">{scenario.name}</p>
+            <h3 className="text-sm font-semibold text-[#131210]">Execution Logs</h3>
+            <p className="text-xs text-[#9B9890] mt-0.5">{scenario.name}</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1">
+          <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1">
             <i className="fas fa-times text-sm"></i>
           </button>
         </div>
@@ -1298,21 +1298,21 @@ function ExecutionsModal({ scenario, onClose }) {
         <div className="px-5 py-4">
           {loading ? (
             <div className="text-center py-8">
-              <i className="fas fa-spinner fa-spin text-gray-400 text-xl"></i>
+              <i className="fas fa-spinner fa-spin text-[#9B9890] text-xl"></i>
             </div>
           ) : executions.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-8">No execution logs yet</p>
+            <p className="text-sm text-[#9B9890] text-center py-8">No execution logs yet</p>
           ) : (
             <div className="space-y-2">
               {executions.map((exec) => (
-                <div key={exec.id} className="bg-gray-50 border border-gray-100 rounded px-3 py-2">
+                <div key={exec.id} className="bg-[#F7F6F3] border border-[#E3E1DB] rounded px-3 py-2">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs text-gray-500">{formatDate(exec.created_at)}</span>
+                    <span className="text-xs text-[#9B9890]">{formatDate(exec.created_at)}</span>
                     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getStatusBadge(exec.execution_status)}`}>
                       {exec.execution_status?.replace(/_/g, ' ')}
                     </span>
                   </div>
-                  <div className="flex items-center gap-4 text-xs text-gray-500">
+                  <div className="flex items-center gap-4 text-xs text-[#9B9890]">
                     <span><i className="fas fa-phone-alt mr-1"></i>{exec.sender_number}</span>
                     {exec.tokens_used && <span><i className="fas fa-coins mr-1"></i>{exec.tokens_used} tokens</span>}
                     {exec.processing_time_ms && <span><i className="fas fa-clock mr-1"></i>{exec.processing_time_ms}ms</span>}
@@ -1324,8 +1324,8 @@ function ExecutionsModal({ scenario, onClose }) {
           )}
         </div>
 
-        <div className="px-5 py-3.5 border-t border-gray-100 flex justify-end">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">Close</button>
+        <div className="px-5 py-3.5 border-t border-[#E3E1DB] flex justify-end">
+          <button onClick={onClose} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Close</button>
         </div>
       </div>
     </div>
@@ -1337,15 +1337,15 @@ function ExecutionsModal({ scenario, onClose }) {
 function ErrorModal({ title, message, onClose }) {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-sm">
-        <div className="px-5 py-4 border-b border-gray-100">
-          <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
+      <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-sm">
+        <div className="px-5 py-4 border-b border-[#E3E1DB]">
+          <h3 className="text-sm font-semibold text-[#131210]">{title}</h3>
         </div>
         <div className="px-5 py-4">
-          <p className="text-sm text-gray-600">{message}</p>
+          <p className="text-sm text-[#5C5A55]">{message}</p>
         </div>
-        <div className="px-5 py-3 border-t border-gray-100 flex justify-end">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">Close</button>
+        <div className="px-5 py-3 border-t border-[#E3E1DB] flex justify-end">
+          <button onClick={onClose} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Close</button>
         </div>
       </div>
     </div>
@@ -1357,17 +1357,17 @@ function ErrorModal({ title, message, onClose }) {
 function DeleteConfirmModal({ scenarioName, onConfirm, onCancel }) {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-sm">
-        <div className="px-5 py-4 border-b border-gray-100">
-          <h3 className="text-sm font-semibold text-gray-900">Delete Scenario</h3>
+      <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-sm">
+        <div className="px-5 py-4 border-b border-[#E3E1DB]">
+          <h3 className="text-sm font-semibold text-[#131210]">Delete Scenario</h3>
         </div>
         <div className="px-5 py-4">
-          <p className="text-sm text-gray-600">
-            Delete <span className="font-medium text-gray-900">"{scenarioName}"</span>? This cannot be undone.
+          <p className="text-sm text-[#5C5A55]">
+            Delete <span className="font-medium text-[#131210]">"{scenarioName}"</span>? This cannot be undone.
           </p>
         </div>
-        <div className="px-5 py-3 border-t border-gray-100 flex justify-end gap-2">
-          <button onClick={onCancel} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">Cancel</button>
+        <div className="px-5 py-3 border-t border-[#E3E1DB] flex justify-end gap-2">
+          <button onClick={onCancel} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
           <button onClick={onConfirm} className="px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md">Delete</button>
         </div>
       </div>

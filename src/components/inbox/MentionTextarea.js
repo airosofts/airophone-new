@@ -136,7 +136,7 @@ export default function MentionTextarea({ value, onChange, onSubmit, placeholder
   const dropdown = showDropdown && filteredMembers.length > 0 && typeof document !== 'undefined'
     ? createPortal(
         <div
-          className="fixed w-60 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-[9999] max-h-52 overflow-y-auto"
+          className="fixed w-60 bg-[#FFFFFF] rounded-lg shadow-xl border border-[#E3E1DB] py-1 z-[9999] max-h-52 overflow-y-auto"
           style={{ top: dropdownPos.top, left: dropdownPos.left }}
         >
           {filteredMembers.map((member, idx) => (
@@ -144,10 +144,10 @@ export default function MentionTextarea({ value, onChange, onSubmit, placeholder
               key={member.id}
               onMouseDown={(e) => { e.preventDefault(); insertMention(member) }}
               className={`w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors ${
-                idx === dropdownIndex ? 'bg-gray-100 text-gray-900' : 'text-gray-700 hover:bg-gray-50'
+                idx === dropdownIndex ? 'bg-[#EFEDE8] text-[#131210]' : 'text-[#5C5A55] hover:bg-[#F7F6F3]'
               }`}
             >
-              <div className="w-6 h-6 rounded-full bg-[#C54A3F] flex items-center justify-center flex-shrink-0">
+              <div className="w-6 h-6 rounded-full bg-[#D63B1F] flex items-center justify-center flex-shrink-0">
                 {member.profile_photo_url ? (
                   <img src={member.profile_photo_url} alt="" className="w-6 h-6 rounded-full" />
                 ) : (
@@ -158,7 +158,7 @@ export default function MentionTextarea({ value, onChange, onSubmit, placeholder
               </div>
               <div className="min-w-0">
                 <p className="font-medium truncate text-[13px]">{member.name}</p>
-                <p className="text-[11px] text-gray-400 truncate">{member.email}</p>
+                <p className="text-[11px] text-[#9B9890] truncate">{member.email}</p>
               </div>
             </button>
           ))}
@@ -177,7 +177,7 @@ export default function MentionTextarea({ value, onChange, onSubmit, placeholder
         onBlur={handleBlur}
         onFocus={() => { if (mentionStart !== -1) updateDropdownPosition() }}
         placeholder={placeholder}
-        className="w-full px-3 pt-2.5 pb-1 text-[13px] text-gray-700 placeholder-gray-400 resize-none focus:outline-none bg-transparent leading-relaxed"
+        className="w-full px-3 pt-2.5 pb-1 text-[13px] text-[#5C5A55] placeholder-[#9B9890] resize-none focus:outline-none bg-transparent leading-relaxed"
         rows={rows}
       />
       {dropdown}
@@ -196,7 +196,7 @@ export function renderNoteWithMentions(content) {
   return parts.map((part, i) => {
     if (part.startsWith('@') && /^@[A-Z]/.test(part)) {
       return (
-        <span key={i} className="text-[#C54A3F] font-medium bg-red-50 rounded px-0.5">
+        <span key={i} className="text-[#D63B1F] font-medium bg-red-50 rounded px-0.5">
           {part}
         </span>
       )

@@ -2,19 +2,16 @@ import { NextResponse } from 'next/server'
 
 export function middleware(request) {
   const { pathname } = request.nextUrl
-  
+
   // Public routes that don't need authentication
-  const publicRoutes = ['/login', '/api/auth/login']
+  const publicRoutes = ['/login', '/signup', '/auth/callback', '/onboarding', '/api/auth/login', '/api/auth/signup', '/api/auth/google', '/api/onboarding']
   if (publicRoutes.some(route => pathname.startsWith(route))) {
     return NextResponse.next()
   }
-//ok //ok
+
   // Protected routes
   const protectedRoutes = ['/', '/dashboard', '/inbox', '/contacts', '/campaigns']
   if (protectedRoutes.some(route => pathname.startsWith(route))) {
-    // In a localStorage world, you might need client-side checks
-    // This middleware becomes less critical
-    //ok
     return NextResponse.next()
   }
 

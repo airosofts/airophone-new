@@ -29,7 +29,7 @@ export default function Loading({ size = 'default', text = 'Loading...' }) {
         />
       </svg>
       {text && (
-        <p className="text-sm text-gray-600">{text}</p>
+        <p className="text-sm text-[#5C5A55]">{text}</p>
       )}
     </div>
   )

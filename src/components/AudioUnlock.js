@@ -1,75 +1,82 @@
 'use client'
-// Unlocks browser audio on first user interaction so ringtones play even in background tabs.
-// Also pre-decodes call.mp3 into an AudioContext buffer (window.__airoRingBuffer) so
-// playRingtone() can use the AudioContext API — which bypasses HTMLAudioElement autoplay
-// restrictions and works even when the tab is in the background.
-// Must be in the root layout so it runs on every page.
+// AudioUnlock.js
+// Unlocks Web Audio API on the first user gesture so ringtones play in any tab state.
+// Exposes window.__airoCtx (AudioContext) and window.__airoRingBuffer (decoded AudioBuffer)
+// for use by playRingtone(). Also retries buffer load if a previous attempt failed.
 import { useEffect } from 'react'
 
 export default function AudioUnlock() {
   useEffect(() => {
     if (typeof window === 'undefined') return
 
-    let unlocked = false
-
-    const unlock = async () => {
-      if (unlocked) return
-      unlocked = true
-
+    const load = async () => {
       try {
-        const AudioContext = window.AudioContext || window.webkitAudioContext
-        if (!AudioContext) return
+        const AC = window.AudioContext || window.webkitAudioContext
+        if (!AC) return
 
-        // Create context in this user-gesture stack — guaranteed to start running
-        const ctx = new AudioContext()
-
-        // Play a silent buffer to satisfy browser autoplay policy
-        const buf = ctx.createBuffer(1, 1, 22050)
-        const src = ctx.createBufferSource()
-        src.buffer = buf
-        src.connect(ctx.destination)
-        src.start(0)
-
-        if (ctx.state === 'suspended') await ctx.resume()
-
-        // Expose running context globally — ringtone system reuses this
-        window.__airoCtx = ctx
-
-        // Pre-decode call.mp3 into an AudioBuffer while we're in user-gesture context.
-        // This lets playRingtone() use createBufferSource() which works in background tabs.
-        try {
-          const res = await fetch('/call.mp3')
-          const arrayBuf = await res.arrayBuffer()
-          window.__airoRingBuffer = await ctx.decodeAudioData(arrayBuf)
-          console.log('[AudioUnlock] Ringtone buffer pre-loaded — background playback ready')
-        } catch (e) {
-          console.warn('[AudioUnlock] Ringtone preload failed:', e.message)
+        // Reuse existing running context if already set up
+        let ctx = window.__airoCtx
+        if (!ctx || ctx.state === 'closed') {
+          ctx = new AC()
+          window.__airoCtx = ctx
         }
 
-        // Also unlock HTMLAudioElement as a fallback path
-        const silentAudio = new Audio('/call.mp3')
-        silentAudio.volume = 0
-        silentAudio.muted = true
-        const playPromise = silentAudio.play()
-        if (playPromise) {
-          playPromise.then(() => {
-            silentAudio.pause()
-            silentAudio.src = ''
-          }).catch(() => {})
+        // Resume if suspended (required in some browsers even inside gesture)
+        if (ctx.state === 'suspended') {
+          await ctx.resume()
         }
 
-        console.log('[AudioUnlock] Audio context unlocked for background playback')
+        // Play a 1-frame silent buffer — satisfies autoplay policy for HTMLAudioElement too
+        const silent = ctx.createBuffer(1, 1, 22050)
+        const silentSrc = ctx.createBufferSource()
+        silentSrc.buffer = silent
+        silentSrc.connect(ctx.destination)
+        silentSrc.start(0)
+
+        // If the context gets suspended/interrupted (Chrome 136+ hardware interruption,
+        // iOS Safari tab switch, etc.), clear the buffer so the next user gesture
+        // re-runs load() and restores the running state.
+        // DO NOT call ctx.resume() here without a gesture — it fails silently on iOS Safari.
+        ctx.addEventListener('statechange', () => {
+          if (ctx.state === 'interrupted' || ctx.state === 'suspended') {
+            console.log('[AudioUnlock] ctx state changed to', ctx.state, '— will re-unlock on next gesture')
+            window.__airoRingBuffer = null // force reload on next gesture
+          }
+        })
+
+        // Skip if buffer already decoded successfully
+        if (window.__airoRingBuffer) return
+
+        // Fetch and decode call.mp3 into an AudioBuffer.
+        // Once decoded, playRingtone() uses createBufferSource() which bypasses
+        // all autoplay restrictions — plays even in background tabs.
+        const res = await fetch('/call.mp3')
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const arrayBuf = await res.arrayBuffer()
+        window.__airoRingBuffer = await ctx.decodeAudioData(arrayBuf)
+
+        console.log('[AudioUnlock] Ringtone buffer ready — ctx state:', ctx.state)
       } catch (e) {
-        console.warn('[AudioUnlock] Could not unlock audio:', e.message)
+        console.warn('[AudioUnlock] Failed:', e.message)
+        // Don't set __airoRingBuffer so next gesture retries
+        window.__airoRingBuffer = null
       }
     }
 
-    // Unlock on any user gesture
-    const events = ['click', 'touchstart', 'keydown', 'mousedown']
-    events.forEach(e => document.addEventListener(e, unlock, { once: true, capture: true }))
+    const events = ['click', 'touchstart', 'keydown', 'mousedown', 'pointerdown']
+
+    // Use a non-once listener so retries work if buffer load failed
+    const handler = () => { load() }
+    events.forEach(e => document.addEventListener(e, handler, { capture: true, passive: true }))
+
+    // Also attempt immediately in case context was already unlocked
+    // (e.g. user navigated from another page where they already clicked)
+    if (window.__airoCtx && window.__airoCtx.state === 'running' && !window.__airoRingBuffer) {
+      load()
+    }
 
     return () => {
-      events.forEach(e => document.removeEventListener(e, unlock, { capture: true }))
+      events.forEach(e => document.removeEventListener(e, handler, { capture: true }))
     }
   }, [])
 

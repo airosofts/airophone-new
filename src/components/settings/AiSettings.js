@@ -56,27 +56,27 @@ export default function AiSettings() {
   }
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg">
-      <div className="px-5 py-4 border-b border-gray-100">
-        <h3 className="text-sm font-semibold text-gray-900">AI Reply Settings</h3>
-        <p className="text-xs text-gray-400 mt-0.5">Configure how AI scenarios behave when responding</p>
+    <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg">
+      <div className="px-5 py-4 border-b border-[#E3E1DB]">
+        <h3 className="text-sm font-semibold text-[#131210]">AI Reply Settings</h3>
+        <p className="text-xs text-[#9B9890] mt-0.5">Configure how AI scenarios behave when responding</p>
       </div>
 
       <div className="px-5 py-5 space-y-6">
         {/* Reply Delay */}
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <h4 className="text-sm font-medium text-gray-800">Reply delay</h4>
+            <h4 className="text-sm font-medium text-[#131210]">Reply delay</h4>
             <span className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded font-medium">Humanize</span>
           </div>
-          <p className="text-xs text-gray-400 mb-4">
+          <p className="text-xs text-[#9B9890] mb-4">
             AI will wait a random time between min and max before sending a reply — making responses feel more natural.
             Set both to <strong>0</strong> to reply instantly.
           </p>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">Min delay (seconds)</label>
+              <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Min delay (seconds)</label>
               <div className="relative">
                 <input
                   type="number"
@@ -85,14 +85,14 @@ export default function AiSettings() {
                   value={minDelay}
                   onChange={(e) => setMinDelay(e.target.value)}
                   disabled={loading}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:border-[#C54A3F] focus:ring-1 focus:ring-[#C54A3F]/20 disabled:bg-gray-50 disabled:text-gray-400"
+                  className="w-full px-3 py-2 border border-[#E3E1DB] rounded-md text-sm focus:outline-none focus:border-[#D63B1F] focus:ring-1 focus:ring-[#D63B1F]/20 disabled:bg-[#F7F6F3] disabled:text-[#9B9890]"
                   placeholder="0"
                 />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">sec</span>
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#9B9890] pointer-events-none">sec</span>
               </div>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">Max delay (seconds)</label>
+              <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Max delay (seconds)</label>
               <div className="relative">
                 <input
                   type="number"
@@ -101,33 +101,33 @@ export default function AiSettings() {
                   value={maxDelay}
                   onChange={(e) => setMaxDelay(e.target.value)}
                   disabled={loading}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:border-[#C54A3F] focus:ring-1 focus:ring-[#C54A3F]/20 disabled:bg-gray-50 disabled:text-gray-400"
+                  className="w-full px-3 py-2 border border-[#E3E1DB] rounded-md text-sm focus:outline-none focus:border-[#D63B1F] focus:ring-1 focus:ring-[#D63B1F]/20 disabled:bg-[#F7F6F3] disabled:text-[#9B9890]"
                   placeholder="0"
                 />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">sec</span>
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#9B9890] pointer-events-none">sec</span>
               </div>
             </div>
           </div>
 
           {/* Preview */}
           {(parseInt(minDelay) > 0 || parseInt(maxDelay) > 0) && (
-            <div className="mt-3 px-3 py-2 bg-gray-50 rounded-md border border-gray-100">
-              <p className="text-xs text-gray-500">
+            <div className="mt-3 px-3 py-2 bg-[#F7F6F3] rounded-md border border-[#E3E1DB]">
+              <p className="text-xs text-[#9B9890]">
                 AI will reply after a random delay between{' '}
-                <span className="font-semibold text-gray-700">{parseInt(minDelay) || 0}s</span>
+                <span className="font-semibold text-[#5C5A55]">{parseInt(minDelay) || 0}s</span>
                 {' '}and{' '}
-                <span className="font-semibold text-gray-700">{parseInt(maxDelay) || 0}s</span>
+                <span className="font-semibold text-[#5C5A55]">{parseInt(maxDelay) || 0}s</span>
               </p>
             </div>
           )}
         </div>
       </div>
 
-      <div className="px-5 py-3 border-t border-gray-100 flex justify-end">
+      <div className="px-5 py-3 border-t border-[#E3E1DB] flex justify-end">
         <button
           onClick={handleSave}
           disabled={saving || loading}
-          className="flex items-center gap-2 px-4 py-2 bg-[#C54A3F] hover:bg-[#B73E34] text-white text-sm font-medium rounded-md disabled:opacity-50 transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-[#D63B1F] hover:bg-[#c23119] text-white text-sm font-medium rounded-md disabled:opacity-50 transition-colors"
         >
           {saving ? (
             <><i className="fas fa-spinner fa-spin text-xs" />Saving…</>

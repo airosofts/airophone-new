@@ -67,10 +67,10 @@ export default function CallInterface({
     if (!missedCallNotice) return null
     return (
       <div className="fixed bottom-6 right-6 z-50 w-72">
-        <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
+        <div className="bg-[#FFFFFF] rounded-2xl shadow-xl border border-[#E3E1DB] overflow-hidden">
           <div className="bg-red-500 px-4 py-3 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-full bg-[#FFFFFF]/20 flex items-center justify-center">
                 <Phone className="w-4 h-4 text-white" />
               </div>
               <div>
@@ -82,12 +82,12 @@ export default function CallInterface({
             </div>
             <button
               onClick={() => callHook?.dismissMissedCall?.()}
-              className="w-6 h-6 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+              className="w-6 h-6 rounded-full bg-[#FFFFFF]/20 hover:bg-[#FFFFFF]/30 flex items-center justify-center transition-colors"
             >
               <X className="w-3 h-3 text-white" />
             </button>
           </div>
-          <div className="px-4 py-2.5 text-xs text-gray-500">
+          <div className="px-4 py-2.5 text-xs text-[#9B9890]">
             Caller hung up before you could answer
           </div>
         </div>
@@ -217,10 +217,10 @@ export default function CallInterface({
       <div className="fixed bottom-6 right-6 z-50">
         <button
           onClick={() => setIsMinimized(false)}
-          className="flex items-center gap-3 pl-3 pr-4 py-2.5 bg-white rounded-full shadow-lg border border-gray-200 hover:shadow-xl transition-shadow"
+          className="flex items-center gap-3 pl-3 pr-4 py-2.5 bg-[#FFFFFF] rounded-full shadow-lg border border-[#E3E1DB] hover:shadow-xl transition-shadow"
         >
           <div className="relative">
-            <div className="w-8 h-8 rounded-full bg-[#C54A3F] flex items-center justify-center text-white text-xs font-semibold">
+            <div className="w-8 h-8 rounded-full bg-[#D63B1F] flex items-center justify-center text-white text-xs font-semibold">
               {getInitials()}
             </div>
             <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white ${
@@ -228,14 +228,14 @@ export default function CallInterface({
             }`} />
           </div>
           <div className="text-left">
-            <p className="text-xs font-semibold text-gray-900 leading-tight">{formatPhoneNumber(getPhoneNumber())}</p>
-            <p className="text-[10px] text-gray-500 leading-tight">{getCallStatusText()}</p>
+            <p className="text-xs font-semibold text-[#131210] leading-tight">{formatPhoneNumber(getPhoneNumber())}</p>
+            <p className="text-[10px] text-[#9B9890] leading-tight">{getCallStatusText()}</p>
           </div>
           <div
             className="w-7 h-7 rounded-full bg-red-50 hover:bg-red-100 flex items-center justify-center ml-1 transition-colors"
             onClick={(e) => { e.stopPropagation(); handleEndClick() }}
           >
-            <PhoneOff className="w-3.5 h-3.5 text-[#C54A3F]" />
+            <PhoneOff className="w-3.5 h-3.5 text-[#D63B1F]" />
           </div>
         </button>
       </div>
@@ -250,9 +250,9 @@ export default function CallInterface({
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50" />
         {/* Centered incoming card */}
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-80 overflow-hidden animate-bounce-in">
+          <div className="bg-[#FFFFFF] rounded-3xl shadow-2xl w-80 overflow-hidden animate-bounce-in">
             <div className="bg-linear-to-b from-[#1a1a2e] to-[#16213e] px-6 py-8 flex flex-col items-center gap-4">
-              <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center text-white text-2xl font-bold ring-4 ring-white/20">
+              <div className="w-20 h-20 rounded-full bg-[#FFFFFF]/10 flex items-center justify-center text-white text-2xl font-bold ring-4 ring-white/20">
                 {getInitials()}
               </div>
               <div className="text-center">
@@ -276,7 +276,7 @@ export default function CallInterface({
                 >
                   <PhoneOff className="w-6 h-6" />
                 </button>
-                <span className="text-xs text-gray-500 font-medium">Decline</span>
+                <span className="text-xs text-[#9B9890] font-medium">Decline</span>
               </div>
               <div className="flex flex-col items-center gap-2">
                 <button
@@ -285,7 +285,7 @@ export default function CallInterface({
                 >
                   <Phone className="w-6 h-6" />
                 </button>
-                <span className="text-xs text-gray-500 font-medium">Accept</span>
+                <span className="text-xs text-[#9B9890] font-medium">Accept</span>
               </div>
             </div>
           </div>
@@ -298,13 +298,13 @@ export default function CallInterface({
     <>
       {/* Main Call Card - Bottom Right */}
       <div className="fixed bottom-6 right-6 z-50 w-72">
-        <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden">
+        <div className="bg-[#FFFFFF] rounded-2xl shadow-2xl border border-[#E3E1DB] overflow-hidden">
 
           {/* Header */}
-          <div className="bg-[#C54A3F] px-4 py-3">
+          <div className="bg-[#D63B1F] px-4 py-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center text-white text-xs font-bold">
+                <div className="w-9 h-9 rounded-full bg-[#FFFFFF]/20 flex items-center justify-center text-white text-xs font-bold">
                   {getInitials()}
                 </div>
                 <div>
@@ -316,11 +316,11 @@ export default function CallInterface({
                 <span className={`w-2 h-2 rounded-full ${
                   isActive ? 'bg-emerald-300 animate-pulse' :
                   isConnecting ? 'bg-yellow-300 animate-pulse' :
-                  'bg-white/40'
+                  'bg-[#FFFFFF]/40'
                 }`} />
                 <button
                   onClick={() => setIsMinimized(true)}
-                  className="w-6 h-6 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center transition-colors"
+                  className="w-6 h-6 rounded-full bg-[#FFFFFF]/15 hover:bg-[#FFFFFF]/25 flex items-center justify-center transition-colors"
                   title="Minimize"
                 >
                   <Minus className="w-3 h-3 text-white" />
@@ -334,15 +334,15 @@ export default function CallInterface({
 
             {/* Conference Participants */}
             {participantCalls.length > 0 && (
-              <div className="mb-3 p-2.5 bg-gray-50 rounded-lg">
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+              <div className="mb-3 p-2.5 bg-[#F7F6F3] rounded-lg">
+                <p className="text-[10px] font-semibold text-[#9B9890] uppercase tracking-wider mb-1.5">
                   Conference ({participantCalls.length + 1})
                 </p>
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                      <span className="text-xs text-gray-700 font-medium">You</span>
+                      <span className="text-xs text-[#5C5A55] font-medium">You</span>
                     </div>
                     <span className="text-[10px] text-emerald-600 font-medium">Host</span>
                   </div>
@@ -354,7 +354,7 @@ export default function CallInterface({
                           getParticipantStatus(p) === 'Disconnected' ? 'bg-red-400' :
                           'bg-yellow-400 animate-pulse'
                         }`} />
-                        <span className="text-xs text-gray-700">{formatPhoneNumber(p.phoneNumber)}</span>
+                        <span className="text-xs text-[#5C5A55]">{formatPhoneNumber(p.phoneNumber)}</span>
                       </div>
                       <span className={`text-[10px] font-medium ${
                         getParticipantStatus(p) === 'Connected' ? 'text-emerald-600' :
@@ -384,8 +384,8 @@ export default function CallInterface({
                     onClick={handleMuteClick}
                     className={`w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-95 ${
                       isMuted
-                        ? 'bg-[#C54A3F]/10 text-[#C54A3F] ring-1 ring-[#C54A3F]/30'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        ? 'bg-[#D63B1F]/10 text-[#D63B1F] ring-1 ring-[#D63B1F]/30'
+                        : 'bg-[#EFEDE8] text-[#5C5A55] hover:bg-[#EFEDE8]'
                     }`}
                     title={isMuted ? 'Unmute' : 'Mute'}
                   >
@@ -398,7 +398,7 @@ export default function CallInterface({
                     className={`w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-95 ${
                       isOnHold
                         ? 'bg-yellow-50 text-yellow-600 ring-1 ring-yellow-300'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        : 'bg-[#EFEDE8] text-[#5C5A55] hover:bg-[#EFEDE8]'
                     }`}
                     title={isOnHold ? 'Resume' : 'Hold'}
                   >
@@ -408,7 +408,7 @@ export default function CallInterface({
                   {/* End Call */}
                   <button
                     onClick={handleEndClick}
-                    className="w-12 h-12 bg-[#C54A3F] hover:bg-[#B73E34] rounded-full flex items-center justify-center text-white shadow-md transition-all active:scale-95"
+                    className="w-12 h-12 bg-[#D63B1F] hover:bg-[#c23119] rounded-full flex items-center justify-center text-white shadow-md transition-all active:scale-95"
                     title="End Call"
                   >
                     <PhoneOff className="w-5 h-5" />
@@ -419,8 +419,8 @@ export default function CallInterface({
                     onClick={() => { setShowDialpad(!showDialpad); setShowAddParticipant(false); setShowTransfer(false) }}
                     className={`w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-95 ${
                       showDialpad
-                        ? 'bg-[#C54A3F]/10 text-[#C54A3F] ring-1 ring-[#C54A3F]/30'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        ? 'bg-[#D63B1F]/10 text-[#D63B1F] ring-1 ring-[#D63B1F]/30'
+                        : 'bg-[#EFEDE8] text-[#5C5A55] hover:bg-[#EFEDE8]'
                     }`}
                     title="Dialpad"
                   >
@@ -429,11 +429,11 @@ export default function CallInterface({
                 </div>
 
                 {/* Secondary actions */}
-                <div className="flex justify-center gap-6 mt-3 pt-3 border-t border-gray-100">
+                <div className="flex justify-center gap-6 mt-3 pt-3 border-t border-[#E3E1DB]">
                   <button
                     onClick={() => { setShowAddParticipant(true); setShowDialpad(false); setShowTransfer(false) }}
                     disabled={callStatus === 'transferring'}
-                    className="flex flex-col items-center gap-0.5 text-gray-500 hover:text-gray-700 disabled:opacity-40 transition-colors"
+                    className="flex flex-col items-center gap-0.5 text-[#9B9890] hover:text-[#5C5A55] disabled:opacity-40 transition-colors"
                   >
                     <UserPlus className="w-4 h-4" />
                     <span className="text-[10px] font-medium">Add</span>
@@ -441,7 +441,7 @@ export default function CallInterface({
                   <button
                     onClick={() => { setShowTransfer(true); setShowDialpad(false); setShowAddParticipant(false) }}
                     disabled={callStatus === 'transferring'}
-                    className="flex flex-col items-center gap-0.5 text-gray-500 hover:text-gray-700 disabled:opacity-40 transition-colors"
+                    className="flex flex-col items-center gap-0.5 text-[#9B9890] hover:text-[#5C5A55] disabled:opacity-40 transition-colors"
                   >
                     <ArrowRightLeft className="w-4 h-4" />
                     <span className="text-[10px] font-medium">Transfer</span>
@@ -454,18 +454,18 @@ export default function CallInterface({
 
         {/* Dialpad Panel */}
         {showDialpad && (
-          <div className="mt-2 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden">
+          <div className="mt-2 bg-[#FFFFFF] rounded-2xl shadow-2xl border border-[#E3E1DB] overflow-hidden">
             <div className="px-4 pt-3 pb-1 flex items-center justify-between">
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Dialpad</span>
-              <button onClick={() => setShowDialpad(false)} className="w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center">
-                <X className="w-3 h-3 text-gray-500" />
+              <span className="text-xs font-semibold text-[#9B9890] uppercase tracking-wider">Dialpad</span>
+              <button onClick={() => setShowDialpad(false)} className="w-6 h-6 rounded-full bg-[#EFEDE8] hover:bg-[#EFEDE8] flex items-center justify-center">
+                <X className="w-3 h-3 text-[#9B9890]" />
               </button>
             </div>
             {dialpadInput && (
               <div className="px-4 pb-1">
-                <div className="bg-gray-50 rounded-lg px-3 py-1.5 flex items-center justify-between">
-                  <span className="text-sm font-mono text-gray-800">{dialpadInput}</span>
-                  <button onClick={() => setDialpadInput('')} className="text-gray-400 hover:text-gray-600">
+                <div className="bg-[#F7F6F3] rounded-lg px-3 py-1.5 flex items-center justify-between">
+                  <span className="text-sm font-mono text-[#131210]">{dialpadInput}</span>
+                  <button onClick={() => setDialpadInput('')} className="text-[#9B9890] hover:text-[#5C5A55]">
                     <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -476,10 +476,10 @@ export default function CallInterface({
                 <button
                   key={digit}
                   onClick={() => handleDTMF(digit)}
-                  className="h-12 bg-gray-50 hover:bg-gray-100 active:bg-gray-200 rounded-xl flex flex-col items-center justify-center transition-all active:scale-95"
+                  className="h-12 bg-[#F7F6F3] hover:bg-[#F7F6F3] active:bg-[#EFEDE8] rounded-xl flex flex-col items-center justify-center transition-all active:scale-95"
                 >
-                  <span className="text-lg font-semibold text-gray-800 leading-none">{digit}</span>
-                  {dialpadLetters[digit] && <span className="text-[8px] text-gray-400 leading-none mt-0.5">{dialpadLetters[digit]}</span>}
+                  <span className="text-lg font-semibold text-[#131210] leading-none">{digit}</span>
+                  {dialpadLetters[digit] && <span className="text-[8px] text-[#9B9890] leading-none mt-0.5">{dialpadLetters[digit]}</span>}
                 </button>
               ))}
             </div>
@@ -497,7 +497,7 @@ export default function CallInterface({
             contacts={filteredContacts}
             loading={loadingContacts}
             formatPhoneNumber={formatPhoneNumber}
-            actionColor="[#C54A3F]"
+            actionColor="[#D63B1F]"
           />
         )}
 
@@ -524,41 +524,41 @@ export default function CallInterface({
 // Shared contact search panel for Add Participant / Transfer
 function ContactSearchPanel({ title, onClose, onSelect, searchQuery, setSearchQuery, contacts, loading, formatPhoneNumber, isTransfer }) {
   return (
-    <div className="mt-2 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden max-h-72">
+    <div className="mt-2 bg-[#FFFFFF] rounded-2xl shadow-2xl border border-[#E3E1DB] overflow-hidden max-h-72">
       <div className="px-4 pt-3 pb-2 flex items-center justify-between">
-        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{title}</span>
-        <button onClick={onClose} className="w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center">
-          <X className="w-3 h-3 text-gray-500" />
+        <span className="text-xs font-semibold text-[#9B9890] uppercase tracking-wider">{title}</span>
+        <button onClick={onClose} className="w-6 h-6 rounded-full bg-[#EFEDE8] hover:bg-[#EFEDE8] flex items-center justify-center">
+          <X className="w-3 h-3 text-[#9B9890]" />
         </button>
       </div>
       <div className="px-4 pb-2">
         <div className="relative">
-          <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-2.5" />
+          <Search className="w-3.5 h-3.5 text-[#9B9890] absolute left-3 top-2.5" />
           <input
             type="text"
             placeholder="Name or phone number..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-[#C54A3F]/40 focus:ring-1 focus:ring-[#C54A3F]/20"
+            className="w-full pl-9 pr-3 py-2 text-sm border border-[#E3E1DB] rounded-lg focus:outline-none focus:border-[#D63B1F]/40 focus:ring-1 focus:ring-[#D63B1F]/20"
           />
         </div>
       </div>
       <div className="max-h-44 overflow-y-auto px-2 pb-2">
         {loading ? (
           <div className="py-6 flex justify-center">
-            <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
+            <Loader2 className="w-5 h-5 text-[#9B9890] animate-spin" />
           </div>
         ) : contacts.length > 0 ? (
           contacts.map((c) => (
-            <button key={c.id} onClick={() => onSelect(c.phone_number)} className="w-full flex items-center gap-2.5 px-2 py-2 hover:bg-gray-50 rounded-lg text-left transition-colors">
+            <button key={c.id} onClick={() => onSelect(c.phone_number)} className="w-full flex items-center gap-2.5 px-2 py-2 hover:bg-[#F7F6F3] rounded-lg text-left transition-colors">
               <div className={`w-7 h-7 rounded-full flex items-center justify-center ${
-                isTransfer ? 'bg-emerald-50 text-emerald-600' : 'bg-[#C54A3F]/10 text-[#C54A3F]'
+                isTransfer ? 'bg-emerald-50 text-emerald-600' : 'bg-[#D63B1F]/10 text-[#D63B1F]'
               }`}>
                 {isTransfer ? <ArrowRightLeft className="w-3 h-3" /> : <User className="w-3 h-3" />}
               </div>
               <div>
-                <p className="text-xs font-medium text-gray-900">{c.name || 'Unknown'}</p>
-                <p className="text-[10px] text-gray-400">{formatPhoneNumber(c.phone_number)}</p>
+                <p className="text-xs font-medium text-[#131210]">{c.name || 'Unknown'}</p>
+                <p className="text-[10px] text-[#9B9890]">{formatPhoneNumber(c.phone_number)}</p>
               </div>
             </button>
           ))
@@ -567,14 +567,14 @@ function ContactSearchPanel({ title, onClose, onSelect, searchQuery, setSearchQu
             <button
               onClick={() => onSelect(searchQuery)}
               className={`px-4 py-2 text-white text-xs font-medium rounded-lg transition-colors ${
-                isTransfer ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-[#C54A3F] hover:bg-[#B73E34]'
+                isTransfer ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-[#D63B1F] hover:bg-[#c23119]'
               }`}
             >
               {isTransfer ? 'Transfer to' : 'Call'} {searchQuery}
             </button>
           </div>
         ) : (
-          <div className="py-4 text-center text-xs text-gray-400">Enter a number above</div>
+          <div className="py-4 text-center text-xs text-[#9B9890]">Enter a number above</div>
         )}
       </div>
     </div>

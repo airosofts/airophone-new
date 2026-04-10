@@ -109,7 +109,7 @@ export default function ApiKeys() {
 
       {/* Error banner */}
       {error && (
-        <div className="flex items-center gap-3 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+        <div className="flex items-center gap-3 px-4 py-3 bg-[rgba(214,59,31,0.07)] border border-red-200 rounded-lg text-sm text-red-700">
           <i className="fas fa-exclamation-circle text-red-400 flex-shrink-0"></i>
           <span className="flex-1">{error}</span>
           <button onClick={() => setError(null)} className="text-red-300 hover:text-red-500">
@@ -119,15 +119,15 @@ export default function ApiKeys() {
       )}
 
       {/* Keys table */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
+      <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-[#E3E1DB] flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-semibold text-gray-900">API Keys</h3>
-            <p className="text-xs text-gray-400 mt-0.5">Each key grants full send access to your workspace</p>
+            <h3 className="text-sm font-semibold text-[#131210]">API Keys</h3>
+            <p className="text-xs text-[#9B9890] mt-0.5">Each key grants full send access to your workspace</p>
           </div>
           <button
             onClick={() => { setShowCreate(true); setError(null) }}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#C54A3F] hover:bg-[#B73E34] text-white text-sm font-medium rounded-md transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#D63B1F] hover:bg-[#c23119] text-white text-sm font-medium rounded-md transition-colors"
           >
             <i className="fas fa-plus text-xs"></i>
             Generate Key
@@ -135,39 +135,39 @@ export default function ApiKeys() {
         </div>
 
         {loading ? (
-          <div className="px-5 py-8 text-center text-sm text-gray-400">
+          <div className="px-5 py-8 text-center text-sm text-[#9B9890]">
             <i className="fas fa-spinner fa-spin mr-2"></i>Loading…
           </div>
         ) : keys.length === 0 ? (
           <div className="px-5 py-10 text-center">
-            <p className="text-sm text-gray-500">No API keys yet</p>
-            <p className="text-xs text-gray-400 mt-1">Generate a key to let external tools send messages</p>
+            <p className="text-sm text-[#9B9890]">No API keys yet</p>
+            <p className="text-xs text-[#9B9890] mt-1">Generate a key to let external tools send messages</p>
           </div>
         ) : (
           <table className="min-w-full">
             <thead>
-              <tr className="border-b border-gray-100">
-                <th className="px-5 py-2.5 text-left text-xs font-medium text-gray-500">Name</th>
-                <th className="px-5 py-2.5 text-left text-xs font-medium text-gray-500">Key</th>
-                <th className="px-5 py-2.5 text-left text-xs font-medium text-gray-500">Created</th>
-                <th className="px-5 py-2.5 text-left text-xs font-medium text-gray-500">Last used</th>
-                <th className="px-5 py-2.5 text-left text-xs font-medium text-gray-500">Status</th>
+              <tr className="border-b border-[#E3E1DB]">
+                <th className="px-5 py-2.5 text-left text-xs font-medium text-[#9B9890]">Name</th>
+                <th className="px-5 py-2.5 text-left text-xs font-medium text-[#9B9890]">Key</th>
+                <th className="px-5 py-2.5 text-left text-xs font-medium text-[#9B9890]">Created</th>
+                <th className="px-5 py-2.5 text-left text-xs font-medium text-[#9B9890]">Last used</th>
+                <th className="px-5 py-2.5 text-left text-xs font-medium text-[#9B9890]">Status</th>
                 <th className="px-5 py-2.5"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-[#E3E1DB]">
               {keys.map(k => (
-                <tr key={k.id} className="hover:bg-gray-50">
-                  <td className="px-5 py-3 text-sm font-medium text-gray-900">{k.name}</td>
+                <tr key={k.id} className="hover:bg-[#F7F6F3]">
+                  <td className="px-5 py-3 text-sm font-medium text-[#131210]">{k.name}</td>
                   <td className="px-5 py-3">
-                    <code className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs font-mono rounded">{k.key_prefix}…</code>
+                    <code className="px-2 py-0.5 bg-[#EFEDE8] text-[#5C5A55] text-xs font-mono rounded">{k.key_prefix}…</code>
                   </td>
-                  <td className="px-5 py-3 text-xs text-gray-500">{formatDate(k.created_at)}</td>
-                  <td className="px-5 py-3 text-xs text-gray-400">{formatDate(k.last_used_at)}</td>
+                  <td className="px-5 py-3 text-xs text-[#9B9890]">{formatDate(k.created_at)}</td>
+                  <td className="px-5 py-3 text-xs text-[#9B9890]">{formatDate(k.last_used_at)}</td>
                   <td className="px-5 py-3">
                     {k.is_active
                       ? <span className="px-2 py-0.5 text-xs font-medium bg-green-50 text-green-700 rounded-full">Active</span>
-                      : <span className="px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-500 rounded-full">Revoked</span>
+                      : <span className="px-2 py-0.5 text-xs font-medium bg-[#EFEDE8] text-[#9B9890] rounded-full">Revoked</span>
                     }
                   </td>
                   <td className="px-5 py-3 text-right">
@@ -183,7 +183,7 @@ export default function ApiKeys() {
                       <button
                         onClick={() => setConfirmDelete({ id: k.id, name: k.name })}
                         disabled={deleting === k.id}
-                        className="text-xs text-gray-400 hover:text-red-600 disabled:opacity-40"
+                        className="text-xs text-[#9B9890] hover:text-red-600 disabled:opacity-40"
                       >
                         {deleting === k.id ? <i className="fas fa-spinner fa-spin"></i> : 'Delete'}
                       </button>
@@ -197,20 +197,20 @@ export default function ApiKeys() {
       </div>
 
       {/* Integration guide */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-gray-100">
-          <h3 className="text-sm font-semibold text-gray-900">Integration Guide</h3>
-          <p className="text-xs text-gray-400 mt-0.5">Send SMS from any external tool using your API key</p>
+      <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-[#E3E1DB]">
+          <h3 className="text-sm font-semibold text-[#131210]">Integration Guide</h3>
+          <p className="text-xs text-[#9B9890] mt-0.5">Send SMS from any external tool using your API key</p>
         </div>
         <div className="p-5">
-          <div className="bg-gray-950 rounded-lg overflow-hidden">
+          <div className="bg-[#0F0E0C] rounded-lg overflow-hidden">
             <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-white/5">
-              <span className="w-2.5 h-2.5 rounded-full bg-red-500/70"></span>
+              <span className="w-2.5 h-2.5 rounded-full bg-[rgba(214,59,31,0.07)]0/70"></span>
               <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/70"></span>
               <span className="w-2.5 h-2.5 rounded-full bg-green-500/70"></span>
-              <span className="ml-auto text-[11px] text-gray-500 font-mono">POST /api/external/sms/send</span>
+              <span className="ml-auto text-[11px] text-[#9B9890] font-mono">POST /api/external/sms/send</span>
             </div>
-            <pre className="px-4 py-4 text-xs font-mono text-gray-300 overflow-x-auto leading-relaxed">{`POST https://ap.airosofts.com/api/external/sms/send
+            <pre className="px-4 py-4 text-xs font-mono text-[#D4D1C9] overflow-x-auto leading-relaxed">{`POST https://ap.airosofts.com/api/external/sms/send
 Authorization: Bearer airo_live_<your-key>
 Content-Type: application/json
 
@@ -227,8 +227,8 @@ Content-Type: application/json
 { "error": "Insufficient credits", "currentCredits": 0 }`}
             </pre>
           </div>
-          <p className="mt-3 text-xs text-gray-500">
-            Each SMS deducts 1 credit from your wallet. A <code className="bg-gray-100 px-1 rounded">402</code> is returned when credits run out.
+          <p className="mt-3 text-xs text-[#9B9890]">
+            Each SMS deducts 1 credit from your wallet. A <code className="bg-[#EFEDE8] px-1 rounded">402</code> is returned when credits run out.
           </p>
         </div>
       </div>
@@ -236,15 +236,15 @@ Content-Type: application/json
       {/* Revoke confirm */}
       {confirmRevoke && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-sm w-full mx-4">
-            <div className="px-5 py-4 border-b border-gray-100">
-              <h3 className="text-sm font-semibold text-gray-900">Revoke API Key</h3>
+          <div className="bg-[#FFFFFF] rounded-lg shadow-xl max-w-sm w-full mx-4">
+            <div className="px-5 py-4 border-b border-[#E3E1DB]">
+              <h3 className="text-sm font-semibold text-[#131210]">Revoke API Key</h3>
             </div>
             <div className="px-5 py-4">
-              <p className="text-sm text-gray-600">Revoke <span className="font-medium text-gray-900">"{confirmRevoke.name}"</span>? Any tool using this key will stop working immediately.</p>
+              <p className="text-sm text-[#5C5A55]">Revoke <span className="font-medium text-[#131210]">"{confirmRevoke.name}"</span>? Any tool using this key will stop working immediately.</p>
             </div>
-            <div className="px-5 py-3 border-t border-gray-100 flex justify-end gap-2">
-              <button onClick={() => setConfirmRevoke(null)} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">Cancel</button>
+            <div className="px-5 py-3 border-t border-[#E3E1DB] flex justify-end gap-2">
+              <button onClick={() => setConfirmRevoke(null)} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
               <button onClick={confirmRevokeKey} className="px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md">Revoke</button>
             </div>
           </div>
@@ -254,15 +254,15 @@ Content-Type: application/json
       {/* Delete confirm (permanent) */}
       {confirmDelete && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-sm w-full mx-4">
-            <div className="px-5 py-4 border-b border-gray-100">
-              <h3 className="text-sm font-semibold text-gray-900">Permanently Delete Key</h3>
+          <div className="bg-[#FFFFFF] rounded-lg shadow-xl max-w-sm w-full mx-4">
+            <div className="px-5 py-4 border-b border-[#E3E1DB]">
+              <h3 className="text-sm font-semibold text-[#131210]">Permanently Delete Key</h3>
             </div>
             <div className="px-5 py-4">
-              <p className="text-sm text-gray-600">Permanently delete <span className="font-medium text-gray-900">"{confirmDelete.name}"</span>? This will remove it from your list entirely.</p>
+              <p className="text-sm text-[#5C5A55]">Permanently delete <span className="font-medium text-[#131210]">"{confirmDelete.name}"</span>? This will remove it from your list entirely.</p>
             </div>
-            <div className="px-5 py-3 border-t border-gray-100 flex justify-end gap-2">
-              <button onClick={() => setConfirmDelete(null)} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">Cancel</button>
+            <div className="px-5 py-3 border-t border-[#E3E1DB] flex justify-end gap-2">
+              <button onClick={() => setConfirmDelete(null)} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
               <button onClick={confirmDeleteKey} className="px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md">Delete</button>
             </div>
           </div>
@@ -272,31 +272,31 @@ Content-Type: application/json
       {/* Create key modal */}
       {showCreate && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-sm w-full mx-4">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-              <h3 className="text-sm font-semibold text-gray-900">New API Key</h3>
-              <button onClick={() => { setShowCreate(false); setNewKeyName('') }} className="text-gray-400 hover:text-gray-600">
+          <div className="bg-[#FFFFFF] rounded-lg shadow-xl max-w-sm w-full mx-4">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#E3E1DB]">
+              <h3 className="text-sm font-semibold text-[#131210]">New API Key</h3>
+              <button onClick={() => { setShowCreate(false); setNewKeyName('') }} className="text-[#9B9890] hover:text-[#5C5A55]">
                 <i className="fas fa-times text-sm"></i>
               </button>
             </div>
             <form onSubmit={handleCreate} className="px-5 py-4 space-y-4">
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1.5">Key Name</label>
+                <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Key Name</label>
                 <input
                   type="text"
                   value={newKeyName}
                   onChange={e => setNewKeyName(e.target.value)}
                   placeholder='e.g. "My SMS Tool"'
                   maxLength={64} autoFocus
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
+                  className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
                 />
-                <p className="text-xs text-gray-400 mt-1">Give it a descriptive name so you can identify it later</p>
+                <p className="text-xs text-[#9B9890] mt-1">Give it a descriptive name so you can identify it later</p>
               </div>
               <div className="flex justify-end gap-2">
                 <button type="button" onClick={() => { setShowCreate(false); setNewKeyName('') }}
-                  className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">Cancel</button>
+                  className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
                 <button type="submit" disabled={creating || !newKeyName.trim()}
-                  className="px-4 py-1.5 text-sm font-medium text-white bg-[#C54A3F] hover:bg-[#B73E34] rounded-md disabled:opacity-50">
+                  className="px-4 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md disabled:opacity-50">
                   {creating ? <><i className="fas fa-spinner fa-spin mr-1.5"></i>Generating…</> : 'Generate'}
                 </button>
               </div>
@@ -308,11 +308,11 @@ Content-Type: application/json
       {/* Revealed key modal */}
       {revealedKey && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div className="bg-[#FFFFFF] rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#E3E1DB]">
               <div className="flex items-center gap-2">
                 <i className="fas fa-check-circle text-green-500 text-sm"></i>
-                <h3 className="text-sm font-semibold text-gray-900">API Key Created</h3>
+                <h3 className="text-sm font-semibold text-[#131210]">API Key Created</h3>
               </div>
             </div>
             <div className="px-5 py-4 space-y-4">
@@ -322,12 +322,12 @@ Content-Type: application/json
                   <strong>Copy this key now.</strong> It will never be shown again.
                 </p>
               </div>
-              <div className="bg-gray-950 rounded-lg overflow-hidden">
+              <div className="bg-[#0F0E0C] rounded-lg overflow-hidden">
                 <div className="flex items-center justify-between px-3 py-2 border-b border-white/5">
-                  <span className="text-[11px] text-gray-500 font-mono uppercase tracking-wider">Your API Key</span>
+                  <span className="text-[11px] text-[#9B9890] font-mono uppercase tracking-wider">Your API Key</span>
                   <button
                     onClick={handleCopy}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${copied ? 'bg-green-500 text-white' : 'bg-white/10 hover:bg-white/20 text-gray-300'}`}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${copied ? 'bg-green-500 text-white' : 'bg-[#FFFFFF]/10 hover:bg-[#FFFFFF]/20 text-[#D4D1C9]'}`}
                   >
                     <i className={`fas ${copied ? 'fa-check' : 'fa-copy'} text-xs`}></i>
                     {copied ? 'Copied!' : 'Copy'}
@@ -340,7 +340,7 @@ Content-Type: application/json
               <div className="flex justify-end">
                 <button
                   onClick={() => { setRevealedKey(null); setCopied(false) }}
-                  className="px-4 py-1.5 text-sm font-medium text-white bg-[#C54A3F] hover:bg-[#B73E34] rounded-md"
+                  className="px-4 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md"
                 >
                   Done
                 </button>

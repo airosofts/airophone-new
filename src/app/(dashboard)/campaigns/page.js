@@ -156,7 +156,7 @@ export default function CampaignsPage() {
   }
 
   const getStatusBadge = (campaign) => {
-    if (campaign.status === 'archived') return { label: 'Archived', className: 'bg-gray-100 text-gray-600' }
+    if (campaign.status === 'archived') return { label: 'Archived', className: 'bg-[#EFEDE8] text-[#5C5A55]' }
     if (campaign.status === 'paused') return { label: 'Paused', className: 'bg-yellow-50 text-yellow-700' }
     if (campaign.status === 'running') return { label: 'Running', className: 'bg-blue-50 text-blue-700' }
     if (campaign.status === 'completed') return { label: 'Completed', className: 'bg-purple-50 text-purple-700' }
@@ -165,39 +165,39 @@ export default function CampaignsPage() {
 
   if (loading) {
     return (
-      <div className="h-full bg-gray-50 flex items-center justify-center">
+      <div className="h-full bg-[#F7F6F3] flex items-center justify-center">
         <div className="text-center">
-          <i className="fas fa-spinner fa-spin text-2xl text-gray-400 mb-3"></i>
-          <p className="text-sm text-gray-500">Loading campaigns…</p>
+          <i className="fas fa-spinner fa-spin text-2xl text-[#9B9890] mb-3"></i>
+          <p className="text-sm text-[#9B9890]">Loading campaigns…</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="h-full bg-gray-50 overflow-auto">
+    <div className="h-full bg-[#F7F6F3] overflow-auto">
       <div className="p-6 space-y-4">
 
         {/* Main Card */}
-        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg overflow-hidden">
           {/* Card Header */}
-          <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between gap-4">
+          <div className="px-5 py-3.5 border-b border-[#E3E1DB] flex items-center justify-between gap-4">
             <div className="flex items-center gap-3 flex-1 min-w-0">
-              <h3 className="text-sm font-semibold text-gray-900 flex-shrink-0">Campaigns</h3>
+              <h3 className="text-sm font-semibold text-[#131210] flex-shrink-0">Campaigns</h3>
               <div className="relative flex-1 max-w-xs">
-                <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+                <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-[#9B9890] text-xs"></i>
                 <input
                   type="text"
                   placeholder="Search campaigns…"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
+                  className="w-full pl-8 pr-3 py-1.5 border border-[#E3E1DB] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
                 />
               </div>
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-3 py-1.5 border border-gray-200 rounded-md text-sm text-gray-600 focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
+                className="px-3 py-1.5 border border-[#E3E1DB] rounded-md text-sm text-[#5C5A55] focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
               >
                 <option value="all">All statuses</option>
                 <option value="active">Active</option>
@@ -207,7 +207,7 @@ export default function CampaignsPage() {
             </div>
             <button
               onClick={() => setShowCreateCampaign(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#C54A3F] hover:bg-[#B73E34] text-white text-sm font-medium rounded-md transition-colors flex-shrink-0"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#D63B1F] hover:bg-[#c23119] text-white text-sm font-medium rounded-md transition-colors flex-shrink-0"
             >
               <i className="fas fa-plus text-xs"></i>
               New Campaign
@@ -217,8 +217,8 @@ export default function CampaignsPage() {
           {/* Table */}
           {paginatedCampaigns.length === 0 ? (
             <div className="px-5 py-10 text-center">
-              <p className="text-sm text-gray-500">No campaigns found</p>
-              <p className="text-xs text-gray-400 mt-1">
+              <p className="text-sm text-[#9B9890]">No campaigns found</p>
+              <p className="text-xs text-[#9B9890] mt-1">
                 {campaigns.length === 0 ? 'Create your first campaign to get started' : 'Try adjusting your filters'}
               </p>
             </div>
@@ -227,63 +227,63 @@ export default function CampaignsPage() {
               <div className="overflow-x-auto">
                 <table className="min-w-full">
                   <thead>
-                    <tr className="bg-gray-50 border-b border-gray-100">
-                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Campaign</th>
-                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Contact List</th>
-                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Recipients</th>
-                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Created</th>
-                      <th className="px-5 py-3 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                    <tr className="bg-[#F7F6F3] border-b border-[#E3E1DB]">
+                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Campaign</th>
+                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Status</th>
+                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Contact List</th>
+                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Recipients</th>
+                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Created</th>
+                      <th className="px-5 py-3 text-right text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-[#E3E1DB]">
                     {paginatedCampaigns.map((campaign) => {
                       const status = getStatusBadge(campaign)
                       return (
                         <tr
                           key={campaign.id}
-                          className="hover:bg-gray-50 cursor-pointer"
+                          className="hover:bg-[#F7F6F3] cursor-pointer"
                           onClick={() => { setSelectedCampaign(campaign); setShowViewCampaign(true) }}
                         >
                           <td className="px-5 py-3">
-                            <p className="text-sm font-medium text-gray-900">{campaign.name}</p>
-                            <p className="text-xs text-gray-400 truncate max-w-xs mt-0.5">{campaign.message_template}</p>
+                            <p className="text-sm font-medium text-[#131210]">{campaign.name}</p>
+                            <p className="text-xs text-[#9B9890] truncate max-w-xs mt-0.5">{campaign.message_template}</p>
                           </td>
                           <td className="px-5 py-3">
                             <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${status.className}`}>
                               {status.label}
                             </span>
                           </td>
-                          <td className="px-5 py-3 text-sm text-gray-600">{campaign.contact_list_names?.join(', ') || 'Unknown'}</td>
-                          <td className="px-5 py-3 text-sm text-gray-600">{campaign.total_recipients}</td>
-                          <td className="px-5 py-3 text-sm text-gray-500 whitespace-nowrap">{formatDate(campaign.created_at)}</td>
+                          <td className="px-5 py-3 text-sm text-[#5C5A55]">{campaign.contact_list_names?.join(', ') || 'Unknown'}</td>
+                          <td className="px-5 py-3 text-sm text-[#5C5A55]">{campaign.total_recipients}</td>
+                          <td className="px-5 py-3 text-sm text-[#9B9890] whitespace-nowrap">{formatDate(campaign.created_at)}</td>
                           <td className="px-5 py-3 text-right">
                             <div className="flex items-center justify-end gap-1">
                               <button
                                 title="View"
                                 onClick={(e) => { e.stopPropagation(); setSelectedCampaign(campaign); setShowViewCampaign(true) }}
-                                className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
+                                className="p-1.5 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded transition-colors"
                               >
                                 <i className="fas fa-eye text-[13px]"></i>
                               </button>
                               <button
                                 title={campaign.status === 'paused' ? 'Resume' : 'Pause'}
                                 onClick={(e) => { e.stopPropagation(); handlePauseCampaign(campaign.id, campaign.status === 'paused') }}
-                                className="p-1.5 text-gray-400 hover:text-yellow-600 hover:bg-yellow-50 rounded transition-colors"
+                                className="p-1.5 text-[#9B9890] hover:text-yellow-600 hover:bg-yellow-50 rounded transition-colors"
                               >
                                 <i className={`fas ${campaign.status === 'paused' ? 'fa-play' : 'fa-pause'} text-[13px]`}></i>
                               </button>
                               <button
                                 title={campaign.status === 'archived' ? 'Unarchive' : 'Archive'}
                                 onClick={(e) => { e.stopPropagation(); handleArchiveCampaign(campaign.id, campaign.status === 'archived') }}
-                                className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
+                                className="p-1.5 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded transition-colors"
                               >
                                 <i className="fas fa-archive text-[13px]"></i>
                               </button>
                               <button
                                 title="Delete"
                                 onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ campaignId: campaign.id, campaignName: campaign.name }) }}
-                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                className="p-1.5 text-[#9B9890] hover:text-red-600 hover:bg-[rgba(214,59,31,0.07)] rounded transition-colors"
                               >
                                 <i className="fas fa-trash text-[13px]"></i>
                               </button>
@@ -297,15 +297,15 @@ export default function CampaignsPage() {
               </div>
 
               {totalPages > 1 && (
-                <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between bg-gray-50">
-                  <p className="text-xs text-gray-500">
+                <div className="px-5 py-3 border-t border-[#E3E1DB] flex items-center justify-between bg-[#F7F6F3]">
+                  <p className="text-xs text-[#9B9890]">
                     {(currentPage - 1) * itemsPerPage + 1}–{Math.min(currentPage * itemsPerPage, filteredCampaigns.length)} of {filteredCampaigns.length}
                   </p>
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                       disabled={currentPage === 1}
-                      className="px-2.5 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-50"
+                      className="px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded hover:bg-[#F7F6F3] disabled:opacity-50"
                     >
                       <i className="fas fa-angle-left"></i>
                     </button>
@@ -315,8 +315,8 @@ export default function CampaignsPage() {
                         onClick={() => setCurrentPage(page)}
                         className={`px-2.5 py-1.5 text-xs rounded border transition-colors ${
                           currentPage === page
-                            ? 'bg-[#C54A3F] text-white border-[#C54A3F]'
-                            : 'text-gray-600 border-gray-200 hover:bg-gray-50'
+                            ? 'bg-[#D63B1F] text-white border-[#D63B1F]'
+                            : 'text-[#5C5A55] border-[#E3E1DB] hover:bg-[#F7F6F3]'
                         }`}
                       >
                         {page}
@@ -325,7 +325,7 @@ export default function CampaignsPage() {
                     <button
                       onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                       disabled={currentPage === totalPages}
-                      className="px-2.5 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-50"
+                      className="px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded hover:bg-[#F7F6F3] disabled:opacity-50"
                     >
                       <i className="fas fa-angle-right"></i>
                     </button>
@@ -401,10 +401,10 @@ function SearchableDropdown({ value, onChange, options, placeholder, renderOptio
 
   return (
     <div className="relative" ref={ref}>
-      <div className={`flex items-center border rounded-lg bg-white transition-colors ${
-        error ? 'border-red-400' : open ? 'border-[#C54A3F] ring-2 ring-[#C54A3F]/20' : 'border-gray-300'
+      <div className={`flex items-center border rounded-lg bg-[#FFFFFF] transition-colors ${
+        error ? 'border-red-400' : open ? 'border-[#D63B1F] ring-2 ring-[#D63B1F]/20' : 'border-[#D4D1C9]'
       }`}>
-        <svg className="w-4 h-4 text-gray-400 ml-3 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+        <svg className="w-4 h-4 text-[#9B9890] ml-3 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
           <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd"/>
         </svg>
         <input
@@ -414,36 +414,36 @@ function SearchableDropdown({ value, onChange, options, placeholder, renderOptio
           placeholder={selected ? '' : placeholder}
           onChange={e => { setSearch(e.target.value); setOpen(true) }}
           onFocus={() => { setOpen(true); setSearch('') }}
-          className="flex-1 px-3 py-3 text-sm bg-transparent outline-none text-gray-900 placeholder-gray-400 min-w-0"
+          className="flex-1 px-3 py-3 text-sm bg-transparent outline-none text-[#131210] placeholder-[#9B9890] min-w-0"
         />
         {selected && !open && (
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onChange(''); setSearch('') }}
-            className="p-2 text-gray-300 hover:text-gray-500 flex-shrink-0"
+            className="p-2 text-[#D4D1C9] hover:text-[#9B9890] flex-shrink-0"
           >
             <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
               <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/>
             </svg>
           </button>
         )}
-        <svg className={`w-4 h-4 text-gray-400 mr-3 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
+        <svg className={`w-4 h-4 text-[#9B9890] mr-3 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
           <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd"/>
         </svg>
       </div>
 
       {open && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden">
+        <div className="absolute z-50 w-full mt-1 bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg shadow-xl overflow-hidden">
           <div className="max-h-60 overflow-y-auto">
             {filtered.length === 0 ? (
-              <p className="px-4 py-4 text-sm text-gray-400 text-center">No results found</p>
+              <p className="px-4 py-4 text-sm text-[#9B9890] text-center">No results found</p>
             ) : filtered.map(o => (
               <button
                 key={o.value}
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => { onChange(o.value); setOpen(false); setSearch('') }}
-                className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0 ${value === o.value ? 'bg-red-50' : ''}`}
+                className={`w-full text-left px-4 py-3 hover:bg-[#F7F6F3] transition-colors border-b border-[#EFEDE8] last:border-0 ${value === o.value ? 'bg-[rgba(214,59,31,0.07)]' : ''}`}
               >
                 {renderOption(o)}
               </button>
@@ -524,14 +524,14 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
   if (created) {
     return (
       <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-lg shadow-xl w-full max-w-sm">
+        <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-sm">
           <div className="px-5 py-8 text-center">
             <div className="w-10 h-10 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-3">
               <i className="fas fa-check text-green-600"></i>
             </div>
-            <h3 className="text-sm font-semibold text-gray-900 mb-1">Campaign Created</h3>
-            <p className="text-xs text-gray-500 mb-4">Your campaign has been created successfully.</p>
-            <button onClick={onCampaignCreated} className="px-4 py-1.5 text-sm font-medium text-white bg-[#C54A3F] hover:bg-[#B73E34] rounded-md">
+            <h3 className="text-sm font-semibold text-[#131210] mb-1">Campaign Created</h3>
+            <p className="text-xs text-[#9B9890] mb-4">Your campaign has been created successfully.</p>
+            <button onClick={onCampaignCreated} className="px-4 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md">
               Done
             </button>
           </div>
@@ -542,11 +542,11 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-6">
-      <div className="bg-white rounded-xl shadow-2xl flex flex-col" style={{ width: '90vw', maxWidth: '1100px', height: '88vh' }}>
+      <div className="bg-[#FFFFFF] rounded-xl shadow-2xl flex flex-col" style={{ width: '90vw', maxWidth: '1100px', height: '88vh' }}>
         {/* Header */}
-        <div className="flex items-center justify-between px-8 py-5 border-b border-gray-100 flex-shrink-0">
-          <h3 className="text-lg font-semibold text-gray-900">New Campaign</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1.5 hover:bg-gray-100 rounded-md transition-colors">
+        <div className="flex items-center justify-between px-8 py-5 border-b border-[#E3E1DB] flex-shrink-0">
+          <h3 className="text-lg font-semibold text-[#131210]">New Campaign</h3>
+          <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1.5 hover:bg-[#F7F6F3] rounded-md transition-colors">
             <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
               <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/>
             </svg>
@@ -556,35 +556,35 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
         {/* Body — two columns */}
         <form onSubmit={handleSubmit} className="flex flex-1 min-h-0">
           {/* Left column */}
-          <div className="flex-1 flex flex-col px-8 py-6 border-r border-gray-100 overflow-y-auto space-y-5">
+          <div className="flex-1 flex flex-col px-8 py-6 border-r border-[#E3E1DB] overflow-y-auto space-y-5">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Campaign Name *</label>
+              <label className="block text-sm font-medium text-[#5C5A55] mb-2">Campaign Name *</label>
               <input
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="e.g., Summer Sale Campaign"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#C54A3F]/20 focus:border-[#C54A3F]"
+                className="w-full px-4 py-3 border border-[#D4D1C9] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F]"
               />
               {errors.name && <p className="text-red-500 text-xs mt-1.5">{errors.name}</p>}
             </div>
 
             <div className="flex-1 flex flex-col">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Message *</label>
+              <label className="block text-sm font-medium text-[#5C5A55] mb-2">Message *</label>
               <textarea
                 value={formData.message}
                 onChange={(e) => setFormData({ ...formData, message: e.target.value })}
                 placeholder="Type your SMS message here…"
-                className="w-full flex-1 px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#C54A3F]/20 focus:border-[#C54A3F] resize-none min-h-[200px]"
+                className="w-full flex-1 px-4 py-3 border border-[#D4D1C9] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F] resize-none min-h-[200px]"
               />
               <div className="flex flex-wrap items-center gap-2 mt-3">
-                <span className="text-xs text-gray-400 font-medium">Insert placeholder:</span>
+                <span className="text-xs text-[#9B9890] font-medium">Insert placeholder:</span>
                 {['{first_name}', '{last_name}', '{business_name}'].map(tag => (
                   <button
                     key={tag}
                     type="button"
                     onClick={() => setFormData(f => ({ ...f, message: f.message + tag }))}
-                    className="px-2.5 py-1 text-xs bg-gray-100 hover:bg-[#fdecea] hover:text-[#C54A3F] hover:border-[#C54A3F] text-gray-600 rounded-md border border-gray-200 font-mono transition-colors"
+                    className="px-2.5 py-1 text-xs bg-[#EFEDE8] hover:bg-[#fdecea] hover:text-[#D63B1F] hover:border-[#D63B1F] text-[#5C5A55] rounded-md border border-[#E3E1DB] font-mono transition-colors"
                   >
                     {tag}
                   </button>
@@ -597,7 +597,7 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
           {/* Right column */}
           <div className="w-96 flex flex-col px-8 py-6 overflow-y-auto space-y-5 flex-shrink-0">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Contact List *</label>
+              <label className="block text-sm font-medium text-[#5C5A55] mb-2">Contact List *</label>
               <SearchableDropdown
                 value={formData.contactListId}
                 onChange={(v) => setFormData(f => ({ ...f, contactListId: v }))}
@@ -607,8 +607,8 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
                 renderSelected={(o) => o.label}
                 renderOption={(o) => (
                   <div>
-                    <p className="text-sm font-medium text-gray-900">{o.label}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{o.count} contacts</p>
+                    <p className="text-sm font-medium text-[#131210]">{o.label}</p>
+                    <p className="text-xs text-[#9B9890] mt-0.5">{o.count} contacts</p>
                   </div>
                 )}
               />
@@ -616,7 +616,7 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number *</label>
+              <label className="block text-sm font-medium text-[#5C5A55] mb-2">Phone Number *</label>
               <SearchableDropdown
                 value={formData.phoneNumberId}
                 onChange={(v) => setFormData(f => ({ ...f, phoneNumberId: v }))}
@@ -628,8 +628,8 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
                 )}
                 renderOption={(o) => (
                   <div>
-                    {o.name && <p className="text-sm font-medium text-gray-900">{o.name}</p>}
-                    <p className={`text-sm ${o.name ? 'text-gray-400' : 'font-medium text-gray-900'}`}>{o.number}</p>
+                    {o.name && <p className="text-sm font-medium text-[#131210]">{o.name}</p>}
+                    <p className={`text-sm ${o.name ? 'text-[#9B9890]' : 'font-medium text-[#131210]'}`}>{o.number}</p>
                   </div>
                 )}
               />
@@ -637,30 +637,30 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Schedule</label>
+              <label className="block text-sm font-medium text-[#5C5A55] mb-2">Schedule</label>
               <div className="space-y-2.5">
-                <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                <label className="flex items-center gap-3 p-3 border border-[#E3E1DB] rounded-lg cursor-pointer hover:bg-[#F7F6F3] transition-colors">
                   <input
                     type="radio" value="immediate"
                     checked={formData.scheduleType === 'immediate'}
                     onChange={(e) => setFormData({ ...formData, scheduleType: e.target.value, scheduleTime: '' })}
-                    className="text-[#C54A3F]"
+                    className="text-[#D63B1F]"
                   />
                   <div>
-                    <p className="text-sm font-medium text-gray-800">Send Immediately</p>
-                    <p className="text-xs text-gray-400">Starts sending right after creation</p>
+                    <p className="text-sm font-medium text-[#131210]">Send Immediately</p>
+                    <p className="text-xs text-[#9B9890]">Starts sending right after creation</p>
                   </div>
                 </label>
-                <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                <label className="flex items-center gap-3 p-3 border border-[#E3E1DB] rounded-lg cursor-pointer hover:bg-[#F7F6F3] transition-colors">
                   <input
                     type="radio" value="scheduled"
                     checked={formData.scheduleType === 'scheduled'}
                     onChange={(e) => setFormData({ ...formData, scheduleType: e.target.value })}
-                    className="text-[#C54A3F]"
+                    className="text-[#D63B1F]"
                   />
                   <div>
-                    <p className="text-sm font-medium text-gray-800">Schedule for Later</p>
-                    <p className="text-xs text-gray-400">Pick a date and time</p>
+                    <p className="text-sm font-medium text-[#131210]">Schedule for Later</p>
+                    <p className="text-xs text-[#9B9890]">Pick a date and time</p>
                   </div>
                 </label>
               </div>
@@ -668,19 +668,19 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
 
             {formData.scheduleType === 'scheduled' && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Schedule Time *</label>
+                <label className="block text-sm font-medium text-[#5C5A55] mb-2">Schedule Time *</label>
                 <input
                   type="datetime-local"
                   value={formData.scheduleTime}
                   onChange={(e) => setFormData({ ...formData, scheduleTime: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#C54A3F]/20 focus:border-[#C54A3F]"
+                  className="w-full px-4 py-3 border border-[#D4D1C9] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F]"
                 />
                 {errors.scheduleTime && <p className="text-red-500 text-xs mt-1.5">{errors.scheduleTime}</p>}
               </div>
             )}
 
             {errors.submit && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+              <div className="bg-[rgba(214,59,31,0.07)] border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
                 {errors.submit}
               </div>
             )}
@@ -688,14 +688,14 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
         </form>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-8 py-4 border-t border-gray-100 flex-shrink-0">
-          <button type="button" onClick={onClose} className="px-5 py-2.5 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+        <div className="flex items-center justify-end gap-3 px-8 py-4 border-t border-[#E3E1DB] flex-shrink-0">
+          <button type="button" onClick={onClose} className="px-5 py-2.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3] transition-colors">
             Cancel
           </button>
           <button
             type="submit" form="campaign-form" disabled={isSubmitting}
             onClick={handleSubmit}
-            className="px-6 py-2.5 text-sm font-medium text-white bg-[#C54A3F] hover:bg-[#B73E34] rounded-lg disabled:opacity-50 transition-colors"
+            className="px-6 py-2.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg disabled:opacity-50 transition-colors"
           >
             {isSubmitting ? <><i className="fas fa-spinner fa-spin mr-2"></i>Creating…</> : 'Create Campaign'}
           </button>
@@ -765,14 +765,14 @@ function ViewCampaignModal({ campaign, contactLists, phoneNumbers, onClose, onCa
   }
 
   const statusLabel = campaign.status === 'archived' ? 'Archived' : campaign.status === 'paused' ? 'Paused' : campaign.status === 'running' ? 'Running' : campaign.status === 'completed' ? 'Completed' : 'Active'
-  const statusClass = campaign.status === 'archived' ? 'bg-gray-100 text-gray-600' : campaign.status === 'paused' ? 'bg-yellow-50 text-yellow-700' : campaign.status === 'running' ? 'bg-blue-50 text-blue-700' : campaign.status === 'completed' ? 'bg-purple-50 text-purple-700' : 'bg-green-50 text-green-700'
+  const statusClass = campaign.status === 'archived' ? 'bg-[#EFEDE8] text-[#5C5A55]' : campaign.status === 'paused' ? 'bg-yellow-50 text-yellow-700' : campaign.status === 'running' ? 'bg-blue-50 text-blue-700' : campaign.status === 'completed' ? 'bg-purple-50 text-purple-700' : 'bg-green-50 text-green-700'
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl my-8">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 sticky top-0 bg-white">
-          <h3 className="text-sm font-semibold text-gray-900">{isEditing ? 'Edit Campaign' : 'Campaign Details'}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1">
+      <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-2xl my-8">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#E3E1DB] sticky top-0 bg-[#FFFFFF]">
+          <h3 className="text-sm font-semibold text-[#131210]">{isEditing ? 'Edit Campaign' : 'Campaign Details'}</h3>
+          <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1">
             <i className="fas fa-times text-sm"></i>
           </button>
         </div>
@@ -780,31 +780,31 @@ function ViewCampaignModal({ campaign, contactLists, phoneNumbers, onClose, onCa
         {isEditing ? (
           <form onSubmit={handleEditSubmit} className="px-5 py-4 space-y-4">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">Campaign Name *</label>
+              <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Campaign Name *</label>
               <input
                 type="text"
                 value={editFormData.name}
                 onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
+                className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
               />
               {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">Message *</label>
+              <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Message *</label>
               <textarea
                 value={editFormData.message}
                 onChange={(e) => setEditFormData({ ...editFormData, message: e.target.value })}
                 rows="4"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F] resize-none"
+                className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F] resize-none"
               />
               {errors.message && <p className="text-red-500 text-xs mt-1">{errors.message}</p>}
             </div>
             {errors.submit && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2.5 rounded-md text-sm">{errors.submit}</div>
+              <div className="bg-[rgba(214,59,31,0.07)] border border-red-200 text-red-700 px-3 py-2.5 rounded-md text-sm">{errors.submit}</div>
             )}
             <div className="flex justify-end gap-2 pt-2">
-              <button type="button" onClick={() => { setIsEditing(false); setErrors({}) }} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">Cancel</button>
-              <button type="submit" disabled={isSubmitting} className="px-4 py-1.5 text-sm font-medium text-white bg-[#C54A3F] hover:bg-[#B73E34] rounded-md disabled:opacity-50">
+              <button type="button" onClick={() => { setIsEditing(false); setErrors({}) }} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
+              <button type="submit" disabled={isSubmitting} className="px-4 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md disabled:opacity-50">
                 {isSubmitting ? <><i className="fas fa-spinner fa-spin mr-1.5"></i>Saving…</> : 'Save Changes'}
               </button>
             </div>
@@ -813,12 +813,12 @@ function ViewCampaignModal({ campaign, contactLists, phoneNumbers, onClose, onCa
           <>
             <div className="px-5 py-4 space-y-4">
               <div>
-                <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Campaign Name</p>
-                <p className="text-sm text-gray-900 font-medium">{campaign.name}</p>
+                <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Campaign Name</p>
+                <p className="text-sm text-[#131210] font-medium">{campaign.name}</p>
               </div>
               <div>
-                <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Message</p>
-                <p className="text-sm text-gray-700 bg-gray-50 border border-gray-100 rounded px-3 py-2 whitespace-pre-wrap">{campaign.message_template}</p>
+                <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Message</p>
+                <p className="text-sm text-[#5C5A55] bg-[#F7F6F3] border border-[#E3E1DB] rounded px-3 py-2 whitespace-pre-wrap">{campaign.message_template}</p>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {[
@@ -828,13 +828,13 @@ function ViewCampaignModal({ campaign, contactLists, phoneNumbers, onClose, onCa
                   { label: 'Created', value: formatDate(campaign.created_at) },
                 ].map((item) => (
                   <div key={item.label}>
-                    <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">{item.label}</p>
-                    <p className="text-sm text-gray-700">{item.value}</p>
+                    <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">{item.label}</p>
+                    <p className="text-sm text-[#5C5A55]">{item.value}</p>
                   </div>
                 ))}
               </div>
               <div>
-                <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Status</p>
+                <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Status</p>
                 <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${statusClass}`}>
                   {statusLabel}
                 </span>
@@ -842,23 +842,23 @@ function ViewCampaignModal({ campaign, contactLists, phoneNumbers, onClose, onCa
             </div>
 
             {/* Execution History */}
-            <div className="border-t border-gray-100 px-5 py-4">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Execution History</p>
+            <div className="border-t border-[#E3E1DB] px-5 py-4">
+              <p className="text-xs font-semibold text-[#9B9890] uppercase tracking-wider mb-3">Execution History</p>
               {loadingLogs ? (
-                <p className="text-sm text-gray-400">Loading…</p>
+                <p className="text-sm text-[#9B9890]">Loading…</p>
               ) : executionLogs.length === 0 ? (
-                <p className="text-sm text-gray-400">No execution logs yet</p>
+                <p className="text-sm text-[#9B9890]">No execution logs yet</p>
               ) : (
                 <div className="space-y-2">
                   {executionLogs.map((log) => (
-                    <div key={log.id} className="flex items-center justify-between bg-gray-50 border border-gray-100 rounded px-3 py-2">
+                    <div key={log.id} className="flex items-center justify-between bg-[#F7F6F3] border border-[#E3E1DB] rounded px-3 py-2">
                       <div>
-                        <p className="text-sm text-gray-700">{formatDate(log.executed_at)}</p>
-                        <p className="text-xs text-gray-400">{log.sent_count} sent, {log.failed_count} failed</p>
+                        <p className="text-sm text-[#5C5A55]">{formatDate(log.executed_at)}</p>
+                        <p className="text-xs text-[#9B9890]">{log.sent_count} sent, {log.failed_count} failed</p>
                       </div>
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
                         log.status === 'completed' ? 'bg-green-50 text-green-700'
-                        : log.status === 'failed' ? 'bg-red-50 text-red-700'
+                        : log.status === 'failed' ? 'bg-[rgba(214,59,31,0.07)] text-red-700'
                         : 'bg-blue-50 text-blue-700'
                       }`}>
                         {log.status}
@@ -870,16 +870,16 @@ function ViewCampaignModal({ campaign, contactLists, phoneNumbers, onClose, onCa
             </div>
 
             {/* Actions */}
-            <div className="border-t border-gray-100 px-5 py-3.5 flex flex-wrap items-center gap-2">
-              <button onClick={() => setIsEditing(true)} className="px-3 py-1.5 text-sm font-medium text-white bg-[#C54A3F] hover:bg-[#B73E34] rounded-md">Edit</button>
-              <button onClick={onPause} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">
+            <div className="border-t border-[#E3E1DB] px-5 py-3.5 flex flex-wrap items-center gap-2">
+              <button onClick={() => setIsEditing(true)} className="px-3 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md">Edit</button>
+              <button onClick={onPause} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">
                 {campaign.status === 'paused' ? 'Resume' : 'Pause'}
               </button>
-              <button onClick={onArchive} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">
+              <button onClick={onArchive} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">
                 {campaign.status === 'archived' ? 'Unarchive' : 'Archive'}
               </button>
-              <button onClick={onDelete} className="px-3 py-1.5 text-sm text-red-600 border border-red-100 rounded-md hover:bg-red-50">Delete</button>
-              <button onClick={onClose} className="ml-auto px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">Close</button>
+              <button onClick={onDelete} className="px-3 py-1.5 text-sm text-red-600 border border-red-100 rounded-md hover:bg-[rgba(214,59,31,0.07)]">Delete</button>
+              <button onClick={onClose} className="ml-auto px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Close</button>
             </div>
           </>
         )}
@@ -891,15 +891,15 @@ function ViewCampaignModal({ campaign, contactLists, phoneNumbers, onClose, onCa
 function ErrorModal({ title, message, onClose }) {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-sm">
-        <div className="px-5 py-4 border-b border-gray-100">
-          <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
+      <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-sm">
+        <div className="px-5 py-4 border-b border-[#E3E1DB]">
+          <h3 className="text-sm font-semibold text-[#131210]">{title}</h3>
         </div>
         <div className="px-5 py-4">
-          <p className="text-sm text-gray-600">{message}</p>
+          <p className="text-sm text-[#5C5A55]">{message}</p>
         </div>
-        <div className="px-5 py-3 border-t border-gray-100 flex justify-end">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">Close</button>
+        <div className="px-5 py-3 border-t border-[#E3E1DB] flex justify-end">
+          <button onClick={onClose} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Close</button>
         </div>
       </div>
     </div>
@@ -909,17 +909,17 @@ function ErrorModal({ title, message, onClose }) {
 function DeleteConfirmationModal({ campaignName, onConfirm, onCancel }) {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-sm">
-        <div className="px-5 py-4 border-b border-gray-100">
-          <h3 className="text-sm font-semibold text-gray-900">Delete Campaign</h3>
+      <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-sm">
+        <div className="px-5 py-4 border-b border-[#E3E1DB]">
+          <h3 className="text-sm font-semibold text-[#131210]">Delete Campaign</h3>
         </div>
         <div className="px-5 py-4">
-          <p className="text-sm text-gray-600">
-            Delete <span className="font-medium text-gray-900">"{campaignName}"</span>? This cannot be undone.
+          <p className="text-sm text-[#5C5A55]">
+            Delete <span className="font-medium text-[#131210]">"{campaignName}"</span>? This cannot be undone.
           </p>
         </div>
-        <div className="px-5 py-3 border-t border-gray-100 flex justify-end gap-2">
-          <button onClick={onCancel} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">Cancel</button>
+        <div className="px-5 py-3 border-t border-[#E3E1DB] flex justify-end gap-2">
+          <button onClick={onCancel} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
           <button onClick={onConfirm} className="px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md">Delete</button>
         </div>
       </div>

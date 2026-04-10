@@ -12,13 +12,33 @@ export default function DashboardLayout({ children }) {
   const router = useRouter()
 
   useEffect(() => {
-    const checkAuth = () => {
+    const checkAuth = async () => {
       const currentUser = getCurrentUser()
       const authenticated = isAuthenticated()
 
       if (!currentUser || !authenticated) {
         router.push('/login')
         return
+      }
+
+      // Check if onboarding is completed (only for users who have an onboarding profile)
+      try {
+        const checkRes = await fetch('/api/onboarding/status', {
+          headers: {
+            'x-user-id': currentUser.userId,
+            'x-workspace-id': currentUser.workspaceId,
+          },
+        })
+        if (checkRes.ok) {
+          const data = await checkRes.json()
+          if (data.onboarding_completed === false) {
+            router.push('/onboarding')
+            return
+          }
+        }
+      } catch (e) {
+        // If check fails, allow through (don't block existing users)
+        console.warn('Onboarding check failed:', e)
       }
 
       setUser(currentUser)
@@ -92,9 +112,8 @@ export default function DashboardLayout({ children }) {
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
         {/* Mobile Header */}
         <div
-          className="lg:hidden"
+          className="flex lg:hidden items-center justify-between"
           style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             padding: '0 16px', height: 56,
             background: '#FFFFFF', borderBottom: '1px solid #E3E1DB',
             position: 'sticky', top: 0, zIndex: 20,

@@ -154,8 +154,8 @@ export default function ChatPage({ params }) {
   }
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      <div className="lg:hidden fixed top-0 left-0 right-0 bg-white border-b border-gray-200 z-10">
+    <div className="flex h-screen bg-[#F7F6F3]">
+      <div className="lg:hidden fixed top-0 left-0 right-0 bg-[#FFFFFF] border-b border-[#E3E1DB] z-10">
         <div className="flex items-center justify-between p-4">
           <Link href="/inbox" className="flex items-center text-primary hover:text-primary-hover">
             <svg className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -163,31 +163,31 @@ export default function ChatPage({ params }) {
             </svg>
             Back
           </Link>
-          <h1 className="font-medium text-gray-900">
+          <h1 className="font-medium text-[#131210]">
             {formatPhoneNumber(decodedPhoneNumber)}
           </h1>
           <div className="w-12"></div>
         </div>
       </div>
 
-      <div className="hidden lg:block w-80 bg-white shadow-sm border-r border-gray-200">
-        <div className="p-4 border-b border-gray-200">
+      <div className="hidden lg:block w-80 bg-[#FFFFFF] shadow-sm border-r border-[#E3E1DB]">
+        <div className="p-4 border-b border-[#E3E1DB]">
           <Link href="/inbox" className="inline-flex items-center text-sm text-primary hover:text-primary-hover mb-3">
             <svg className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
             Back to Inbox
           </Link>
-          <h1 className="text-xl font-semibold text-gray-900 mb-4">
+          <h1 className="text-xl font-semibold text-[#131210] mb-4">
             {formatPhoneNumber(decodedPhoneNumber)}
           </h1>
 
           <div className="mb-4">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Send From</label>
+            <label className="block text-xs font-medium text-[#5C5A55] mb-1">Send From</label>
             <select
               value={selectedFromNumber}
               onChange={(e) => setSelectedFromNumber(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus-primary"
+              className="w-full px-3 py-2 border border-[#D4D1C9] rounded-lg focus-primary"
             >
               <option value="">Select number</option>
               {phoneNumbers.map(phone => (
@@ -200,9 +200,9 @@ export default function ChatPage({ params }) {
         </div>
         
         <div className="p-4">
-          <div className="bg-gray-50 rounded-lg p-3">
-            <h3 className="text-sm font-medium text-gray-900 mb-2">Chat Info</h3>
-            <div className="text-sm text-gray-600 space-y-1">
+          <div className="bg-[#F7F6F3] rounded-lg p-3">
+            <h3 className="text-sm font-medium text-[#131210] mb-2">Chat Info</h3>
+            <div className="text-sm text-[#5C5A55] space-y-1">
               <p>To: {decodedPhoneNumber}</p>
               <p>From: {selectedFromNumber ? formatPhoneNumber(selectedFromNumber) : 'Select number'}</p>
               <p>Messages: {messages.length}</p>
@@ -212,29 +212,29 @@ export default function ChatPage({ params }) {
       </div>
 
       <div className="flex-1 flex flex-col">
-        <div className="bg-white border-b border-gray-200 p-4">
+        <div className="bg-[#FFFFFF] border-b border-[#E3E1DB] p-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">
+              <h2 className="text-lg font-semibold text-[#131210]">
                 {formatPhoneNumber(decodedPhoneNumber)}
               </h2>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-[#9B9890]">
                 {messages.length} messages • From: {formatPhoneNumber(selectedFromNumber) || 'Select number'}
               </p>
             </div>
-            <div className="flex items-center text-sm text-gray-500">
+            <div className="flex items-center text-sm text-[#9B9890]">
               <div className="h-2 w-2 bg-green-400 rounded-full mr-2"></div>
               Real-time
             </div>
           </div>
         </div>
 
-        <div className="lg:hidden bg-white border-b border-gray-200 p-4 pt-20">
-          <label className="block text-xs font-medium text-gray-700 mb-1">Send From</label>
+        <div className="lg:hidden bg-[#FFFFFF] border-b border-[#E3E1DB] p-4 pt-20">
+          <label className="block text-xs font-medium text-[#5C5A55] mb-1">Send From</label>
           <select
             value={selectedFromNumber}
             onChange={(e) => setSelectedFromNumber(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus-primary"
+            className="w-full px-3 py-2 border border-[#D4D1C9] rounded-lg focus-primary"
           >
             <option value="">Select number</option>
             {phoneNumbers.map(phone => (
@@ -252,11 +252,11 @@ export default function ChatPage({ params }) {
             </div>
           ) : messages.length === 0 ? (
             <div className="text-center py-12">
-              <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="mx-auto h-12 w-12 text-[#9B9890] mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
               </svg>
-              <p className="text-gray-500">No messages yet</p>
-              <p className="text-sm text-gray-400 mt-1">Start the conversation below</p>
+              <p className="text-[#9B9890]">No messages yet</p>
+              <p className="text-sm text-[#9B9890] mt-1">Start the conversation below</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -308,7 +308,7 @@ function MessageInput({ onSendMessage, phoneNumber, formatPhoneNumber }) {
   }
 
   return (
-    <div className="bg-white border-t border-gray-200 p-4">
+    <div className="bg-[#FFFFFF] border-t border-[#E3E1DB] p-4">
       {!phoneNumber && (
         <div className="mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
           <p className="text-sm text-yellow-800">Select a phone number to send from</p>
@@ -322,8 +322,8 @@ function MessageInput({ onSendMessage, phoneNumber, formatPhoneNumber }) {
           onChange={(e) => setNewMessage(e.target.value)}
           placeholder={phoneNumber ? "Type your message..." : "Select a number first..."}
           disabled={sending || !phoneNumber}
-          className={`flex-1 px-4 py-3 border border-gray-300 rounded-xl focus-primary ${
-            !phoneNumber ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'
+          className={`flex-1 px-4 py-3 border border-[#D4D1C9] rounded-xl focus-primary ${
+            !phoneNumber ? 'bg-[#EFEDE8] cursor-not-allowed' : 'bg-[#FFFFFF]'
           }`}
         />
         <button
@@ -332,7 +332,7 @@ function MessageInput({ onSendMessage, phoneNumber, formatPhoneNumber }) {
           className={`px-6 py-3 rounded-xl font-medium transition-colors flex items-center space-x-2 ${
             newMessage.trim() && !sending && phoneNumber
               ? 'bg-primary hover:bg-primary-hover text-white'
-              : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+              : 'bg-[#EFEDE8] text-[#9B9890] cursor-not-allowed'
           }`}
         >
           {sending ? (

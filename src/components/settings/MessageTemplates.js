@@ -53,15 +53,15 @@ export default function MessageTemplates() {
       {/* Error modal */}
       {showError && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-sm w-full mx-4">
-            <div className="px-5 py-4 border-b border-gray-100">
-              <h3 className="text-sm font-semibold text-gray-900">{showError.title}</h3>
+          <div className="bg-[#FFFFFF] rounded-lg shadow-xl max-w-sm w-full mx-4">
+            <div className="px-5 py-4 border-b border-[#E3E1DB]">
+              <h3 className="text-sm font-semibold text-[#131210]">{showError.title}</h3>
             </div>
             <div className="px-5 py-4">
-              <p className="text-sm text-gray-600">{showError.message}</p>
+              <p className="text-sm text-[#5C5A55]">{showError.message}</p>
             </div>
-            <div className="px-5 py-3 border-t border-gray-100 flex justify-end">
-              <button onClick={() => setShowError(null)} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">OK</button>
+            <div className="px-5 py-3 border-t border-[#E3E1DB] flex justify-end">
+              <button onClick={() => setShowError(null)} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">OK</button>
             </div>
           </div>
         </div>
@@ -70,15 +70,15 @@ export default function MessageTemplates() {
       {/* Delete confirm */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-sm w-full mx-4">
-            <div className="px-5 py-4 border-b border-gray-100">
-              <h3 className="text-sm font-semibold text-gray-900">Delete Template</h3>
+          <div className="bg-[#FFFFFF] rounded-lg shadow-xl max-w-sm w-full mx-4">
+            <div className="px-5 py-4 border-b border-[#E3E1DB]">
+              <h3 className="text-sm font-semibold text-[#131210]">Delete Template</h3>
             </div>
             <div className="px-5 py-4">
-              <p className="text-sm text-gray-600">Delete <span className="font-medium text-gray-900">"{showDeleteConfirm.name}"</span>? This cannot be undone.</p>
+              <p className="text-sm text-[#5C5A55]">Delete <span className="font-medium text-[#131210]">"{showDeleteConfirm.name}"</span>? This cannot be undone.</p>
             </div>
-            <div className="px-5 py-3 border-t border-gray-100 flex justify-end gap-2">
-              <button onClick={() => setShowDeleteConfirm(null)} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">Cancel</button>
+            <div className="px-5 py-3 border-t border-[#E3E1DB] flex justify-end gap-2">
+              <button onClick={() => setShowDeleteConfirm(null)} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
               <button onClick={() => deleteTemplate(showDeleteConfirm.id)} className="px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md">Delete</button>
             </div>
           </div>
@@ -86,15 +86,15 @@ export default function MessageTemplates() {
       )}
 
       {/* Templates card */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
+      <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-[#E3E1DB] flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-semibold text-gray-900">Message Templates</h3>
-            <p className="text-xs text-gray-400 mt-0.5">Reusable templates for campaigns</p>
+            <h3 className="text-sm font-semibold text-[#131210]">Message Templates</h3>
+            <p className="text-xs text-[#9B9890] mt-0.5">Reusable templates for campaigns</p>
           </div>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#C54A3F] hover:bg-[#B73E34] text-white text-sm font-medium rounded-md transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#D63B1F] hover:bg-[#c23119] text-white text-sm font-medium rounded-md transition-colors"
           >
             <i className="fas fa-plus text-xs"></i>
             New Template
@@ -102,22 +102,22 @@ export default function MessageTemplates() {
         </div>
 
         {loading ? (
-          <div className="px-5 py-8 text-center text-sm text-gray-400">
+          <div className="px-5 py-8 text-center text-sm text-[#9B9890]">
             <i className="fas fa-spinner fa-spin mr-2"></i>Loading…
           </div>
         ) : templates.length === 0 ? (
           <div className="px-5 py-10 text-center">
-            <p className="text-sm text-gray-500">No templates yet</p>
-            <p className="text-xs text-gray-400 mt-1">Create reusable message templates for your campaigns</p>
+            <p className="text-sm text-[#9B9890]">No templates yet</p>
+            <p className="text-xs text-[#9B9890] mt-1">Create reusable message templates for your campaigns</p>
           </div>
         ) : (
-          <div className="divide-y divide-gray-100">
+          <div className="divide-y divide-[#E3E1DB]">
             {templates.map((template) => (
-              <div key={template.id} className="px-5 py-4 hover:bg-gray-50">
+              <div key={template.id} className="px-5 py-4 hover:bg-[#F7F6F3]">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <h4 className="text-sm font-medium text-gray-900">{template.name}</h4>
+                      <h4 className="text-sm font-medium text-[#131210]">{template.name}</h4>
                       {template.is_favorite && (
                         <span className="px-1.5 py-0.5 text-[10px] font-medium bg-yellow-50 text-yellow-700 rounded">
                           <i className="fas fa-star mr-0.5"></i>Favorite
@@ -125,19 +125,19 @@ export default function MessageTemplates() {
                       )}
                     </div>
                     {template.description && (
-                      <p className="text-xs text-gray-500 mb-2">{template.description}</p>
+                      <p className="text-xs text-[#9B9890] mb-2">{template.description}</p>
                     )}
-                    <p className="text-sm text-gray-700 bg-gray-50 border border-gray-100 rounded px-3 py-2 whitespace-pre-wrap">
+                    <p className="text-sm text-[#5C5A55] bg-[#F7F6F3] border border-[#E3E1DB] rounded px-3 py-2 whitespace-pre-wrap">
                       {template.message_template}
                     </p>
-                    <p className="text-xs text-gray-400 mt-1.5">
+                    <p className="text-xs text-[#9B9890] mt-1.5">
                       Created {new Date(template.created_at).toLocaleDateString()}
                     </p>
                   </div>
                   <div className="flex gap-1.5 flex-shrink-0">
                     <button
                       onClick={() => { setSelectedTemplate(template); setShowEditModal(true) }}
-                      className="px-2.5 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-50"
+                      className="px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded hover:bg-[#F7F6F3]"
                     >
                       Edit
                     </button>
@@ -213,41 +213,41 @@ function TemplateModal({ template, onClose, onSave, onError }) {
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 sticky top-0 bg-white">
-          <h3 className="text-sm font-semibold text-gray-900">{template ? 'Edit Template' : 'New Template'}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1">
+      <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#E3E1DB] sticky top-0 bg-[#FFFFFF]">
+          <h3 className="text-sm font-semibold text-[#131210]">{template ? 'Edit Template' : 'New Template'}</h3>
+          <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1">
             <i className="fas fa-times text-sm"></i>
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Template Name *</label>
+            <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Template Name *</label>
             <input
               type="text" required
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               placeholder="e.g., Welcome Message"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
+              className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Description</label>
+            <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Description</label>
             <input
               type="text"
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               placeholder="When to use this template (optional)"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
+              className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
             />
           </div>
 
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-medium text-gray-600">Message *</label>
-              <span className={`text-xs ${formData.message_template.length > 1500 ? 'text-red-500' : 'text-gray-400'}`}>
+              <label className="text-xs font-medium text-[#5C5A55]">Message *</label>
+              <span className={`text-xs ${formData.message_template.length > 1500 ? 'text-red-500' : 'text-[#9B9890]'}`}>
                 {formData.message_template.length}/1600
               </span>
             </div>
@@ -255,17 +255,17 @@ function TemplateModal({ template, onClose, onSave, onError }) {
               required id="template-message"
               value={formData.message_template}
               onChange={(e) => setFormData({ ...formData, message_template: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F] resize-none"
+              className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F] resize-none"
               rows={5}
               placeholder="Hi {business_name}, this is a message from our team..."
               maxLength={1600}
             />
             <div className="mt-2 flex flex-wrap gap-1.5">
-              <span className="text-xs text-gray-400 self-center mr-1">Insert:</span>
+              <span className="text-xs text-[#9B9890] self-center mr-1">Insert:</span>
               {tags.map((tag) => (
                 <button
                   key={tag} type="button" onClick={() => insertTag(tag)}
-                  className="px-2 py-0.5 text-xs border border-gray-200 rounded text-gray-600 hover:bg-gray-50 hover:border-gray-300 font-mono"
+                  className="px-2 py-0.5 text-xs border border-[#E3E1DB] rounded text-[#5C5A55] hover:bg-[#F7F6F3] hover:border-[#D4D1C9] font-mono"
                 >
                   {'{' + tag + '}'}
                 </button>
@@ -278,16 +278,16 @@ function TemplateModal({ template, onClose, onSave, onError }) {
               type="checkbox"
               checked={formData.is_favorite}
               onChange={(e) => setFormData({ ...formData, is_favorite: e.target.checked })}
-              className="w-4 h-4 text-[#C54A3F] rounded border-gray-300 focus:ring-[#C54A3F]"
+              className="w-4 h-4 text-[#D63B1F] rounded border-[#D4D1C9] focus:ring-[#D63B1F]"
             />
-            <span className="text-sm text-gray-700">Mark as favorite</span>
+            <span className="text-sm text-[#5C5A55]">Mark as favorite</span>
           </label>
 
           <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">Cancel</button>
+            <button type="button" onClick={onClose} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
             <button
               type="submit" disabled={loading}
-              className="px-4 py-1.5 text-sm font-medium text-white bg-[#C54A3F] hover:bg-[#B73E34] rounded-md disabled:opacity-50"
+              className="px-4 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md disabled:opacity-50"
             >
               {loading ? <><i className="fas fa-spinner fa-spin mr-1.5"></i>Saving…</> : template ? 'Update Template' : 'Create Template'}
             </button>

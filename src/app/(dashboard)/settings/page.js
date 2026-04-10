@@ -40,21 +40,21 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('numbers')
 
   return (
-    <div className="h-full flex bg-gray-50">
+    <div className="h-full flex bg-[#F7F6F3]">
 
       {/* Settings sidebar */}
-      <aside className="w-56 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col overflow-y-auto">
+      <aside className="w-56 flex-shrink-0 bg-[#FFFFFF] border-r border-[#E3E1DB] flex flex-col overflow-y-auto">
 
         {/* Sidebar header */}
         <div className="px-5 pt-7 pb-5">
-          <h2 className="text-[13px] font-semibold text-gray-900 tracking-tight">Settings</h2>
+          <h2 className="text-[13px] font-semibold text-[#131210] tracking-tight">Settings</h2>
         </div>
 
         {/* Nav sections */}
         <nav className="flex-1 px-2 pb-6 space-y-5">
           {sections.map((section) => (
             <div key={section.label}>
-              <p className="px-3 mb-1 text-[10.5px] font-semibold uppercase tracking-widest text-gray-400">
+              <p className="px-3 mb-1 text-[10.5px] font-semibold uppercase tracking-widest text-[#9B9890]">
                 {section.label}
               </p>
               <div className="space-y-0.5">
@@ -66,11 +66,11 @@ export default function SettingsPage() {
                       onClick={() => setActiveTab(item.id)}
                       className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] transition-colors text-left ${
                         active
-                          ? 'bg-gray-100 text-gray-900 font-medium'
-                          : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
+                          ? 'bg-[#EFEDE8] text-[#131210] font-medium'
+                          : 'text-[#9B9890] hover:bg-[#F7F6F3] hover:text-[#131210]'
                       }`}
                     >
-                      <i className={`fas ${item.icon} text-[12px] w-3.5 text-center flex-shrink-0 ${active ? 'text-[#C54A3F]' : 'text-gray-400'}`} />
+                      <i className={`fas ${item.icon} text-[12px] w-3.5 text-center flex-shrink-0 ${active ? 'text-[#D63B1F]' : 'text-[#9B9890]'}`} />
                       <span>{item.name}</span>
                     </button>
                   )
@@ -91,13 +91,13 @@ export default function SettingsPage() {
         {activeTab === 'forwarding' && <CallForwarding />}
 
         {['profile', 'notifications', 'security'].includes(activeTab) && (
-          <div className="bg-white border border-gray-200 rounded-lg">
-            <div className="px-5 py-4 border-b border-gray-100">
-              <h3 className="text-sm font-semibold text-gray-900">{placeholders[activeTab].title}</h3>
+          <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg">
+            <div className="px-5 py-4 border-b border-[#E3E1DB]">
+              <h3 className="text-sm font-semibold text-[#131210]">{placeholders[activeTab].title}</h3>
             </div>
             <div className="px-5 py-8 text-center">
-              <p className="text-sm text-gray-400">{placeholders[activeTab].description}</p>
-              <p className="text-xs text-gray-300 mt-1">Coming soon</p>
+              <p className="text-sm text-[#9B9890]">{placeholders[activeTab].description}</p>
+              <p className="text-xs text-[#D4D1C9] mt-1">Coming soon</p>
             </div>
           </div>
         )}

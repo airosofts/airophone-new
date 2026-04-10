@@ -203,26 +203,26 @@ export default function ContactsPage() {
   const Pagination = ({ currentPage, totalPages, onPage }) => {
     if (totalPages <= 1) return null
     return (
-      <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between bg-gray-50">
-        <p className="text-xs text-gray-500">{(currentPage - 1) * contactsPerPage + 1}–{Math.min(currentPage * contactsPerPage, filteredAllContacts.length)} of {filteredAllContacts.length}</p>
+      <div className="px-5 py-3 border-t border-[#E3E1DB] flex items-center justify-between bg-[#F7F6F3]">
+        <p className="text-xs text-[#9B9890]">{(currentPage - 1) * contactsPerPage + 1}–{Math.min(currentPage * contactsPerPage, filteredAllContacts.length)} of {filteredAllContacts.length}</p>
         <div className="flex items-center gap-1">
-          <button onClick={() => onPage(currentPage - 1)} disabled={currentPage === 1} className="px-2.5 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-50"><i className="fas fa-angle-left"></i></button>
+          <button onClick={() => onPage(currentPage - 1)} disabled={currentPage === 1} className="px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded hover:bg-[#F7F6F3] disabled:opacity-50"><i className="fas fa-angle-left"></i></button>
           {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
             let p = totalPages <= 5 ? i + 1 : currentPage <= 3 ? i + 1 : currentPage >= totalPages - 2 ? totalPages - 4 + i : currentPage - 2 + i
-            return <button key={p} onClick={() => onPage(p)} className={`px-2.5 py-1.5 text-xs rounded border transition-colors ${currentPage === p ? 'bg-[#C54A3F] text-white border-[#C54A3F]' : 'text-gray-600 border-gray-200 hover:bg-gray-50'}`}>{p}</button>
+            return <button key={p} onClick={() => onPage(p)} className={`px-2.5 py-1.5 text-xs rounded border transition-colors ${currentPage === p ? 'bg-[#D63B1F] text-white border-[#D63B1F]' : 'text-[#5C5A55] border-[#E3E1DB] hover:bg-[#F7F6F3]'}`}>{p}</button>
           })}
-          <button onClick={() => onPage(currentPage + 1)} disabled={currentPage === totalPages} className="px-2.5 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-50"><i className="fas fa-angle-right"></i></button>
+          <button onClick={() => onPage(currentPage + 1)} disabled={currentPage === totalPages} className="px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded hover:bg-[#F7F6F3] disabled:opacity-50"><i className="fas fa-angle-right"></i></button>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="h-full bg-gray-50 flex flex-col overflow-auto">
+    <div className="h-full bg-[#F7F6F3] flex flex-col overflow-auto">
       <div className="p-6 space-y-4">
 
         {/* Tabs */}
-        <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-1 self-start w-fit">
+        <div className="flex items-center gap-1 bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg p-1 self-start w-fit">
           {[
             { id: 'lists', label: 'Contact Lists', icon: 'fa-layer-group' },
             { id: 'all', label: 'All Contacts', icon: 'fa-address-book' },
@@ -230,7 +230,7 @@ export default function ContactsPage() {
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${tab === t.id ? 'bg-[#C54A3F] text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+              className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${tab === t.id ? 'bg-[#D63B1F] text-white' : 'text-[#5C5A55] hover:bg-[#F7F6F3]'}`}
             >
               <i className={`fas ${t.icon} text-xs`}></i>
               {t.label}
@@ -240,100 +240,100 @@ export default function ContactsPage() {
 
         {/* ── LISTS TAB ── */}
         {tab === 'lists' && (
-          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between gap-4">
+          <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-[#E3E1DB] flex items-center justify-between gap-4">
               <div className="flex items-center gap-3 flex-1 min-w-0">
-                <h3 className="text-sm font-semibold text-gray-900 flex-shrink-0">Contact Lists</h3>
+                <h3 className="text-sm font-semibold text-[#131210] flex-shrink-0">Contact Lists</h3>
                 <div className="relative flex-1 max-w-xs">
-                  <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+                  <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-[#9B9890] text-xs"></i>
                   <input type="text" placeholder="Search lists…" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]" />
+                    className="w-full pl-8 pr-3 py-1.5 border border-[#E3E1DB] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]" />
                 </div>
               </div>
-              <button onClick={() => setShowAddList(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-[#C54A3F] hover:bg-[#B73E34] text-white text-sm font-medium rounded-md transition-colors flex-shrink-0">
+              <button onClick={() => setShowAddList(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-[#D63B1F] hover:bg-[#c23119] text-white text-sm font-medium rounded-md transition-colors flex-shrink-0">
                 <i className="fas fa-plus text-xs"></i>New List
               </button>
             </div>
 
             {loading ? (
-              <div className="px-5 py-8 text-center text-sm text-gray-400"><i className="fas fa-spinner fa-spin mr-2"></i>Loading…</div>
+              <div className="px-5 py-8 text-center text-sm text-[#9B9890]"><i className="fas fa-spinner fa-spin mr-2"></i>Loading…</div>
             ) : (
               <>
                 <div className="overflow-x-auto">
                   <table className="min-w-full">
                     <thead>
-                      <tr className="bg-gray-50 border-b border-gray-100">
-                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">List Name</th>
-                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Description</th>
-                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Contacts</th>
-                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Created</th>
-                        <th className="px-5 py-3 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                      <tr className="bg-[#F7F6F3] border-b border-[#E3E1DB]">
+                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">List Name</th>
+                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Description</th>
+                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Contacts</th>
+                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Created</th>
+                        <th className="px-5 py-3 text-right text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
+                    <tbody className="divide-y divide-[#E3E1DB]">
                       {currentLists.map((list) => (
-                        <tr key={list.id} className="hover:bg-gray-50 transition-colors">
+                        <tr key={list.id} className="hover:bg-[#F7F6F3] transition-colors">
                           <td className="px-5 py-3">
                             {editingList?.id === list.id ? (
                               <input type="text" value={editingList.name} onChange={(e) => setEditingList({ ...editingList, name: e.target.value })}
-                                className="px-3 py-1.5 border border-[#C54A3F] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] w-full max-w-xs" autoFocus />
+                                className="px-3 py-1.5 border border-[#D63B1F] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] w-full max-w-xs" autoFocus />
                             ) : (
                               <div className="flex items-center gap-2.5">
-                                <div className="w-7 h-7 bg-[#C54A3F] rounded-md flex items-center justify-center text-white text-xs font-bold flex-shrink-0">{list.name.charAt(0).toUpperCase()}</div>
-                                <span className="text-sm font-medium text-gray-900">{list.name}</span>
+                                <div className="w-7 h-7 bg-[#D63B1F] rounded-md flex items-center justify-center text-white text-xs font-bold flex-shrink-0">{list.name.charAt(0).toUpperCase()}</div>
+                                <span className="text-sm font-medium text-[#131210]">{list.name}</span>
                               </div>
                             )}
                           </td>
                           <td className="px-5 py-3">
                             {editingList?.id === list.id ? (
                               <input type="text" value={editingList.description || ''} onChange={(e) => setEditingList({ ...editingList, description: e.target.value })} placeholder="Add description…"
-                                className="px-3 py-1.5 border border-[#C54A3F] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] w-full max-w-md" />
+                                className="px-3 py-1.5 border border-[#D63B1F] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] w-full max-w-md" />
                             ) : (
-                              <span className="text-sm text-gray-500 line-clamp-1">{list.description || '—'}</span>
+                              <span className="text-sm text-[#9B9890] line-clamp-1">{list.description || '—'}</span>
                             )}
                           </td>
                           <td className="px-5 py-3">
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#EFEDE8] text-[#5C5A55]">
                               <i className="fas fa-users mr-1 text-[10px]"></i>{list.contactCount || 0}
                             </span>
                           </td>
-                          <td className="px-5 py-3 text-sm text-gray-500 whitespace-nowrap">{new Date(list.created_at).toLocaleDateString()}</td>
+                          <td className="px-5 py-3 text-sm text-[#9B9890] whitespace-nowrap">{new Date(list.created_at).toLocaleDateString()}</td>
                           <td className="px-5 py-3 text-right">
                             {editingList?.id === list.id ? (
                               <div className="flex items-center justify-end gap-1.5">
                                 <button onClick={() => handleUpdateList(list.id, { name: editingList.name, description: editingList.description })} className="px-2.5 py-1.5 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700">Save</button>
-                                <button onClick={() => setEditingList(null)} className="px-2.5 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-50">Cancel</button>
+                                <button onClick={() => setEditingList(null)} className="px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded hover:bg-[#F7F6F3]">Cancel</button>
                               </div>
                             ) : (
                               <div className="flex items-center justify-end gap-1">
-                                <button onClick={() => { setSelectedList(list); setShowViewContacts(true) }} className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-50 transition-colors" title="View contacts">
+                                <button onClick={() => { setSelectedList(list); setShowViewContacts(true) }} className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded hover:bg-[#F7F6F3] transition-colors" title="View contacts">
                                   <i className="fas fa-address-book text-[11px]"></i>View
                                 </button>
-                                <button onClick={() => setEditingList({ ...list })} className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors" title="Rename list"><i className="fas fa-pen text-[11px]"></i></button>
-                                <button onClick={() => setDeleteConfirm(list)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="Delete list"><i className="fas fa-trash-alt text-[11px]"></i></button>
+                                <button onClick={() => setEditingList({ ...list })} className="p-1.5 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded transition-colors" title="Rename list"><i className="fas fa-pen text-[11px]"></i></button>
+                                <button onClick={() => setDeleteConfirm(list)} className="p-1.5 text-[#9B9890] hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="Delete list"><i className="fas fa-trash-alt text-[11px]"></i></button>
                               </div>
                             )}
                           </td>
                         </tr>
                       ))}
                       {currentLists.length === 0 && (
-                        <tr><td colSpan="5" className="px-5 py-10 text-center"><p className="text-sm text-gray-500">No contact lists found</p><p className="text-xs text-gray-400 mt-1">Create your first list to start organizing contacts</p></td></tr>
+                        <tr><td colSpan="5" className="px-5 py-10 text-center"><p className="text-sm text-[#9B9890]">No contact lists found</p><p className="text-xs text-[#9B9890] mt-1">Create your first list to start organizing contacts</p></td></tr>
                       )}
                     </tbody>
                   </table>
                 </div>
                 {totalListPages > 1 && (
-                  <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between bg-gray-50">
-                    <p className="text-xs text-gray-500">{listStart + 1}–{Math.min(listStart + itemsPerPage, filteredLists.length)} of {filteredLists.length}</p>
+                  <div className="px-5 py-3 border-t border-[#E3E1DB] flex items-center justify-between bg-[#F7F6F3]">
+                    <p className="text-xs text-[#9B9890]">{listStart + 1}–{Math.min(listStart + itemsPerPage, filteredLists.length)} of {filteredLists.length}</p>
                     <div className="flex items-center gap-1">
-                      <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-2.5 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-50"><i className="fas fa-angle-left"></i></button>
+                      <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded hover:bg-[#F7F6F3] disabled:opacity-50"><i className="fas fa-angle-left"></i></button>
                       {Array.from({ length: totalListPages }, (_, i) => i + 1).filter(p => p === 1 || p === totalListPages || Math.abs(p - currentPage) <= 1).map((p, idx, arr) => (
                         <div key={p} className="flex items-center">
-                          {idx > 0 && arr[idx - 1] !== p - 1 && <span className="px-1.5 text-gray-400 text-xs">…</span>}
-                          <button onClick={() => setCurrentPage(p)} className={`px-2.5 py-1.5 text-xs rounded border transition-colors ${currentPage === p ? 'bg-[#C54A3F] text-white border-[#C54A3F]' : 'text-gray-600 border-gray-200 hover:bg-gray-50'}`}>{p}</button>
+                          {idx > 0 && arr[idx - 1] !== p - 1 && <span className="px-1.5 text-[#9B9890] text-xs">…</span>}
+                          <button onClick={() => setCurrentPage(p)} className={`px-2.5 py-1.5 text-xs rounded border transition-colors ${currentPage === p ? 'bg-[#D63B1F] text-white border-[#D63B1F]' : 'text-[#5C5A55] border-[#E3E1DB] hover:bg-[#F7F6F3]'}`}>{p}</button>
                         </div>
                       ))}
-                      <button onClick={() => setCurrentPage(p => Math.min(totalListPages, p + 1))} disabled={currentPage === totalListPages} className="px-2.5 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-50"><i className="fas fa-angle-right"></i></button>
+                      <button onClick={() => setCurrentPage(p => Math.min(totalListPages, p + 1))} disabled={currentPage === totalListPages} className="px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded hover:bg-[#F7F6F3] disabled:opacity-50"><i className="fas fa-angle-right"></i></button>
                     </div>
                   </div>
                 )}
@@ -344,18 +344,18 @@ export default function ContactsPage() {
 
         {/* ── ALL CONTACTS TAB ── */}
         {tab === 'all' && (
-          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between gap-4">
+          <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-[#E3E1DB] flex items-center justify-between gap-4">
               <div className="flex items-center gap-3 flex-1 min-w-0">
-                <h3 className="text-sm font-semibold text-gray-900 flex-shrink-0">All Contacts</h3>
+                <h3 className="text-sm font-semibold text-[#131210] flex-shrink-0">All Contacts</h3>
                 <div className="relative flex-1 max-w-xs">
-                  <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+                  <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-[#9B9890] text-xs"></i>
                   <input type="text" placeholder="Search contacts…" value={allSearchTerm} onChange={(e) => setAllSearchTerm(e.target.value)}
-                    className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]" />
+                    className="w-full pl-8 pr-3 py-1.5 border border-[#E3E1DB] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]" />
                 </div>
                 {selectedContacts.length > 0 && (
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-500">{selectedContacts.length} selected</span>
+                    <span className="text-xs text-[#9B9890]">{selectedContacts.length} selected</span>
                     <button onClick={() => setDeleteContactConfirm({ multiple: true })} className="px-2.5 py-1.5 text-xs font-medium text-white bg-red-600 rounded hover:bg-red-700">
                       <i className="fas fa-trash mr-1"></i>Delete Selected
                     </button>
@@ -363,41 +363,41 @@ export default function ContactsPage() {
                 )}
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
-                <button onClick={() => setShowImportCsv(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors">
+                <button onClick={() => setShowImportCsv(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3] transition-colors">
                   <i className="fas fa-file-csv text-xs"></i>Import CSV
                 </button>
-                <button onClick={() => setShowAddContact(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-[#C54A3F] hover:bg-[#B73E34] text-white text-sm font-medium rounded-md transition-colors">
+                <button onClick={() => setShowAddContact(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-[#D63B1F] hover:bg-[#c23119] text-white text-sm font-medium rounded-md transition-colors">
                   <i className="fas fa-user-plus text-xs"></i>Add Contact
                 </button>
               </div>
             </div>
 
             {allContactsLoading ? (
-              <div className="px-5 py-8 text-center text-sm text-gray-400"><i className="fas fa-spinner fa-spin mr-2"></i>Loading…</div>
+              <div className="px-5 py-8 text-center text-sm text-[#9B9890]"><i className="fas fa-spinner fa-spin mr-2"></i>Loading…</div>
             ) : (
               <>
                 <div className="overflow-x-auto">
                   <table className="min-w-full">
                     <thead>
-                      <tr className="bg-gray-50 border-b border-gray-100">
+                      <tr className="bg-[#F7F6F3] border-b border-[#E3E1DB]">
                         <th className="px-5 py-3 text-left">
-                          <input type="checkbox" className="w-4 h-4 text-[#C54A3F] border-gray-300 rounded"
+                          <input type="checkbox" className="w-4 h-4 text-[#D63B1F] border-[#D4D1C9] rounded"
                             checked={selectedContacts.length === currentAllContacts.length && currentAllContacts.length > 0}
                             onChange={() => setSelectedContacts(prev => prev.length === currentAllContacts.length ? [] : currentAllContacts.map(c => c.id))} />
                         </th>
-                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Name</th>
-                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Company</th>
-                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Phone</th>
-                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Email</th>
-                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">List</th>
-                        <th className="px-5 py-3 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Name</th>
+                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Company</th>
+                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Phone</th>
+                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Email</th>
+                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">List</th>
+                        <th className="px-5 py-3 text-right text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
+                    <tbody className="divide-y divide-[#E3E1DB]">
                       {currentAllContacts.map((contact) => (
-                        <tr key={contact.id} className="hover:bg-gray-50 transition-colors">
+                        <tr key={contact.id} className="hover:bg-[#F7F6F3] transition-colors">
                           <td className="px-5 py-3">
-                            <input type="checkbox" className="w-4 h-4 text-[#C54A3F] border-gray-300 rounded"
+                            <input type="checkbox" className="w-4 h-4 text-[#D63B1F] border-[#D4D1C9] rounded"
                               checked={selectedContacts.includes(contact.id)}
                               onChange={() => setSelectedContacts(prev => prev.includes(contact.id) ? prev.filter(id => id !== contact.id) : [...prev, contact.id])} />
                           </td>
@@ -405,62 +405,62 @@ export default function ContactsPage() {
                             {editingContact?.id === contact.id ? (
                               <div className="flex gap-1">
                                 <input type="text" value={editingContact.first_name || ''} onChange={(e) => setEditingContact({ ...editingContact, first_name: e.target.value })}
-                                  placeholder="First" className="px-2 py-1.5 border border-[#C54A3F] rounded-md text-sm w-24 focus:outline-none" autoFocus />
+                                  placeholder="First" className="px-2 py-1.5 border border-[#D63B1F] rounded-md text-sm w-24 focus:outline-none" autoFocus />
                                 <input type="text" value={editingContact.last_name || ''} onChange={(e) => setEditingContact({ ...editingContact, last_name: e.target.value })}
-                                  placeholder="Last" className="px-2 py-1.5 border border-[#C54A3F] rounded-md text-sm w-24 focus:outline-none" />
+                                  placeholder="Last" className="px-2 py-1.5 border border-[#D63B1F] rounded-md text-sm w-24 focus:outline-none" />
                               </div>
                             ) : (
                               <div className="flex items-center gap-2.5">
-                                <div className="w-7 h-7 bg-[#C54A3F] rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">{contactInitial(contact)}</div>
-                                <span className="text-sm font-medium text-gray-900">{[contact.first_name, contact.last_name].filter(Boolean).join(' ') || '—'}</span>
+                                <div className="w-7 h-7 bg-[#D63B1F] rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">{contactInitial(contact)}</div>
+                                <span className="text-sm font-medium text-[#131210]">{[contact.first_name, contact.last_name].filter(Boolean).join(' ') || '—'}</span>
                               </div>
                             )}
                           </td>
                           <td className="px-5 py-3">
                             {editingContact?.id === contact.id ? (
                               <input type="text" value={editingContact.business_name || ''} onChange={(e) => setEditingContact({ ...editingContact, business_name: e.target.value })}
-                                placeholder="Company" className="px-2 py-1.5 border border-[#C54A3F] rounded-md text-sm w-32 focus:outline-none" />
+                                placeholder="Company" className="px-2 py-1.5 border border-[#D63B1F] rounded-md text-sm w-32 focus:outline-none" />
                             ) : (
-                              <span className="text-sm text-gray-500">{contact.business_name || '—'}</span>
+                              <span className="text-sm text-[#9B9890]">{contact.business_name || '—'}</span>
                             )}
                           </td>
                           <td className="px-5 py-3">
                             {editingContact?.id === contact.id ? (
                               <input type="tel" value={editingContact.phone_number || ''} onChange={(e) => setEditingContact({ ...editingContact, phone_number: e.target.value })}
-                                className="px-2 py-1.5 border border-[#C54A3F] rounded-md text-sm w-36 focus:outline-none" />
+                                className="px-2 py-1.5 border border-[#D63B1F] rounded-md text-sm w-36 focus:outline-none" />
                             ) : (
-                              <span className="text-sm text-gray-600">{formatPhoneNumber(contact.phone_number)}</span>
+                              <span className="text-sm text-[#5C5A55]">{formatPhoneNumber(contact.phone_number)}</span>
                             )}
                           </td>
                           <td className="px-5 py-3">
                             {editingContact?.id === contact.id ? (
                               <input type="email" value={editingContact.email || ''} onChange={(e) => setEditingContact({ ...editingContact, email: e.target.value })}
-                                className="px-2 py-1.5 border border-[#C54A3F] rounded-md text-sm w-40 focus:outline-none" />
+                                className="px-2 py-1.5 border border-[#D63B1F] rounded-md text-sm w-40 focus:outline-none" />
                             ) : (
-                              <span className="text-sm text-gray-600">{contact.email || '—'}</span>
+                              <span className="text-sm text-[#5C5A55]">{contact.email || '—'}</span>
                             )}
                           </td>
                           <td className="px-5 py-3">
-                            <span className="text-xs text-gray-400">{contact.contact_lists?.name || '—'}</span>
+                            <span className="text-xs text-[#9B9890]">{contact.contact_lists?.name || '—'}</span>
                           </td>
                           <td className="px-5 py-3 text-right">
                             {editingContact?.id === contact.id ? (
                               <div className="flex items-center justify-end gap-1.5">
                                 <button onClick={() => updateContact(contact.id, { first_name: editingContact.first_name, last_name: editingContact.last_name, business_name: editingContact.business_name, phone_number: editingContact.phone_number, email: editingContact.email })}
                                   className="px-2.5 py-1.5 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700">Save</button>
-                                <button onClick={() => setEditingContact(null)} className="px-2.5 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-50">Cancel</button>
+                                <button onClick={() => setEditingContact(null)} className="px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded hover:bg-[#F7F6F3]">Cancel</button>
                               </div>
                             ) : (
                               <div className="flex items-center justify-end gap-1">
-                                <button onClick={() => setEditingContact({ ...contact })} className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors" title="Edit"><i className="fas fa-pen text-[11px]"></i></button>
-                                <button onClick={() => setDeleteContactConfirm(contact)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="Delete"><i className="fas fa-trash-alt text-[11px]"></i></button>
+                                <button onClick={() => setEditingContact({ ...contact })} className="p-1.5 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded transition-colors" title="Edit"><i className="fas fa-pen text-[11px]"></i></button>
+                                <button onClick={() => setDeleteContactConfirm(contact)} className="p-1.5 text-[#9B9890] hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="Delete"><i className="fas fa-trash-alt text-[11px]"></i></button>
                               </div>
                             )}
                           </td>
                         </tr>
                       ))}
                       {currentAllContacts.length === 0 && (
-                        <tr><td colSpan="7" className="px-5 py-10 text-center"><p className="text-sm text-gray-500">No contacts found</p><p className="text-xs text-gray-400 mt-1">Add contacts or import from CSV</p></td></tr>
+                        <tr><td colSpan="7" className="px-5 py-10 text-center"><p className="text-sm text-[#9B9890]">No contacts found</p><p className="text-xs text-[#9B9890] mt-1">Add contacts or import from CSV</p></td></tr>
                       )}
                     </tbody>
                   </table>
@@ -523,11 +523,11 @@ export default function ContactsPage() {
 function ErrorModal({ title, message, onClose }) {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[80] p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-sm">
-        <div className="px-5 py-4 border-b border-gray-100"><h3 className="text-sm font-semibold text-gray-900">{title}</h3></div>
-        <div className="px-5 py-4"><p className="text-sm text-gray-600">{message}</p></div>
-        <div className="px-5 py-3 border-t border-gray-100 flex justify-end">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">OK</button>
+      <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-sm">
+        <div className="px-5 py-4 border-b border-[#E3E1DB]"><h3 className="text-sm font-semibold text-[#131210]">{title}</h3></div>
+        <div className="px-5 py-4"><p className="text-sm text-[#5C5A55]">{message}</p></div>
+        <div className="px-5 py-3 border-t border-[#E3E1DB] flex justify-end">
+          <button onClick={onClose} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">OK</button>
         </div>
       </div>
     </div>
@@ -553,25 +553,25 @@ function AddListModal({ onClose, onListAdded, onError }) {
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h3 className="text-sm font-semibold text-gray-900">New Contact List</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1"><i className="fas fa-times text-sm"></i></button>
+      <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-md">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#E3E1DB]">
+          <h3 className="text-sm font-semibold text-[#131210]">New Contact List</h3>
+          <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1"><i className="fas fa-times text-sm"></i></button>
         </div>
         <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">List Name *</label>
+            <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">List Name *</label>
             <input type="text" required value={name} onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]" placeholder="e.g., Marketing Prospects 2025" />
+              className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]" placeholder="e.g., Marketing Prospects 2025" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Description</label>
+            <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Description</label>
             <textarea value={description} onChange={(e) => setDescription(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F] resize-none" rows={3} placeholder="Add a description…" />
+              className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F] resize-none" rows={3} placeholder="Add a description…" />
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">Cancel</button>
-            <button type="submit" disabled={loading} className="px-4 py-1.5 text-sm font-medium text-white bg-[#C54A3F] hover:bg-[#B73E34] rounded-md disabled:opacity-50">
+            <button type="button" onClick={onClose} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
+            <button type="submit" disabled={loading} className="px-4 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md disabled:opacity-50">
               {loading ? <><i className="fas fa-spinner fa-spin mr-1.5"></i>Creating…</> : 'Create List'}
             </button>
           </div>
@@ -586,15 +586,15 @@ function DeleteConfirmModal({ list, onConfirm, onCancel }) {
   const handleConfirm = async () => { setLoading(true); await onConfirm(); setLoading(false) }
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-sm">
-        <div className="px-5 py-4 border-b border-gray-100"><h3 className="text-sm font-semibold text-gray-900">Delete Contact List</h3></div>
+      <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-sm">
+        <div className="px-5 py-4 border-b border-[#E3E1DB]"><h3 className="text-sm font-semibold text-[#131210]">Delete Contact List</h3></div>
         <div className="px-5 py-4">
-          <p className="text-sm text-gray-600">Delete <span className="font-medium text-gray-900">"{list.name}"</span>? This cannot be undone.
+          <p className="text-sm text-[#5C5A55]">Delete <span className="font-medium text-[#131210]">"{list.name}"</span>? This cannot be undone.
             {list.contactCount > 0 && <span className="block mt-1.5 text-xs text-red-600"><i className="fas fa-exclamation-circle mr-1"></i>This will also delete {list.contactCount} contact{list.contactCount !== 1 ? 's' : ''}.</span>}
           </p>
         </div>
-        <div className="px-5 py-3 border-t border-gray-100 flex justify-end gap-2">
-          <button onClick={onCancel} disabled={loading} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 disabled:opacity-50">Cancel</button>
+        <div className="px-5 py-3 border-t border-[#E3E1DB] flex justify-end gap-2">
+          <button onClick={onCancel} disabled={loading} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3] disabled:opacity-50">Cancel</button>
           <button onClick={handleConfirm} disabled={loading} className="px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md disabled:opacity-50">
             {loading ? <><i className="fas fa-spinner fa-spin mr-1.5"></i>Deleting…</> : 'Delete'}
           </button>
@@ -609,15 +609,15 @@ function DeleteContactConfirmModal({ contact, selectedCount, onConfirm, onCancel
   const handleConfirm = async () => { setLoading(true); await onConfirm(); setLoading(false) }
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[70] p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-sm">
-        <div className="px-5 py-4 border-b border-gray-100"><h3 className="text-sm font-semibold text-gray-900">Delete Contact{contact.multiple ? 's' : ''}</h3></div>
+      <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-sm">
+        <div className="px-5 py-4 border-b border-[#E3E1DB]"><h3 className="text-sm font-semibold text-[#131210]">Delete Contact{contact.multiple ? 's' : ''}</h3></div>
         <div className="px-5 py-4">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-[#5C5A55]">
             {contact.multiple ? `Delete ${selectedCount} selected contacts?` : `Delete this contact? This cannot be undone.`}
           </p>
         </div>
-        <div className="px-5 py-3 border-t border-gray-100 flex justify-end gap-2">
-          <button onClick={onCancel} disabled={loading} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 disabled:opacity-50">Cancel</button>
+        <div className="px-5 py-3 border-t border-[#E3E1DB] flex justify-end gap-2">
+          <button onClick={onCancel} disabled={loading} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3] disabled:opacity-50">Cancel</button>
           <button onClick={handleConfirm} disabled={loading} className="px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md disabled:opacity-50">
             {loading ? <><i className="fas fa-spinner fa-spin mr-1.5"></i>Deleting…</> : 'Delete'}
           </button>
@@ -648,49 +648,49 @@ function AddContactModal({ onClose, contactListId, onContactAdded, onError }) {
     finally { setLoading(false) }
   }
 
-  const inputClass = "w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]"
+  const inputClass = "w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h3 className="text-sm font-semibold text-gray-900">Add Contact</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1"><i className="fas fa-times text-sm"></i></button>
+      <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-md">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#E3E1DB]">
+          <h3 className="text-sm font-semibold text-[#131210]">Add Contact</h3>
+          <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1"><i className="fas fa-times text-sm"></i></button>
         </div>
         <form onSubmit={handleSubmit} className="px-5 py-4 space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">First Name</label>
+              <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">First Name</label>
               <input type="text" value={formData.first_name} onChange={(e) => set('first_name', e.target.value)} className={inputClass} placeholder="Jane" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">Last Name</label>
+              <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Last Name</label>
               <input type="text" value={formData.last_name} onChange={(e) => set('last_name', e.target.value)} className={inputClass} placeholder="Doe" />
             </div>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Company Name</label>
+            <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Company Name</label>
             <input type="text" value={formData.business_name} onChange={(e) => set('business_name', e.target.value)} className={inputClass} placeholder="Acme Corp (optional)" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Phone Number *</label>
+            <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Phone Number *</label>
             <input type="tel" required value={formData.phone_number} onChange={(e) => set('phone_number', e.target.value)} className={inputClass} placeholder="+1 (555) 123-4567" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Email</label>
+            <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Email</label>
             <input type="email" value={formData.email} onChange={(e) => set('email', e.target.value)} className={inputClass} placeholder="jane@example.com" />
           </div>
           <div className="grid grid-cols-3 gap-2">
             {[['city', 'City', 'New York'], ['state', 'State', 'NY'], ['country', 'Country', 'US']].map(([key, label, ph]) => (
               <div key={key}>
-                <label className="block text-xs font-medium text-gray-600 mb-1.5">{label}</label>
+                <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">{label}</label>
                 <input type="text" value={formData[key]} onChange={(e) => set(key, e.target.value)} className={inputClass} placeholder={ph} />
               </div>
             ))}
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">Cancel</button>
-            <button type="submit" disabled={loading} className="px-4 py-1.5 text-sm font-medium text-white bg-[#C54A3F] hover:bg-[#B73E34] rounded-md disabled:opacity-50">
+            <button type="button" onClick={onClose} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
+            <button type="submit" disabled={loading} className="px-4 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md disabled:opacity-50">
               {loading ? <><i className="fas fa-spinner fa-spin mr-1.5"></i>Adding…</> : 'Add Contact'}
             </button>
           </div>
@@ -730,10 +730,10 @@ function ImportCsvModal({ onClose, contactListId, onImportComplete, onError }) {
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h3 className="text-sm font-semibold text-gray-900">Import CSV</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1"><i className="fas fa-times text-sm"></i></button>
+      <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-md">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#E3E1DB]">
+          <h3 className="text-sm font-semibold text-[#131210]">Import CSV</h3>
+          <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1"><i className="fas fa-times text-sm"></i></button>
         </div>
         <div className="px-5 py-4 space-y-4">
           {result ? (
@@ -750,23 +750,23 @@ function ImportCsvModal({ onClose, contactListId, onImportComplete, onError }) {
           ) : (
             <>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-2">Select CSV file</label>
-                <p className="text-xs text-gray-400 mb-3">Supported columns: <strong>first_name</strong>, <strong>last_name</strong>, <strong>business_name</strong> (or company), <strong>phone_number</strong> (or phone_number_1), email</p>
-                <label className="flex items-center gap-3 px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-[#C54A3F] transition-colors">
-                  <i className="fas fa-file-csv text-2xl text-gray-400"></i>
+                <label className="block text-xs font-medium text-[#5C5A55] mb-2">Select CSV file</label>
+                <p className="text-xs text-[#9B9890] mb-3">Supported columns: <strong>first_name</strong>, <strong>last_name</strong>, <strong>business_name</strong> (or company), <strong>phone_number</strong> (or phone_number_1), email</p>
+                <label className="flex items-center gap-3 px-4 py-3 border-2 border-dashed border-[#D4D1C9] rounded-lg cursor-pointer hover:border-[#D63B1F] transition-colors">
+                  <i className="fas fa-file-csv text-2xl text-[#9B9890]"></i>
                   <div className="flex-1 min-w-0">
                     {selectedFile ? (
-                      <p className="text-sm font-medium text-gray-900 truncate">{selectedFile.name}</p>
+                      <p className="text-sm font-medium text-[#131210] truncate">{selectedFile.name}</p>
                     ) : (
-                      <p className="text-sm text-gray-500">Click to select a CSV file</p>
+                      <p className="text-sm text-[#9B9890]">Click to select a CSV file</p>
                     )}
                   </div>
                   <input type="file" accept=".csv,text/csv" onChange={handleFileSelect} className="hidden" />
                 </label>
               </div>
               <div className="flex justify-end gap-2">
-                <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50">Cancel</button>
-                <button onClick={handleImport} disabled={!selectedFile || loading} className="px-4 py-1.5 text-sm font-medium text-white bg-[#C54A3F] hover:bg-[#B73E34] rounded-md disabled:opacity-50">
+                <button onClick={onClose} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
+                <button onClick={handleImport} disabled={!selectedFile || loading} className="px-4 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md disabled:opacity-50">
                   {loading ? <><i className="fas fa-spinner fa-spin mr-1.5"></i>Importing…</> : 'Import'}
                 </button>
               </div>
@@ -863,36 +863,36 @@ function ViewContactsModal({ list, onClose, onContactsUpdated, onError }) {
     } catch { onError({ title: 'Error', message: 'An unexpected error occurred.' }) }
   }
 
-  const inputClass = "px-2 py-1.5 border border-[#C54A3F] rounded-md text-sm focus:outline-none"
+  const inputClass = "px-2 py-1.5 border border-[#D63B1F] rounded-md text-sm focus:outline-none"
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
+      <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-6xl h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#E3E1DB] flex-shrink-0">
           <div>
-            <h3 className="text-sm font-semibold text-gray-900">{list.name}</h3>
-            <p className="text-xs text-gray-400 mt-0.5">{filteredContacts.length} contact{filteredContacts.length !== 1 ? 's' : ''}</p>
+            <h3 className="text-sm font-semibold text-[#131210]">{list.name}</h3>
+            <p className="text-xs text-[#9B9890] mt-0.5">{filteredContacts.length} contact{filteredContacts.length !== 1 ? 's' : ''}</p>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => setShowImportCsv(true)} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors">
+            <button onClick={() => setShowImportCsv(true)} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3] transition-colors">
               <i className="fas fa-file-csv mr-1.5 text-xs"></i>Import CSV
             </button>
-            <button onClick={() => setShowAddContact(true)} className="px-3 py-1.5 bg-[#C54A3F] hover:bg-[#B73E34] text-white text-sm font-medium rounded-md transition-colors">
+            <button onClick={() => setShowAddContact(true)} className="px-3 py-1.5 bg-[#D63B1F] hover:bg-[#c23119] text-white text-sm font-medium rounded-md transition-colors">
               <i className="fas fa-user-plus mr-1.5 text-xs"></i>Add Contact
             </button>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1 ml-1"><i className="fas fa-times text-sm"></i></button>
+            <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1 ml-1"><i className="fas fa-times text-sm"></i></button>
           </div>
         </div>
 
-        <div className="px-5 py-3 border-b border-gray-100 flex-shrink-0 flex items-center gap-3">
+        <div className="px-5 py-3 border-b border-[#E3E1DB] flex-shrink-0 flex items-center gap-3">
           <div className="relative flex-1 max-w-xs">
-            <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+            <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-[#9B9890] text-xs"></i>
             <input type="text" placeholder="Search contacts…" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#C54A3F] focus:border-[#C54A3F]" />
+              className="w-full pl-8 pr-3 py-1.5 border border-[#E3E1DB] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]" />
           </div>
           {selectedContacts.length > 0 && (
             <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500">{selectedContacts.length} selected</span>
+              <span className="text-xs text-[#9B9890]">{selectedContacts.length} selected</span>
               <button onClick={() => setDeleteContactConfirm({ multiple: true })} className="px-2.5 py-1.5 text-xs font-medium text-white bg-red-600 rounded hover:bg-red-700">
                 <i className="fas fa-trash mr-1"></i>Delete Selected
               </button>
@@ -903,31 +903,31 @@ function ViewContactsModal({ list, onClose, onContactsUpdated, onError }) {
         <div className="flex-1 overflow-hidden flex flex-col">
           {loading ? (
             <div className="flex items-center justify-center h-full">
-              <div className="text-center"><i className="fas fa-spinner fa-spin text-2xl text-gray-400 mb-3"></i><p className="text-sm text-gray-500">Loading contacts…</p></div>
+              <div className="text-center"><i className="fas fa-spinner fa-spin text-2xl text-[#9B9890] mb-3"></i><p className="text-sm text-[#9B9890]">Loading contacts…</p></div>
             </div>
           ) : (
             <>
               <div className="flex-1 overflow-y-auto">
                 <table className="min-w-full">
                   <thead>
-                    <tr className="bg-gray-50 border-b border-gray-100 sticky top-0 z-10">
+                    <tr className="bg-[#F7F6F3] border-b border-[#E3E1DB] sticky top-0 z-10">
                       <th className="px-5 py-3 text-left">
-                        <input type="checkbox" className="w-4 h-4 text-[#C54A3F] border-gray-300 rounded"
+                        <input type="checkbox" className="w-4 h-4 text-[#D63B1F] border-[#D4D1C9] rounded"
                           checked={selectedContacts.length === currentContacts.length && currentContacts.length > 0}
                           onChange={() => setSelectedContacts(prev => prev.length === currentContacts.length ? [] : currentContacts.map(c => c.id))} />
                       </th>
-                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Name</th>
-                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Company</th>
-                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Phone</th>
-                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Email</th>
-                      <th className="px-5 py-3 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Name</th>
+                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Company</th>
+                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Phone</th>
+                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Email</th>
+                      <th className="px-5 py-3 text-right text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-[#E3E1DB]">
                     {currentContacts.map((contact) => (
-                      <tr key={contact.id} className="hover:bg-gray-50 transition-colors">
+                      <tr key={contact.id} className="hover:bg-[#F7F6F3] transition-colors">
                         <td className="px-5 py-3">
-                          <input type="checkbox" className="w-4 h-4 text-[#C54A3F] border-gray-300 rounded"
+                          <input type="checkbox" className="w-4 h-4 text-[#D63B1F] border-[#D4D1C9] rounded"
                             checked={selectedContacts.includes(contact.id)}
                             onChange={() => setSelectedContacts(prev => prev.includes(contact.id) ? prev.filter(id => id !== contact.id) : [...prev, contact.id])} />
                         </td>
@@ -939,8 +939,8 @@ function ViewContactsModal({ list, onClose, onContactsUpdated, onError }) {
                             </div>
                           ) : (
                             <div className="flex items-center gap-2.5">
-                              <div className="w-7 h-7 bg-[#C54A3F] rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">{contactInitial(contact)}</div>
-                              <span className="text-sm font-medium text-gray-900">{[contact.first_name, contact.last_name].filter(Boolean).join(' ') || '—'}</span>
+                              <div className="w-7 h-7 bg-[#D63B1F] rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">{contactInitial(contact)}</div>
+                              <span className="text-sm font-medium text-[#131210]">{[contact.first_name, contact.last_name].filter(Boolean).join(' ') || '—'}</span>
                             </div>
                           )}
                         </td>
@@ -948,21 +948,21 @@ function ViewContactsModal({ list, onClose, onContactsUpdated, onError }) {
                           {editingContact?.id === contact.id ? (
                             <input type="text" value={editingContact.business_name || ''} onChange={(e) => setEditingContact({ ...editingContact, business_name: e.target.value })} placeholder="Company" className={`${inputClass} w-32`} />
                           ) : (
-                            <span className="text-sm text-gray-500">{contact.business_name || '—'}</span>
+                            <span className="text-sm text-[#9B9890]">{contact.business_name || '—'}</span>
                           )}
                         </td>
                         <td className="px-5 py-3">
                           {editingContact?.id === contact.id ? (
                             <input type="tel" value={editingContact.phone_number || ''} onChange={(e) => setEditingContact({ ...editingContact, phone_number: e.target.value })} className={`${inputClass} w-36`} />
                           ) : (
-                            <span className="text-sm text-gray-600">{formatPhoneNumber(contact.phone_number)}</span>
+                            <span className="text-sm text-[#5C5A55]">{formatPhoneNumber(contact.phone_number)}</span>
                           )}
                         </td>
                         <td className="px-5 py-3">
                           {editingContact?.id === contact.id ? (
                             <input type="email" value={editingContact.email || ''} onChange={(e) => setEditingContact({ ...editingContact, email: e.target.value })} className={`${inputClass} w-40`} />
                           ) : (
-                            <span className="text-sm text-gray-600">{contact.email || '—'}</span>
+                            <span className="text-sm text-[#5C5A55]">{contact.email || '—'}</span>
                           )}
                         </td>
                         <td className="px-5 py-3 text-right">
@@ -970,34 +970,34 @@ function ViewContactsModal({ list, onClose, onContactsUpdated, onError }) {
                             <div className="flex items-center justify-end gap-1.5">
                               <button onClick={() => updateContact(contact.id, { first_name: editingContact.first_name, last_name: editingContact.last_name, business_name: editingContact.business_name, phone_number: editingContact.phone_number, email: editingContact.email })}
                                 className="px-2.5 py-1.5 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700">Save</button>
-                              <button onClick={() => setEditingContact(null)} className="px-2.5 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-50">Cancel</button>
+                              <button onClick={() => setEditingContact(null)} className="px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded hover:bg-[#F7F6F3]">Cancel</button>
                             </div>
                           ) : (
                             <div className="flex items-center justify-end gap-1">
-                              <button onClick={() => setEditingContact({ ...contact })} className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors" title="Edit"><i className="fas fa-pen text-[11px]"></i></button>
-                              <button onClick={() => setDeleteContactConfirm(contact)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="Delete"><i className="fas fa-trash-alt text-[11px]"></i></button>
+                              <button onClick={() => setEditingContact({ ...contact })} className="p-1.5 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded transition-colors" title="Edit"><i className="fas fa-pen text-[11px]"></i></button>
+                              <button onClick={() => setDeleteContactConfirm(contact)} className="p-1.5 text-[#9B9890] hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="Delete"><i className="fas fa-trash-alt text-[11px]"></i></button>
                             </div>
                           )}
                         </td>
                       </tr>
                     ))}
                     {currentContacts.length === 0 && (
-                      <tr><td colSpan="6" className="px-5 py-10 text-center"><p className="text-sm text-gray-500">No contacts found</p><p className="text-xs text-gray-400 mt-1">Add contacts or import from CSV</p></td></tr>
+                      <tr><td colSpan="6" className="px-5 py-10 text-center"><p className="text-sm text-[#9B9890]">No contacts found</p><p className="text-xs text-[#9B9890] mt-1">Add contacts or import from CSV</p></td></tr>
                     )}
                   </tbody>
                 </table>
               </div>
 
               {totalPages > 1 && (
-                <div className="border-t border-gray-100 px-5 py-3 flex items-center justify-between bg-gray-50 flex-shrink-0">
-                  <p className="text-xs text-gray-500">{startIndex + 1}–{Math.min(startIndex + contactsPerPage, filteredContacts.length)} of {filteredContacts.length}</p>
+                <div className="border-t border-[#E3E1DB] px-5 py-3 flex items-center justify-between bg-[#F7F6F3] flex-shrink-0">
+                  <p className="text-xs text-[#9B9890]">{startIndex + 1}–{Math.min(startIndex + contactsPerPage, filteredContacts.length)} of {filteredContacts.length}</p>
                   <div className="flex items-center gap-1">
-                    <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-2.5 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-50"><i className="fas fa-angle-left"></i></button>
+                    <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded hover:bg-[#F7F6F3] disabled:opacity-50"><i className="fas fa-angle-left"></i></button>
                     {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
                       let p = totalPages <= 5 ? i + 1 : currentPage <= 3 ? i + 1 : currentPage >= totalPages - 2 ? totalPages - 4 + i : currentPage - 2 + i
-                      return <button key={p} onClick={() => setCurrentPage(p)} className={`px-2.5 py-1.5 text-xs rounded border transition-colors ${currentPage === p ? 'bg-[#C54A3F] text-white border-[#C54A3F]' : 'text-gray-600 border-gray-200 hover:bg-gray-50'}`}>{p}</button>
+                      return <button key={p} onClick={() => setCurrentPage(p)} className={`px-2.5 py-1.5 text-xs rounded border transition-colors ${currentPage === p ? 'bg-[#D63B1F] text-white border-[#D63B1F]' : 'text-[#5C5A55] border-[#E3E1DB] hover:bg-[#F7F6F3]'}`}>{p}</button>
                     })}
-                    <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="px-2.5 py-1.5 text-xs text-gray-600 border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-50"><i className="fas fa-angle-right"></i></button>
+                    <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded hover:bg-[#F7F6F3] disabled:opacity-50"><i className="fas fa-angle-right"></i></button>
                   </div>
                 </div>
               )}

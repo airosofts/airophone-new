@@ -108,7 +108,7 @@ function CardForm({ onSuccess, onError, onClose, user }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label className="block text-sm font-semibold text-gray-700 mb-2">
+        <label className="block text-sm font-semibold text-[#5C5A55] mb-2">
           <i className="fas fa-user mr-1"></i>
           Cardholder Name *
         </label>
@@ -117,21 +117,21 @@ function CardForm({ onSuccess, onError, onClose, user }) {
           required
           value={cardholderName}
           onChange={(e) => setCardholderName(e.target.value)}
-          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#C54A3F] focus:border-transparent"
+          className="w-full px-4 py-3 border border-[#D4D1C9] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#D63B1F] focus:border-transparent"
           placeholder="John Doe"
           disabled={loading}
         />
       </div>
 
       <div>
-        <label className="block text-sm font-semibold text-gray-700 mb-2">
+        <label className="block text-sm font-semibold text-[#5C5A55] mb-2">
           <i className="fas fa-credit-card mr-1"></i>
           Card Details *
         </label>
-        <div className="w-full px-4 py-3 border border-gray-300 rounded-xl focus-within:ring-2 focus-within:ring-[#C54A3F] focus-within:border-transparent">
+        <div className="w-full px-4 py-3 border border-[#D4D1C9] rounded-xl focus-within:ring-2 focus-within:ring-[#D63B1F] focus-within:border-transparent">
           <CardElement options={CARD_ELEMENT_OPTIONS} />
         </div>
-        <p className="text-xs text-gray-500 mt-2">
+        <p className="text-xs text-[#9B9890] mt-2">
           <i className="fas fa-shield-alt mr-1"></i>
           Secure payment processing powered by Stripe
         </p>
@@ -149,14 +149,14 @@ function CardForm({ onSuccess, onError, onClose, user }) {
           type="button"
           onClick={onClose}
           disabled={loading}
-          className="flex-1 px-4 py-3 text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors disabled:opacity-50"
+          className="flex-1 px-4 py-3 text-sm font-semibold text-[#5C5A55] bg-[#EFEDE8] hover:bg-[#EFEDE8] rounded-xl transition-colors disabled:opacity-50"
         >
           Cancel
         </button>
         <button
           type="submit"
           disabled={loading || !stripe}
-          className="flex-1 px-4 py-3 text-sm font-semibold text-white bg-gradient-to-r from-[#C54A3F] to-[#B73E34] hover:from-[#B73E34] hover:to-[#A53329] rounded-xl transition-all shadow-lg hover:shadow-xl disabled:bg-gray-300 disabled:cursor-not-allowed disabled:from-gray-300 disabled:to-gray-300"
+          className="flex-1 px-4 py-3 text-sm font-semibold text-white bg-gradient-to-r from-[#D63B1F] to-[#c23119] hover:from-[#c23119] hover:to-[#A53329] rounded-xl transition-all shadow-lg hover:shadow-xl disabled:bg-[#D4D1C9] disabled:cursor-not-allowed disabled:from-[#D4D1C9] disabled:to-[#D4D1C9]"
         >
           {loading ? (
             <>

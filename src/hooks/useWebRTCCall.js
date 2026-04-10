@@ -37,8 +37,8 @@ export function useWebRTCCall() {
   const callStatusRef = useRef('idle')       // NEW — fixes stale callStatus in handlers
   const incomingCallRef = useRef(null)       // NEW — fixes stale incomingCall in hangup handler
   const handleCallUpdateRef = useRef(null)
-  const incomingHandledCallsRef = useRef(new Set()) // tracks calls already handled by telnyx.call.receive
   const ringtoneSourceRef = useRef(null)   // current AudioContext BufferSourceNode (for stopping)
+  const telnyxClientRef = useRef(null)     // ref to client so cleanup can disconnect (avoids stale closure)
 
   // Keep refs in sync with state every render
   availablePhoneNumbersRef.current = availablePhoneNumbers
@@ -84,98 +84,106 @@ export function useWebRTCCall() {
   }
 
   const showBrowserNotification = (from) => {
-    // Try to bring this window/tab to front (works in many browsers)
     try { window.focus() } catch (_) {}
 
-    // Change tab title — visible from any tab in the browser
+    // Set tab title once — no flashing, just a clear indicator
     setTabTitle(`📞 Incoming Call — ${from}`)
 
-    // Flash tab title to draw attention
-    const flashInterval = setInterval(() => {
-      document.title = document.title.startsWith('📞')
-        ? (originalTitleRef.current || 'AiroPhone')
-        : `📞 Incoming Call — ${from}`
-    }, 800)
-    showBrowserNotification._flashInterval = flashInterval
-
-    // Browser system notification — the ONLY way to alert user on another tab/window
+    // Browser system notification — alerts user on other tabs/windows
     try {
       if (!('Notification' in window)) return
       const show = () => {
         const n = new Notification('📞 Incoming Call', {
-          body: `Call from ${from} — tap to answer`,
+          body: `Call from ${from} — click to answer`,
           icon: '/favicon.ico',
           requireInteraction: true,
-          tag: 'incoming-call',
-          vibrate: [200, 100, 200]
+          tag: 'incoming-call'
         })
-        n.onclick = () => {
-          window.focus()
-          n.close()
-        }
-        console.log('[Notification] Browser notification shown for call from', from)
+        n.onclick = () => { window.focus(); n.close() }
+        console.log('[Notification] Shown for', from)
       }
       if (Notification.permission === 'granted') {
         show()
       } else if (Notification.permission === 'default') {
-        // Request permission — note: browser may require this to happen from a user gesture
-        Notification.requestPermission().then(p => {
-          console.log('[Notification] Permission result:', p)
-          if (p === 'granted') show()
-        })
-      } else {
-        console.warn('[Notification] Permission denied — user will not see system notification')
+        Notification.requestPermission().then(p => { if (p === 'granted') show() })
       }
     } catch (e) { console.warn('[Notification] Error:', e.message) }
   }
 
   const clearBrowserNotification = () => {
-    // Stop flashing and restore title
-    if (showBrowserNotification._flashInterval) {
-      clearInterval(showBrowserNotification._flashInterval)
-      showBrowserNotification._flashInterval = null
-    }
     setTabTitle(null)
-    // Dismiss any system notification
     try { new Notification('', { tag: 'incoming-call', silent: true }).close() } catch (e) {}
   }
 
   const playRingtone = () => {
     if (ringtoneRef.current) return // already playing
 
-    // --- Primary: AudioContext BufferSource ---
-    // window.__airoCtx and window.__airoRingBuffer are set by AudioUnlock on first user click.
-    // AudioContext nodes play without autoplay restrictions even in background tabs.
+    // --- Primary: AudioContext BufferSource (works in background tabs) ---
+    // AudioUnlock.js pre-decodes /call.mp3 into window.__airoRingBuffer on first user gesture.
+    // A running AudioContext's BufferSourceNode plays with NO autoplay restriction,
+    // even when the tab is hidden or in the background — this is the WhatsApp Web approach.
     const ctx = window.__airoCtx
     const buffer = window.__airoRingBuffer
 
-    if (ctx && buffer) {
+    if (ctx && buffer && ctx.state !== 'closed') {
       try {
-        if (ctx.state === 'suspended') ctx.resume()
+        const doPlay = () => {
+          if (!ringtoneRef.current) return // stopRingtone() called during resume
 
-        const playLoop = () => {
-          if (ringtoneRef.current !== '__ctx__') return // stopped
           const src = ctx.createBufferSource()
           src.buffer = buffer
+          src.loop = true  // built-in loop — no manual onended chain needed
           src.connect(ctx.destination)
-          src.onended = () => playLoop()
-          src.start(0)
+          // Assign BEFORE start() to prevent stop() race
           ringtoneSourceRef.current = src
+          src.start(0)
+          console.log('[Ringtone] Playing via AudioContext, ctx.state:', ctx.state)
         }
 
         ringtoneRef.current = '__ctx__'
-        playLoop()
-        console.log('[Ringtone] Playing via AudioContext')
+
+        // Handle suspended (autoplay policy) and interrupted (Chrome 136+ new state)
+        // Use a 500ms timeout — Safari has a known bug where ctx.resume() never resolves
+        if (ctx.state === 'suspended' || ctx.state === 'interrupted') {
+          const resumeTimeout = setTimeout(() => {
+            console.warn('[Ringtone] ctx.resume() timed out — falling back to HTMLAudio')
+            if (ringtoneRef.current === '__ctx__') {
+              ringtoneRef.current = null
+              playRingtoneFallback()
+            }
+          }, 500)
+          ctx.resume().then(() => {
+            clearTimeout(resumeTimeout)
+            if (ctx.state === 'running') {
+              doPlay()
+            } else {
+              console.warn('[Ringtone] ctx still not running after resume:', ctx.state)
+              ringtoneRef.current = null
+              playRingtoneFallback()
+            }
+          }).catch(e => {
+            clearTimeout(resumeTimeout)
+            console.warn('[Ringtone] ctx.resume() failed:', e.message)
+            ringtoneRef.current = null
+            playRingtoneFallback()
+          })
+        } else {
+          doPlay()
+        }
         return
       } catch (e) {
-        console.warn('[Ringtone] AudioContext failed, falling back to HTMLAudio:', e.message)
+        console.warn('[Ringtone] AudioContext path failed:', e.message)
         ringtoneRef.current = null
       }
     } else {
-      console.warn('[Ringtone] AudioContext not ready yet (user has not clicked page) — falling back to HTMLAudio')
+      console.warn('[Ringtone] AudioContext buffer not ready (ctx:', ctx?.state, 'buffer:', !!buffer, ') — using HTMLAudio fallback')
     }
 
-    // --- Fallback: HTMLAudioElement ---
+    playRingtoneFallback()
+  }
+
+  const playRingtoneFallback = () => {
+    if (ringtoneRef.current) return
     try {
       const audio = new Audio('/call.mp3')
       audio.loop = true
@@ -184,36 +192,43 @@ export function useWebRTCCall() {
 
       const tryPlay = () => {
         if (ringtoneRef.current !== audio) return
-        console.log('[Ringtone] Attempting HTMLAudio play...')
         audio.play().then(() => {
           console.log('[Ringtone] HTMLAudio playing')
         }).catch(e => {
-          console.warn('[Ringtone] HTMLAudio blocked:', e.name, '— will retry on user interaction')
+          console.warn('[Ringtone] HTMLAudio blocked:', e.name)
           if (e.name === 'NotAllowedError') {
-            const retry = () => { tryPlay() }
+            // Retry on ANY user interaction — de-duplicate with a flag
+            let retried = false
+            const retry = () => {
+              if (retried || ringtoneRef.current !== audio) return
+              retried = true
+              tryPlay()
+            }
             window.addEventListener('focus', retry, { once: true })
             document.addEventListener('click', retry, { once: true })
             document.addEventListener('keydown', retry, { once: true })
-            document.addEventListener('touchstart', retry, { once: true })
-            document.addEventListener('visibilitychange', () => {
-              if (document.visibilityState === 'visible') tryPlay()
-            }, { once: true })
+            document.addEventListener('touchstart', retry, { once: true, passive: true })
           }
         })
       }
       tryPlay()
-    } catch (e) { console.warn('[Ringtone] Error:', e) }
+    } catch (e) { console.warn('[Ringtone] Fallback error:', e) }
   }
 
   const stopRingtone = () => {
     if (ringtoneRef.current === '__ctx__') {
+      // Stop the current source node — onended will check ringtoneRef and not loop
+      ringtoneRef.current = null
       try { ringtoneSourceRef.current?.stop() } catch (_) {}
       ringtoneSourceRef.current = null
     } else if (ringtoneRef.current) {
-      ringtoneRef.current.pause()
-      ringtoneRef.current.currentTime = 0
+      const audio = ringtoneRef.current
+      ringtoneRef.current = null
+      audio.pause()
+      audio.currentTime = 0
+    } else {
+      ringtoneRef.current = null
     }
-    ringtoneRef.current = null
   }
 
   const addToCallHistory = (callData) => {
@@ -276,7 +291,6 @@ const performCompleteCleanup = () => {
   outboundCallIdRef.current = null
   isInitiatingOutboundRef.current = false
   pendingParticipantRef.current = null
-  incomingHandledCallsRef.current.clear()
 
   // Reset all call-related state
   setIsCallActive(false)
@@ -287,7 +301,6 @@ const performCompleteCleanup = () => {
   setIsOnHold(false)
   setIsMuted(false)
   setConferenceStatus('')
-  setParticipantCalls([])
   setParticipantCalls([])
   participantCallsRef.current = []
 }
@@ -365,60 +378,48 @@ const handleCallUpdate = (call) => {
     return // Don't process as main call
   }
   
-  // Incoming call detection: primary handler is telnyx.call.receive (below).
-  // This block is the fallback — it fires when telnyx.call.receive does NOT fire.
-  // Dedup guard: if telnyx.call.receive already handled this call ID, skip.
+  // Incoming call detection via telnyx.notification / callUpdate.
+  // NOTE: `telnyx.call.receive` does NOT exist in @telnyx/webrtc v2.x —
+  // telnyx.notification with type=callUpdate is the ONLY incoming call event.
   const isOurOutboundCall = isInitiatingOutboundRef.current || outboundCallIdRef.current === call.id
   if (!isOurOutboundCall && !currentCallRef.current && !isCallActiveRef.current &&
-      (call.state === 'ringing' || call.state === 'new')) {
-    // Skip confirmed outbound calls
-    if (call.direction === 'outbound') {
-      // outbound — let fall through to normal state handling
-    } else {
-      // If telnyx.call.receive already handled this, skip
-      if (incomingHandledCallsRef.current.has(call.id)) {
+      (call.state === 'ringing' || call.state === 'new') &&
+      call.direction !== 'outbound') {
+
+    // Per-workspace SIP creds isolate at the Telnyx level.
+    // Only filter by destination if we have a non-empty destination to check.
+    const incomingTo = call.params?.destination_number || call.params?.callee_id_number || ''
+    const incomingToDigits = incomingTo.replace(/\D/g, '').slice(-10)
+    const numbers = availablePhoneNumbersRef.current
+
+    if (incomingToDigits.length > 0 && numbers.length > 0) {
+      const isOurNumber = numbers.some(p => p.phoneNumber?.replace(/\D/g, '').slice(-10) === incomingToDigits)
+      if (!isOurNumber) {
+        console.log('[WebRTC] Incoming to', incomingTo, '— not our number, ignoring')
         return
       }
-
-      // Fallback incoming detection
-      // Per-workspace SIP creds already isolate calls at the Telnyx level, so any
-      // call reaching this SDK instance is for this workspace. Only filter by destination
-      // number if we actually have a non-empty destination to check.
-      const incomingTo = call.params?.destination_number || call.params?.destinationNumber || ''
-      const incomingToDigits = incomingTo.replace(/\D/g, '').slice(-10)
-      const numbers = availablePhoneNumbersRef.current
-
-      if (incomingToDigits.length > 0 && numbers.length > 0) {
-        const isOurNumber = numbers.some(p => p.phoneNumber?.replace(/\D/g, '').slice(-10) === incomingToDigits)
-        if (!isOurNumber) {
-          console.log('[WebRTC] callUpdate: incoming to', incomingTo, 'not our number, ignoring')
-          return
-        }
-      }
-
-      const callerNumber = call.params?.caller_id_number
-        || call.params?.callerIdNumber
-        || call.options?.remoteCallerNumber
-        || call.params?.from
-        || 'Unknown'
-      const destNumber = incomingTo
-
-      console.log('[WebRTC] callUpdate fallback: incoming call from', callerNumber, '->', destNumber)
-      const incomingData = { from: callerNumber, to: destNumber, callId: call.id }
-      currentCallRef.current = call
-      isCallActiveRef.current = true
-      callStatusRef.current = 'incoming'
-      incomingCallRef.current = incomingData
-      incomingHandledCallsRef.current.add(call.id)
-      setMissedCallNotice(null)
-      playRingtone()
-      showBrowserNotification(callerNumber)
-      setCurrentCall(call)
-      setIncomingCall(incomingData)
-      setIsCallActive(true)
-      setCallStatus('incoming')
-      return
     }
+
+    const callerNumber = call.params?.caller_id_number
+      || call.params?.callerIdNumber
+      || call.options?.remoteCallerNumber
+      || 'Unknown'
+    const destNumber = incomingTo
+
+    console.log('[WebRTC] Incoming call from', callerNumber, '->', destNumber)
+    const incomingData = { from: callerNumber, to: destNumber, callId: call.id }
+    currentCallRef.current = call
+    isCallActiveRef.current = true
+    callStatusRef.current = 'incoming'
+    incomingCallRef.current = incomingData
+    setMissedCallNotice(null)
+    playRingtone()
+    showBrowserNotification(callerNumber)
+    setCurrentCall(call)
+    setIncomingCall(incomingData)
+    setIsCallActive(true)
+    setCallStatus('incoming')
+    return
   }
 
   // Handle main call updates
@@ -638,56 +639,6 @@ const setupAudioRouting = (call, isParticipant = false) => {
           }
         })
 
-        telnyxClient.on('telnyx.call.receive', (call) => {
-          console.log('telnyx.call.receive fired:', call.id, 'state:', call.state, 'params:', call.params)
-
-          // This event ONLY fires for true incoming calls — no need for outbound check.
-          // Use refs so we always read current values (not stale closure).
-          if (currentCallRef.current || isCallActiveRef.current) {
-            console.log('Already on a call, ignoring incoming')
-            return
-          }
-
-          // Workspace filter: only ring if the destination matches one of our numbers.
-          // If numbers haven't loaded, BLOCK — better to miss than to ring wrong workspace.
-          const incomingTo = call.params?.destination_number || call.params?.destinationNumber || ''
-          const incomingToDigits = incomingTo.replace(/\D/g, '').slice(-10)
-          const numbers = availablePhoneNumbersRef.current
-
-          // Per-workspace SIP creds isolate calls at the Telnyx level.
-          // Only apply destination filter if we have both a non-empty destination AND loaded numbers.
-          if (incomingToDigits.length > 0 && numbers.length > 0) {
-            const isOurNumber = numbers.some(p => p.phoneNumber?.replace(/\D/g, '').slice(-10) === incomingToDigits)
-            if (!isOurNumber) {
-              console.log('[WebRTC] Incoming call to', incomingTo, 'not our number, ignoring')
-              return
-            }
-          }
-
-          const callerNumber = call.params?.caller_id_number
-            || call.params?.callerIdNumber
-            || call.options?.remoteCallerNumber
-            || call.params?.from
-            || 'Unknown'
-          const destNumber = incomingTo
-
-          console.log('Incoming call accepted:', callerNumber, '->', destNumber)
-          const incomingData = { from: callerNumber, to: destNumber, callId: call.id }
-          // Sync refs immediately so hangup handler sees correct state
-          currentCallRef.current = call
-          isCallActiveRef.current = true
-          callStatusRef.current = 'incoming'
-          incomingCallRef.current = incomingData
-          incomingHandledCallsRef.current.add(call.id) // prevent callUpdate fallback from double-firing
-          setMissedCallNotice(null)
-          playRingtone()
-          showBrowserNotification(callerNumber)
-          setCurrentCall(call)
-          setIncomingCall(incomingData)
-          setIsCallActive(true)
-          setCallStatus('incoming')
-        })
-
         // Load phone numbers BEFORE connecting so the incoming call filter is ready
         try {
           const numRes = await fetch('/api/phone-numbers', { headers })
@@ -705,6 +656,7 @@ const setupAudioRouting = (call, isParticipant = false) => {
         }
 
         await telnyxClient.connect()
+        telnyxClientRef.current = telnyxClient
         setClient(telnyxClient)
         console.log('WebRTC client connected')
 
@@ -729,7 +681,7 @@ const setupAudioRouting = (call, isParticipant = false) => {
     initializeClient()
 
     return () => {
-      if (client) client.disconnect()
+      if (telnyxClientRef.current) telnyxClientRef.current.disconnect()
       stopCallTimer()
       if (cleanupTimeoutRef.current) {
         clearTimeout(cleanupTimeoutRef.current)
