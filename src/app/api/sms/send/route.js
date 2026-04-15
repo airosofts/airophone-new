@@ -42,6 +42,10 @@ export async function POST(request) {
       )
     }
 
+    // Normalize phone numbers early — needed by profile lookup and conversation logic
+    const normalizedFrom = normalizePhoneNumber(from)
+    const normalizedTo = normalizePhoneNumber(to)
+
     // Get current message rate for this workspace based on tiered pricing
     const messageRate = await getWorkspaceMessageRate(workspace.workspaceId)
 
@@ -96,34 +100,64 @@ export async function POST(request) {
     const { data: numberRow } = await supabaseAdmin
       .from('phone_numbers')
       .select('id, messaging_profile_id')
-      .eq('phone_number', normalizePhoneNumber(from))
+      .eq('phone_number', normalizedFrom)
       .eq('workspace_id', workspace.workspaceId)
       .single()
 
     let messagingProfileId = numberRow?.messaging_profile_id || workspaceProfileId
 
-    // If number has no profile assigned, assign the workspace profile now and save it
-    if (!numberRow?.messaging_profile_id && messagingProfileId && numberRow?.id) {
-      try {
-        const assignRes = await fetch(`https://api.telnyx.com/v2/phone_numbers/${numberRow.id}/messaging`, {
-          method: 'PATCH',
-          headers: { 'Authorization': `Bearer ${process.env.TELNYX_API_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messaging_profile_id: messagingProfileId }),
-        })
-        if (assignRes.ok) {
-          await supabaseAdmin.from('phone_numbers')
-            .update({ messaging_profile_id: messagingProfileId, updated_at: new Date().toISOString() })
-            .eq('id', numberRow.id)
-          console.log(`[sms/send] Assigned missing profile ${messagingProfileId} to ${from}`)
+    // If number has no profile assigned, assign the workspace/global profile now
+    if (!numberRow?.messaging_profile_id && messagingProfileId) {
+      let telnyxNumberId = numberRow?.id
+
+      // If numberRow is null (e.g. older account, workspace_id mismatch), look up the Telnyx ID via API
+      if (!telnyxNumberId) {
+        try {
+          const lookupRes = await fetch(
+            `https://api.telnyx.com/v2/phone_numbers?filter[phone_number]=${encodeURIComponent(normalizedFrom)}`,
+            { headers: { 'Authorization': `Bearer ${process.env.TELNYX_API_KEY}` } }
+          )
+          if (lookupRes.ok) {
+            const lookupData = await lookupRes.json()
+            telnyxNumberId = lookupData.data?.[0]?.id
+            console.log(`[sms/send] Resolved Telnyx ID for ${normalizedFrom}: ${telnyxNumberId}`)
+          } else {
+            console.error(`[sms/send] Telnyx number lookup failed (${lookupRes.status})`)
+          }
+        } catch (e) {
+          console.warn('[sms/send] Failed to look up Telnyx number ID:', e.message)
         }
-      } catch (e) {
-        console.warn('[sms/send] Failed to auto-assign profile (non-fatal):', e.message)
+      }
+
+      if (telnyxNumberId) {
+        try {
+          const assignRes = await fetch(
+            `https://api.telnyx.com/v2/phone_numbers/${telnyxNumberId}/messaging`,
+            {
+              method: 'PATCH',
+              headers: { 'Authorization': `Bearer ${process.env.TELNYX_API_KEY}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ messaging_profile_id: messagingProfileId }),
+            }
+          )
+          if (assignRes.ok) {
+            // Update DB record if we have the row
+            if (numberRow?.id) {
+              await supabaseAdmin.from('phone_numbers')
+                .update({ messaging_profile_id: messagingProfileId, updated_at: new Date().toISOString() })
+                .eq('id', numberRow.id)
+            }
+            console.log(`[sms/send] Assigned profile ${messagingProfileId} to ${normalizedFrom}`)
+          } else {
+            const errBody = await assignRes.json().catch(() => ({}))
+            console.error(`[sms/send] PATCH /messaging failed (${assignRes.status}):`, JSON.stringify(errBody))
+          }
+        } catch (e) {
+          console.error('[sms/send] Failed to auto-assign profile:', e.message)
+        }
+      } else {
+        console.error(`[sms/send] Could not resolve Telnyx ID for ${normalizedFrom} — send may fail without profile assignment`)
       }
     }
-
-    // Normalize phone numbers
-    const normalizedFrom = normalizePhoneNumber(from)
-    const normalizedTo = normalizePhoneNumber(to)
 
     // Get or create conversation
     let conversation
@@ -154,8 +188,9 @@ export async function POST(request) {
       )
     }
 
-    // Send SMS via Telnyx — no messaging_profile_id in payload; Telnyx resolves it from the from number
-    const result = await telnyx.sendMessage(normalizedFrom, normalizedTo, message)
+    // Send SMS via Telnyx — include messaging_profile_id so Telnyx routes through the correct profile
+    const sendOptions = messagingProfileId ? { messaging_profile_id: messagingProfileId } : {}
+    const result = await telnyx.sendMessage(normalizedFrom, normalizedTo, message, sendOptions)
 
     if (!result.success) {
       // Create failed message record

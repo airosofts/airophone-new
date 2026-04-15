@@ -152,8 +152,11 @@ class TelnyxClient {
         use_profile_webhooks: false,
         ...options
       }
-      // Remove messaging_profile_id if caller passed it — let Telnyx auto-resolve from the number
-      delete payload.messaging_profile_id
+      // Only strip messaging_profile_id if caller did NOT explicitly set it in options
+      // (options are spread above, so if caller passed it, it's now in payload)
+      if (!options?.messaging_profile_id) {
+        delete payload.messaging_profile_id
+      }
 
       console.log('Sending SMS via Telnyx:', JSON.stringify(payload, null, 2))
 
