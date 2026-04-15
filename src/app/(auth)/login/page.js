@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { loginWithEmailPassword } from '@/lib/auth'
+// Auth is handled via API route which sets httpOnly cookie
 
 const COLORS = {
   bg: '#F7F6F3',
@@ -65,7 +65,15 @@ export default function LoginPage() {
     setLoading(true)
     setError('')
     try {
-      await loginWithEmailPassword(email, password)
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Invalid credentials')
+      // Cache session in localStorage for client-side reads
+      localStorage.setItem('user_session', JSON.stringify(data.session))
       router.push('/inbox')
     } catch (err) {
       setError(err.message)
@@ -213,12 +221,6 @@ export default function LoginPage() {
       }} className="max-lg:!w-full max-lg:!p-8">
 
         <div style={{ width: '100%', maxWidth: 400 }}>
-
-          {/* Mobile logo */}
-          <div className="lg:hidden" style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center', marginBottom: 40 }}>
-            <Logo size={30} />
-            <span style={{ fontSize: 16, fontWeight: 600, letterSpacing: '-0.03em', color: COLORS.text }}>AiroPhone</span>
-          </div>
 
           {/* Title */}
           <div style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.03em', color: COLORS.text, marginBottom: 6 }}>

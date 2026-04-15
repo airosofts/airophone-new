@@ -123,7 +123,7 @@ export default function NotificationsPage() {
               <i className={`fas ${tab.icon} text-xs`}></i>
               {tab.label}
               {tab.id === 'unread' && unreadCount > 0 && (
-                <span className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold rounded-full ${
+                <span className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-semibold rounded-full ${
                   filter === 'unread' ? 'bg-[#FFFFFF]/20 text-white' : 'bg-[#D63B1F] text-white'
                 }`}>
                   {unreadCount}
@@ -195,7 +195,7 @@ export default function NotificationsPage() {
                       key={notification.id}
                       onClick={() => handleNotificationClick(notification)}
                       className={`hover:bg-[#F7F6F3] transition-colors cursor-pointer ${
-                        !notification.is_read ? 'bg-red-50/30' : ''
+                        !notification.is_read ? 'bg-[rgba(214,59,31,0.07)]' : ''
                       }`}
                     >
                       {/* Unread dot */}
@@ -249,7 +249,7 @@ export default function NotificationsPage() {
                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
                           notification.is_read
                             ? 'bg-[#EFEDE8] text-[#5C5A55]'
-                            : 'bg-red-50 text-[#D63B1F]'
+                            : 'bg-[rgba(214,59,31,0.07)] text-[#D63B1F]'
                         }`}>
                           {notification.is_read ? 'Read' : 'Unread'}
                         </span>

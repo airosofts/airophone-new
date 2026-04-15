@@ -203,7 +203,7 @@ export default function ScenariosPage() {
                         </td>
                         <td className="px-5 py-3">
                           {scenario.enable_followups ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-[rgba(214,59,31,0.07)] text-[#D63B1F]">
                               <i className="fas fa-robot text-[10px]"></i>
                               Enabled
                             </span>
@@ -223,14 +223,14 @@ export default function ScenariosPage() {
                             <button
                               title="Execution Logs"
                               onClick={(e) => { e.stopPropagation(); setSelectedScenario(scenario); setShowExecutionsModal(true) }}
-                              className="p-1.5 text-[#9B9890] hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                              className="p-1.5 text-[#9B9890] hover:text-[#D63B1F] hover:bg-[rgba(214,59,31,0.07)] rounded transition-colors"
                             >
                               <i className="fas fa-list-alt text-[13px]"></i>
                             </button>
                             <button
                               title="Follow-up Stages"
                               onClick={(e) => { e.stopPropagation(); setSelectedScenario(scenario); setShowFollowupModal(true) }}
-                              className="p-1.5 text-[#9B9890] hover:text-purple-600 hover:bg-purple-50 rounded transition-colors"
+                              className="p-1.5 text-[#9B9890] hover:text-[#D63B1F] hover:bg-[rgba(214,59,31,0.07)] rounded transition-colors"
                             >
                               <i className="fas fa-layer-group text-[13px]"></i>
                             </button>
@@ -251,7 +251,7 @@ export default function ScenariosPage() {
                             <button
                               title="Delete"
                               onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ scenarioId: scenario.id, scenarioName: scenario.name }) }}
-                              className="p-1.5 text-[#9B9890] hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                              className="p-1.5 text-[#9B9890] hover:text-[#D63B1F] hover:bg-[rgba(214,59,31,0.07)] rounded transition-colors"
                             >
                               <i className="fas fa-trash text-[13px]"></i>
                             </button>
@@ -467,7 +467,7 @@ function CreateScenarioModal({ phoneNumbers, onClose, onSuccess }) {
                 placeholder="e.g., Real Estate Lead Follow-up"
                 className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
               />
-              {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
+              {errors.name && <p className="text-[#D63B1F] text-xs mt-1">{errors.name}</p>}
             </div>
 
             <div className="col-span-2">
@@ -490,7 +490,7 @@ function CreateScenarioModal({ phoneNumbers, onClose, onSuccess }) {
                 rows="5"
                 className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F] resize-none"
               />
-              {errors.instructions && <p className="text-red-500 text-xs mt-1">{errors.instructions}</p>}
+              {errors.instructions && <p className="text-[#D63B1F] text-xs mt-1">{errors.instructions}</p>}
             </div>
 
             <div className="col-span-2">
@@ -621,7 +621,7 @@ function CreateScenarioModal({ phoneNumbers, onClose, onSuccess }) {
           </div>
 
           {errors.submit && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2.5 rounded-md text-sm">
+            <div className="bg-[rgba(214,59,31,0.07)] border border-[rgba(214,59,31,0.14)] text-[#D63B1F] px-3 py-2.5 rounded-md text-sm">
               {errors.submit}
             </div>
           )}
@@ -723,7 +723,7 @@ function ViewScenarioModal({ scenario, phoneNumbers, onClose, onUpdated, onToggl
                 onChange={(e) => setEditData({ ...editData, name: e.target.value })}
                 className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
               />
-              {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
+              {errors.name && <p className="text-[#D63B1F] text-xs mt-1">{errors.name}</p>}
             </div>
             <div>
               <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Description</label>
@@ -742,7 +742,7 @@ function ViewScenarioModal({ scenario, phoneNumbers, onClose, onUpdated, onToggl
                 rows="5"
                 className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F] resize-none"
               />
-              {errors.instructions && <p className="text-red-500 text-xs mt-1">{errors.instructions}</p>}
+              {errors.instructions && <p className="text-[#D63B1F] text-xs mt-1">{errors.instructions}</p>}
             </div>
 
             <div>
@@ -847,7 +847,7 @@ function ViewScenarioModal({ scenario, phoneNumbers, onClose, onUpdated, onToggl
             </div>
 
             {errors.submit && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2.5 rounded-md text-sm">{errors.submit}</div>
+              <div className="bg-[rgba(214,59,31,0.07)] border border-[rgba(214,59,31,0.14)] text-[#D63B1F] px-3 py-2.5 rounded-md text-sm">{errors.submit}</div>
             )}
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" onClick={() => { setIsEditing(false); setErrors({}) }} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
@@ -882,7 +882,7 @@ function ViewScenarioModal({ scenario, phoneNumbers, onClose, onUpdated, onToggl
                 </div>
                 <div>
                   <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Follow-ups</p>
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${scenario.enable_followups ? 'bg-blue-50 text-blue-700' : 'bg-[#EFEDE8] text-[#9B9890]'}`}>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${scenario.enable_followups ? 'bg-[rgba(214,59,31,0.07)] text-[#D63B1F]' : 'bg-[#EFEDE8] text-[#9B9890]'}`}>
                     {scenario.enable_followups ? `Enabled (max ${scenario.max_followup_attempts})` : 'Disabled'}
                   </span>
                 </div>
@@ -919,7 +919,7 @@ function ViewScenarioModal({ scenario, phoneNumbers, onClose, onUpdated, onToggl
               <button onClick={onAnalytics} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">
                 <i className="fas fa-chart-bar mr-1.5 text-[11px]"></i>Analytics
               </button>
-              <button onClick={onDelete} className="px-3 py-1.5 text-sm text-red-600 border border-red-100 rounded-md hover:bg-red-50">Delete</button>
+              <button onClick={onDelete} className="px-3 py-1.5 text-sm text-[#D63B1F] border border-[rgba(214,59,31,0.14)] rounded-md hover:bg-[rgba(214,59,31,0.07)]">Delete</button>
               <button onClick={onClose} className="ml-auto px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Close</button>
             </div>
           </>
@@ -1022,7 +1022,7 @@ function FollowupStagesModal({ scenario, onClose, onSuccess }) {
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-xs font-semibold text-[#5C5A55] uppercase tracking-wider">Stage {stage.stage_number}</span>
                     {stages.length > 1 && (
-                      <button onClick={() => removeStage(index)} className="text-[#9B9890] hover:text-red-500 p-1">
+                      <button onClick={() => removeStage(index)} className="text-[#9B9890] hover:text-[#D63B1F] p-1">
                         <i className="fas fa-times text-xs"></i>
                       </button>
                     )}
@@ -1080,7 +1080,7 @@ function FollowupStagesModal({ scenario, onClose, onSuccess }) {
               </button>
 
               {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2.5 rounded-md text-sm">{error}</div>
+                <div className="bg-[rgba(214,59,31,0.07)] border border-[rgba(214,59,31,0.14)] text-[#D63B1F] px-3 py-2.5 rounded-md text-sm">{error}</div>
               )}
             </div>
           )}
@@ -1161,12 +1161,12 @@ function AnalyticsModal({ scenario, onClose }) {
                 <div className="grid grid-cols-4 gap-3">
                   {[
                     { label: 'Total', value: analytics.conversations.total, color: 'text-[#131210]' },
-                    { label: 'Active', value: analytics.conversations.active, color: 'text-blue-600' },
-                    { label: 'Stopped', value: analytics.conversations.stopped, color: 'text-red-500' },
+                    { label: 'Active', value: analytics.conversations.active, color: 'text-[#D63B1F]' },
+                    { label: 'Stopped', value: analytics.conversations.stopped, color: 'text-[#D63B1F]' },
                     { label: 'Response Rate', value: analytics.conversations.responseRate, color: 'text-green-600' },
                   ].map((item) => (
                     <div key={item.label} className="bg-[#F7F6F3] border border-[#E3E1DB] rounded px-3 py-2 text-center">
-                      <p className={`text-lg font-bold ${item.color}`}>{item.value}</p>
+                      <p className={`text-lg font-semibold ${item.color}`}>{item.value}</p>
                       <p className="text-[11px] text-[#9B9890] mt-0.5">{item.label}</p>
                     </div>
                   ))}
@@ -1180,11 +1180,11 @@ function AnalyticsModal({ scenario, onClose }) {
                   {[
                     { label: 'Total', value: analytics.messages.total, color: 'text-[#131210]' },
                     { label: 'Successful', value: analytics.messages.successful, color: 'text-green-600' },
-                    { label: 'Failed', value: analytics.messages.failed, color: 'text-red-500' },
-                    { label: 'Success Rate', value: analytics.messages.successRate, color: 'text-blue-600' },
+                    { label: 'Failed', value: analytics.messages.failed, color: 'text-[#D63B1F]' },
+                    { label: 'Success Rate', value: analytics.messages.successRate, color: 'text-[#D63B1F]' },
                   ].map((item) => (
                     <div key={item.label} className="bg-[#F7F6F3] border border-[#E3E1DB] rounded px-3 py-2 text-center">
-                      <p className={`text-lg font-bold ${item.color}`}>{item.value}</p>
+                      <p className={`text-lg font-semibold ${item.color}`}>{item.value}</p>
                       <p className="text-[11px] text-[#9B9890] mt-0.5">{item.label}</p>
                     </div>
                   ))}
@@ -1202,7 +1202,7 @@ function AnalyticsModal({ scenario, onClose }) {
                     { label: 'Est. Cost', value: analytics.performance.estimatedCost, color: 'text-[#D63B1F]' },
                   ].map((item) => (
                     <div key={item.label} className="bg-[#F7F6F3] border border-[#E3E1DB] rounded px-3 py-2 text-center">
-                      <p className={`text-lg font-bold ${item.color}`}>{item.value}</p>
+                      <p className={`text-lg font-semibold ${item.color}`}>{item.value}</p>
                       <p className="text-[11px] text-[#9B9890] mt-0.5">{item.label}</p>
                     </div>
                   ))}
@@ -1273,11 +1273,11 @@ function ExecutionsModal({ scenario, onClose }) {
   const getStatusBadge = (status) => {
     const map = {
       success: 'bg-green-50 text-green-700',
-      failed: 'bg-red-50 text-red-700',
+      failed: 'bg-[rgba(214,59,31,0.07)] text-[#D63B1F]',
       no_reply: 'bg-[#EFEDE8] text-[#5C5A55]',
       human_needed: 'bg-orange-50 text-orange-700',
       skipped_business_hours: 'bg-yellow-50 text-yellow-700',
-      processing: 'bg-blue-50 text-blue-700',
+      processing: 'bg-[rgba(214,59,31,0.07)] text-[#D63B1F]',
     }
     return map[status] || 'bg-[#EFEDE8] text-[#5C5A55]'
   }
@@ -1368,7 +1368,7 @@ function DeleteConfirmModal({ scenarioName, onConfirm, onCancel }) {
         </div>
         <div className="px-5 py-3 border-t border-[#E3E1DB] flex justify-end gap-2">
           <button onClick={onCancel} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
-          <button onClick={onConfirm} className="px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md">Delete</button>
+          <button onClick={onConfirm} className="px-3 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c4351b] rounded-md">Delete</button>
         </div>
       </div>
     </div>

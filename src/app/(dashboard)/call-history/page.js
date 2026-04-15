@@ -73,7 +73,7 @@ export default function CallHistoryPage() {
   const getStatusBadge = (call) => {
     if (call.forwarded_to) {
       return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-[rgba(214,59,31,0.07)] text-[#D63B1F]">
           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
           </svg>
@@ -90,7 +90,7 @@ export default function CallHistoryPage() {
         return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-50 text-yellow-700">Ringing</span>
       case 'forwarded':
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-[rgba(214,59,31,0.07)] text-[#D63B1F]">
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
             </svg>
@@ -109,8 +109,8 @@ export default function CallHistoryPage() {
 
     if (isForwarded) {
       return (
-        <div className="w-7 h-7 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0" title="Forwarded">
-          <svg className="w-3.5 h-3.5 text-blue-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <div className="w-7 h-7 rounded-full bg-[rgba(214,59,31,0.07)] flex items-center justify-center flex-shrink-0" title="Forwarded">
+          <svg className="w-3.5 h-3.5 text-[#D63B1F]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="15 17 20 12 15 7" /><path d="M4 18v-2a4 4 0 014-4h12" />
           </svg>
         </div>
@@ -128,8 +128,8 @@ export default function CallHistoryPage() {
     }
     if (isInbound) {
       return (
-        <div className="w-7 h-7 rounded-full bg-emerald-50 flex items-center justify-center flex-shrink-0" title="Incoming">
-          <svg className="w-3.5 h-3.5 text-emerald-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <div className="w-7 h-7 rounded-full bg-[rgba(214,59,31,0.07)] flex items-center justify-center flex-shrink-0" title="Incoming">
+          <svg className="w-3.5 h-3.5 text-[#D63B1F]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="16 2 16 8 22 8" /><line x1="23" y1="1" x2="16" y2="8" />
             <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.01 2.18 2 2 0 012 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 14.92v2z" />
           </svg>
@@ -159,7 +159,7 @@ export default function CallHistoryPage() {
             <p className="text-sm text-[#9B9890] mt-0.5">
               {total} total call{total !== 1 ? 's' : ''}
               {filter === 'all' && forwardedCount > 0 && (
-                <span className="text-blue-600 ml-2">({forwardedCount} forwarded on this page)</span>
+                <span className="text-[#D63B1F] ml-2">({forwardedCount} forwarded on this page)</span>
               )}
             </p>
           </div>
@@ -250,10 +250,10 @@ export default function CallHistoryPage() {
                   <div>
                     {filter === 'forwarded' || call.forwarded_to ? (
                       <div className="flex items-center gap-1.5">
-                        <svg className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-3.5 h-3.5 text-[#D63B1F] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                         </svg>
-                        <span className="text-sm text-blue-700 font-medium">{formatPhoneNumber(call.forwarded_to)}</span>
+                        <span className="text-sm text-[#D63B1F] font-medium">{formatPhoneNumber(call.forwarded_to)}</span>
                       </div>
                     ) : (
                       getStatusBadge(call)

@@ -6,6 +6,8 @@ import { getUserFromRequest, getWorkspaceFromRequest } from '@/lib/session-helpe
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 const TELNYX_API_KEY = process.env.TELNYX_API_KEY
+const TELNYX_10DLC_CAMPAIGN_ID = process.env.TELNYX_10DLC_CAMPAIGN_ID
+const TELNYX_CALL_CONNECTION_ID = process.env.TELNYX_CALL_CONNECTION_ID
 
 const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
   auth: {
@@ -54,24 +56,58 @@ export async function POST(request) {
       workspaceId: workspace.workspaceId
     })
 
-    // Step 1: Check wallet balance
+    // Step 1: Check subscription is active — block canceled/past_due accounts
+    const { data: subCheck } = await supabaseAdmin
+      .from('subscriptions')
+      .select('status')
+      .eq('workspace_id', workspace.workspaceId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
+
+    if (subCheck && ['canceled', 'past_due'].includes(subCheck.status)) {
+      return NextResponse.json(
+        { error: 'Your subscription is no longer active. Please reactivate to purchase phone numbers.' },
+        { status: 403 }
+      )
+    }
+
+    // Step 2: Check wallet
     const { data: wallet, error: walletError } = await supabaseAdmin
       .from('wallets')
-      .select('id, balance')
+      .select('id, balance, credits')
       .eq('user_id', user.userId)
       .single()
 
     if (walletError || !wallet) {
       return NextResponse.json(
-        { error: 'Wallet not found. Please create a wallet first.' },
+        { error: 'Wallet not found. Please complete onboarding first.' },
         { status: 404 }
       )
     }
 
-    // Use totalCost which includes setup fee + first month + VAT
     const purchasePrice = parseFloat(totalCost) || 2.30
 
-    if (wallet.balance < purchasePrice) {
+    // Check if workspace has an active subscription and no phone numbers yet
+    // First number is included in every plan — skip balance check in that case
+    const { data: existingNumbers } = await supabaseAdmin
+      .from('phone_numbers')
+      .select('id')
+      .eq('workspace_id', workspace.workspaceId)
+      .limit(1)
+
+    const { data: activeSub } = await supabaseAdmin
+      .from('subscriptions')
+      .select('id')
+      .eq('workspace_id', workspace.workspaceId)
+      .in('status', ['active', 'trialing'])
+      .limit(1)
+
+    const isFirstNumber = !existingNumbers || existingNumbers.length === 0
+    const hasSubscription = activeSub && activeSub.length > 0
+    const skipBalanceCheck = isFirstNumber && hasSubscription
+
+    if (!skipBalanceCheck && wallet.balance < purchasePrice) {
       return NextResponse.json(
         {
           error: 'Insufficient balance',
@@ -79,11 +115,11 @@ export async function POST(request) {
           available: wallet.balance,
           shortfall: purchasePrice - wallet.balance
         },
-        { status: 402 } // Payment Required
+        { status: 402 }
       )
     }
 
-    // Step 2: Purchase number from Telnyx
+    // Step 3: Purchase number from Telnyx
     console.log('Purchasing from Telnyx:', phoneNumber)
 
     const telnyxResponse = await fetch('https://api.telnyx.com/v2/number_orders', {
@@ -125,14 +161,16 @@ export async function POST(request) {
                           `telnyx_${Date.now()}`
 
     // Step 3: Use database RPC function to handle wallet deduction and records
+    // First included number costs 0 to deduct from balance
+    const effectivePurchasePrice = skipBalanceCheck ? 0 : purchasePrice
     const { data: purchaseResult, error: purchaseError } = await supabaseAdmin
       .rpc('purchase_phone_number', {
         p_user_id: user.userId,
         p_phone_number_id: phoneNumberId,
         p_phone_number: phoneNumber,
         p_workspace_id: workspace.workspaceId,
-        p_purchase_price: purchasePrice,
-        p_monthly_price: parseFloat(monthlyCost) || 0.00,
+        p_purchase_price: effectivePurchasePrice,
+        p_monthly_price: skipBalanceCheck ? 0 : (parseFloat(monthlyCost) || 0.00),
         p_messaging_profile_id: workspace.messagingProfileId || null,
         p_billing_group_id: workspace.billingGroupId || null
       })
@@ -176,6 +214,24 @@ export async function POST(request) {
       }
     }
 
+    // Step 4.5: Assign voice/call connection so the number can make & receive calls
+    const callConnectionId = TELNYX_CALL_CONNECTION_ID || workspace.connectionId || process.env.NEXT_PUBLIC_TELNYX_CONNECTION_ID
+    if (callConnectionId && phoneNumberId) {
+      try {
+        await fetch(`https://api.telnyx.com/v2/phone_numbers/${phoneNumberId}`, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${TELNYX_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ connection_id: callConnectionId }),
+        })
+        console.log('Voice call connection assigned:', callConnectionId)
+      } catch (error) {
+        console.warn('Failed to assign call connection (non-critical):', error.message)
+      }
+    }
+
     // Step 5: Update billing group in Telnyx (if not set during order)
     if (workspace.billingGroupId && phoneNumberId) {
       try {
@@ -195,6 +251,36 @@ export async function POST(request) {
       }
     }
 
+    // Step 6: Assign number to 10DLC campaign (non-blocking — US numbers only)
+    if (TELNYX_10DLC_CAMPAIGN_ID && phoneNumber.startsWith('+1')) {
+      try {
+        const campaignRes = await fetch('https://api.telnyx.com/v2/10dlc/phone_number_campaigns', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${TELNYX_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            phoneNumber: phoneNumber,
+            campaignId: TELNYX_10DLC_CAMPAIGN_ID,
+          }),
+        })
+        if (campaignRes.ok) {
+          console.log('10DLC campaign assigned:', phoneNumber)
+          // Mark as pending — webhook will update to approved/rejected
+          await supabaseAdmin.from('phone_numbers')
+            .update({ campaign_status: 'pending', updated_at: new Date().toISOString() })
+            .eq('phone_number', phoneNumber)
+            .eq('workspace_id', workspace.workspaceId)
+        } else {
+          const err = await campaignRes.json().catch(() => ({}))
+          console.warn('10DLC assignment failed (non-critical):', err)
+        }
+      } catch (error) {
+        console.warn('10DLC assignment error (non-critical):', error.message)
+      }
+    }
+
     console.log('=== Purchase Complete ===')
     console.log('Result:', purchaseResult)
 
@@ -204,8 +290,8 @@ export async function POST(request) {
       data: {
         phoneNumber,
         phoneNumberId,
-        purchasePrice,
-        monthlyPrice: parseFloat(monthlyCost) || 0.00,
+        purchasePrice: effectivePurchasePrice,
+        monthlyPrice: skipBalanceCheck ? 0 : (parseFloat(monthlyCost) || 0.00),
         previousBalance: purchaseResult.previous_balance,
         newBalance: purchaseResult.new_balance,
         transactionId: purchaseResult.transaction_id,

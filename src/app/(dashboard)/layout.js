@@ -1,15 +1,70 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { getCurrentUser, isAuthenticated } from '@/lib/auth'
 import Sidebar from '@/components/layout/Sidebar'
+
+const BLOCKED_STATUSES = ['canceled', 'past_due']
+
+function SubscriptionBlockedBanner({ planStatus, onGoToBilling }) {
+  const isCanceled = planStatus === 'canceled'
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 9999,
+      background: 'rgba(19,18,16,0.7)', backdropFilter: 'blur(4px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+      padding: '24px',
+    }}>
+      <div style={{
+        background: '#FFFFFF', borderRadius: 16, padding: '40px 36px',
+        maxWidth: 460, width: '100%', textAlign: 'center',
+        boxShadow: '0 24px 60px rgba(0,0,0,0.18)',
+      }}>
+        <div style={{
+          width: 56, height: 56, borderRadius: '50%',
+          background: 'rgba(214,59,31,0.08)', border: '1px solid rgba(214,59,31,0.2)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          margin: '0 auto 20px',
+        }}>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#D63B1F" strokeWidth="2" strokeLinecap="round">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+        <h2 style={{ fontSize: 20, fontWeight: 700, color: '#131210', margin: '0 0 10px', letterSpacing: '-0.02em' }}>
+          {isCanceled ? 'Subscription Ended' : 'Payment Failed'}
+        </h2>
+        <p style={{ fontSize: 14, color: '#5C5A55', lineHeight: 1.6, margin: '0 0 28px' }}>
+          {isCanceled
+            ? 'Your subscription has been canceled. Reactivate to continue using AiroPhone — your data is safe and ready.'
+            : 'We could not process your payment. Please update your payment method to restore access.'}
+        </p>
+        <button
+          onClick={onGoToBilling}
+          style={{
+            width: '100%', height: 44, borderRadius: 10,
+            background: '#D63B1F', color: '#FFFFFF',
+            border: 'none', cursor: 'pointer',
+            fontSize: 14, fontWeight: 600, letterSpacing: '-0.01em',
+          }}
+        >
+          {isCanceled ? 'Reactivate Subscription' : 'Update Payment Method'}
+        </button>
+      </div>
+    </div>
+  )
+}
 
 export default function DashboardLayout({ children }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [planStatus, setPlanStatus] = useState(null)
   const router = useRouter()
+  const pathname = usePathname()
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -39,6 +94,25 @@ export default function DashboardLayout({ children }) {
       } catch (e) {
         // If check fails, allow through (don't block existing users)
         console.warn('Onboarding check failed:', e)
+      }
+
+      // Check subscription status — block access for canceled/past_due
+      try {
+        const subRes = await fetch('/api/subscription', {
+          headers: {
+            'x-user-id': currentUser.userId,
+            'x-workspace-id': currentUser.workspaceId,
+          },
+        })
+        if (subRes.ok) {
+          const subData = await subRes.json()
+          const status = subData.subscription?.status
+          if (status && BLOCKED_STATUSES.includes(status)) {
+            setPlanStatus(status)
+          }
+        }
+      } catch (e) {
+        console.warn('Subscription check failed:', e)
       }
 
       setUser(currentUser)
@@ -75,11 +149,21 @@ export default function DashboardLayout({ children }) {
     )
   }
 
+  const isBlocked = planStatus && BLOCKED_STATUSES.includes(planStatus) && pathname !== '/billing'
+
   return (
     <div style={{
       display: 'flex', height: '100vh', overflow: 'hidden',
       background: '#F7F6F3',
     }}>
+      {/* Subscription blocked overlay — only allow billing page through */}
+      {isBlocked && (
+        <SubscriptionBlockedBanner
+          planStatus={planStatus}
+          onGoToBilling={() => router.push('/billing')}
+        />
+      )}
+
       {/* Mobile Sidebar Backdrop */}
       {sidebarOpen && (
         <div

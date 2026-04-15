@@ -426,6 +426,15 @@ export default function ManageNumbers() {
                     <span className={`px-2 py-0.5 text-xs rounded-full ${number.status === 'active' ? 'bg-green-50 text-green-700' : 'bg-[#EFEDE8] text-[#9B9890]'}`}>
                       {number.status}
                     </span>
+                    {number.campaign_status && (
+                      <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${
+                        number.campaign_status === 'approved' ? 'bg-green-50 text-green-700' :
+                        number.campaign_status === 'rejected' ? 'bg-red-50 text-red-600' :
+                        'bg-yellow-50 text-yellow-700'
+                      }`}>
+                        10DLC: {number.campaign_status}
+                      </span>
+                    )}
                     {isEditing ? (
                       <div className="flex gap-1.5">
                         <button onClick={() => saveCustomName(number.id)} className="px-2.5 py-1 text-xs font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded">Save</button>

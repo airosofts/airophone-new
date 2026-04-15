@@ -1,9 +1,21 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 export default function AuthCallbackPage() {
+  return (
+    <Suspense fallback={
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F7F6F3', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}>
+        <p style={{ fontSize: 14, color: '#5C5A55' }}>Loading...</p>
+      </div>
+    }>
+      <AuthCallbackInner />
+    </Suspense>
+  )
+}
+
+function AuthCallbackInner() {
   const [status, setStatus] = useState('Processing your sign in...')
   const [error, setError] = useState(null)
   const router = useRouter()

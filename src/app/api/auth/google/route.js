@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
+import { signToken, buildSessionCookie } from '@/lib/jwt'
 
 function generateSlug(name) {
   const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
@@ -107,7 +108,14 @@ export async function POST(request) {
         loginTime: new Date().toISOString(),
       }
 
-      return NextResponse.json({ success: true, session, isNewUser: false })
+      const token = await signToken({
+        userId: session.userId, email: session.email,
+        workspaceId: session.workspaceId, workspaceRole: session.workspaceRole,
+        messagingProfileId: session.messagingProfileId,
+      })
+      const res = NextResponse.json({ success: true, session, isNewUser: false })
+      res.headers.set('Set-Cookie', buildSessionCookie(token))
+      return res
     }
 
     // ── NEW USER: create user + workspace + membership + wallet ──
@@ -155,7 +163,7 @@ export async function POST(request) {
 
     await supabaseAdmin
       .from('wallets')
-      .insert({ workspace_id: newWorkspace.id, credits: 0, balance: 0, currency: 'USD' })
+      .insert({ user_id: newUser.id, workspace_id: newWorkspace.id, credits: 0, balance: 0, currency: 'USD' })
 
     const session = {
       userId: newUser.id,
@@ -176,7 +184,14 @@ export async function POST(request) {
       loginTime: new Date().toISOString(),
     }
 
-    return NextResponse.json({ success: true, session, isNewUser: true })
+    const token = await signToken({
+      userId: session.userId, email: session.email,
+      workspaceId: session.workspaceId, workspaceRole: session.workspaceRole,
+      messagingProfileId: session.messagingProfileId,
+    })
+    const res = NextResponse.json({ success: true, session, isNewUser: true })
+    res.headers.set('Set-Cookie', buildSessionCookie(token))
+    return res
   } catch (error) {
     console.error('Google auth error:', error)
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })

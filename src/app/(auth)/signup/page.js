@@ -201,12 +201,6 @@ export default function SignupPage() {
 
         <div style={{ width: '100%', maxWidth: 400 }}>
 
-          {/* Mobile logo */}
-          <div className="lg:hidden" style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center', marginBottom: 40 }}>
-            <Logo size={30} />
-            <span style={{ fontSize: 16, fontWeight: 600, letterSpacing: '-0.03em', color: COLORS.text }}>AiroPhone</span>
-          </div>
-
           {/* ── CHOOSE MODE ── */}
           {mode === 'choose' && (
             <>

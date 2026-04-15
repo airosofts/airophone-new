@@ -156,6 +156,16 @@ export function getWorkspaceContext() {
   }
 }
 
+// Update a single field in the stored session without touching the rest
+export function updateSessionField(fieldName, value) {
+  if (typeof window === 'undefined') return null
+  const user = getCurrentUser()
+  if (!user) return null
+  const updated = { ...user, [fieldName]: value }
+  localStorage.setItem('user_session', JSON.stringify(updated))
+  return updated
+}
+
 // Switch to a different workspace
 export async function switchWorkspace(workspaceId) {
   if (typeof window === 'undefined') return false
@@ -213,13 +223,16 @@ export async function switchWorkspace(workspaceId) {
   }
 }
 
-// Logout function
-export function logout() {
+// Logout function — clears cookie + localStorage
+export async function logout() {
   if (typeof window === 'undefined') return
 
-  // Remove session from localStorage
-  localStorage.removeItem('user_session')
+  try {
+    await fetch('/api/auth/logout', { method: 'POST' })
+  } catch (e) {
+    console.error('Logout API error:', e)
+  }
 
-  // Redirect to login
+  localStorage.removeItem('user_session')
   window.location.href = '/login'
 }

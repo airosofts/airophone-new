@@ -158,8 +158,8 @@ export default function CampaignsPage() {
   const getStatusBadge = (campaign) => {
     if (campaign.status === 'archived') return { label: 'Archived', className: 'bg-[#EFEDE8] text-[#5C5A55]' }
     if (campaign.status === 'paused') return { label: 'Paused', className: 'bg-yellow-50 text-yellow-700' }
-    if (campaign.status === 'running') return { label: 'Running', className: 'bg-blue-50 text-blue-700' }
-    if (campaign.status === 'completed') return { label: 'Completed', className: 'bg-purple-50 text-purple-700' }
+    if (campaign.status === 'running') return { label: 'Running', className: 'bg-[rgba(214,59,31,0.07)] text-[#D63B1F]' }
+    if (campaign.status === 'completed') return { label: 'Completed', className: 'bg-[rgba(214,59,31,0.07)] text-[#D63B1F]' }
     return { label: 'Active', className: 'bg-green-50 text-green-700' }
   }
 
@@ -283,7 +283,7 @@ export default function CampaignsPage() {
                               <button
                                 title="Delete"
                                 onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ campaignId: campaign.id, campaignName: campaign.name }) }}
-                                className="p-1.5 text-[#9B9890] hover:text-red-600 hover:bg-[rgba(214,59,31,0.07)] rounded transition-colors"
+                                className="p-1.5 text-[#9B9890] hover:text-[#D63B1F] hover:bg-[rgba(214,59,31,0.07)] rounded transition-colors"
                               >
                                 <i className="fas fa-trash text-[13px]"></i>
                               </button>
@@ -402,7 +402,7 @@ function SearchableDropdown({ value, onChange, options, placeholder, renderOptio
   return (
     <div className="relative" ref={ref}>
       <div className={`flex items-center border rounded-lg bg-[#FFFFFF] transition-colors ${
-        error ? 'border-red-400' : open ? 'border-[#D63B1F] ring-2 ring-[#D63B1F]/20' : 'border-[#D4D1C9]'
+        error ? 'border-[#D63B1F]' : open ? 'border-[#D63B1F] ring-2 ring-[#D63B1F]/20' : 'border-[#D4D1C9]'
       }`}>
         <svg className="w-4 h-4 text-[#9B9890] ml-3 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
           <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd"/>
@@ -566,7 +566,7 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
                 placeholder="e.g., Summer Sale Campaign"
                 className="w-full px-4 py-3 border border-[#D4D1C9] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F]"
               />
-              {errors.name && <p className="text-red-500 text-xs mt-1.5">{errors.name}</p>}
+              {errors.name && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.name}</p>}
             </div>
 
             <div className="flex-1 flex flex-col">
@@ -590,7 +590,7 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
                   </button>
                 ))}
               </div>
-              {errors.message && <p className="text-red-500 text-xs mt-1.5">{errors.message}</p>}
+              {errors.message && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.message}</p>}
             </div>
           </div>
 
@@ -612,7 +612,7 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
                   </div>
                 )}
               />
-              {errors.contactListId && <p className="text-red-500 text-xs mt-1.5">{errors.contactListId}</p>}
+              {errors.contactListId && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.contactListId}</p>}
             </div>
 
             <div>
@@ -633,7 +633,7 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
                   </div>
                 )}
               />
-              {errors.phoneNumberId && <p className="text-red-500 text-xs mt-1.5">{errors.phoneNumberId}</p>}
+              {errors.phoneNumberId && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.phoneNumberId}</p>}
             </div>
 
             <div>
@@ -675,12 +675,12 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
                   onChange={(e) => setFormData({ ...formData, scheduleTime: e.target.value })}
                   className="w-full px-4 py-3 border border-[#D4D1C9] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F]"
                 />
-                {errors.scheduleTime && <p className="text-red-500 text-xs mt-1.5">{errors.scheduleTime}</p>}
+                {errors.scheduleTime && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.scheduleTime}</p>}
               </div>
             )}
 
             {errors.submit && (
-              <div className="bg-[rgba(214,59,31,0.07)] border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+              <div className="bg-[rgba(214,59,31,0.07)] border border-[rgba(214,59,31,0.14)] text-[#D63B1F] px-4 py-3 rounded-lg text-sm">
                 {errors.submit}
               </div>
             )}
@@ -765,7 +765,7 @@ function ViewCampaignModal({ campaign, contactLists, phoneNumbers, onClose, onCa
   }
 
   const statusLabel = campaign.status === 'archived' ? 'Archived' : campaign.status === 'paused' ? 'Paused' : campaign.status === 'running' ? 'Running' : campaign.status === 'completed' ? 'Completed' : 'Active'
-  const statusClass = campaign.status === 'archived' ? 'bg-[#EFEDE8] text-[#5C5A55]' : campaign.status === 'paused' ? 'bg-yellow-50 text-yellow-700' : campaign.status === 'running' ? 'bg-blue-50 text-blue-700' : campaign.status === 'completed' ? 'bg-purple-50 text-purple-700' : 'bg-green-50 text-green-700'
+  const statusClass = campaign.status === 'archived' ? 'bg-[#EFEDE8] text-[#5C5A55]' : campaign.status === 'paused' ? 'bg-yellow-50 text-yellow-700' : campaign.status === 'running' ? 'bg-[rgba(214,59,31,0.07)] text-[#D63B1F]' : campaign.status === 'completed' ? 'bg-[rgba(214,59,31,0.07)] text-[#D63B1F]' : 'bg-green-50 text-green-700'
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 overflow-y-auto">
@@ -787,7 +787,7 @@ function ViewCampaignModal({ campaign, contactLists, phoneNumbers, onClose, onCa
                 onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
                 className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
               />
-              {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
+              {errors.name && <p className="text-[#D63B1F] text-xs mt-1">{errors.name}</p>}
             </div>
             <div>
               <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Message *</label>
@@ -797,10 +797,10 @@ function ViewCampaignModal({ campaign, contactLists, phoneNumbers, onClose, onCa
                 rows="4"
                 className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F] resize-none"
               />
-              {errors.message && <p className="text-red-500 text-xs mt-1">{errors.message}</p>}
+              {errors.message && <p className="text-[#D63B1F] text-xs mt-1">{errors.message}</p>}
             </div>
             {errors.submit && (
-              <div className="bg-[rgba(214,59,31,0.07)] border border-red-200 text-red-700 px-3 py-2.5 rounded-md text-sm">{errors.submit}</div>
+              <div className="bg-[rgba(214,59,31,0.07)] border border-[rgba(214,59,31,0.14)] text-[#D63B1F] px-3 py-2.5 rounded-md text-sm">{errors.submit}</div>
             )}
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" onClick={() => { setIsEditing(false); setErrors({}) }} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
@@ -858,8 +858,8 @@ function ViewCampaignModal({ campaign, contactLists, phoneNumbers, onClose, onCa
                       </div>
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
                         log.status === 'completed' ? 'bg-green-50 text-green-700'
-                        : log.status === 'failed' ? 'bg-[rgba(214,59,31,0.07)] text-red-700'
-                        : 'bg-blue-50 text-blue-700'
+                        : log.status === 'failed' ? 'bg-[rgba(214,59,31,0.07)] text-[#D63B1F]'
+                        : 'bg-[rgba(214,59,31,0.07)] text-[#D63B1F]'
                       }`}>
                         {log.status}
                       </span>
@@ -878,7 +878,7 @@ function ViewCampaignModal({ campaign, contactLists, phoneNumbers, onClose, onCa
               <button onClick={onArchive} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">
                 {campaign.status === 'archived' ? 'Unarchive' : 'Archive'}
               </button>
-              <button onClick={onDelete} className="px-3 py-1.5 text-sm text-red-600 border border-red-100 rounded-md hover:bg-[rgba(214,59,31,0.07)]">Delete</button>
+              <button onClick={onDelete} className="px-3 py-1.5 text-sm text-[#D63B1F] border border-[rgba(214,59,31,0.14)] rounded-md hover:bg-[rgba(214,59,31,0.07)]">Delete</button>
               <button onClick={onClose} className="ml-auto px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Close</button>
             </div>
           </>
@@ -920,7 +920,7 @@ function DeleteConfirmationModal({ campaignName, onConfirm, onCancel }) {
         </div>
         <div className="px-5 py-3 border-t border-[#E3E1DB] flex justify-end gap-2">
           <button onClick={onCancel} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
-          <button onClick={onConfirm} className="px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md">Delete</button>
+          <button onClick={onConfirm} className="px-3 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c4351b] rounded-md">Delete</button>
         </div>
       </div>
     </div>

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
+import { signToken, buildSessionCookie } from '@/lib/jwt'
 
 function generateSlug(name) {
   const base = name
@@ -98,7 +99,7 @@ export async function POST(request) {
     // Create wallet
     await supabaseAdmin
       .from('wallets')
-      .insert({ workspace_id: newWorkspace.id, credits: 0, balance: 0, currency: 'USD' })
+      .insert({ user_id: newUser.id, workspace_id: newWorkspace.id, credits: 0, balance: 0, currency: 'USD' })
 
     // Build session (same shape as loginWithEmailPassword)
     const session = {
@@ -122,7 +123,18 @@ export async function POST(request) {
       loginTime: new Date().toISOString(),
     }
 
-    return NextResponse.json({ success: true, session })
+    // Sign JWT and set cookie
+    const token = await signToken({
+      userId: session.userId,
+      email: session.email,
+      workspaceId: session.workspaceId,
+      workspaceRole: session.workspaceRole,
+      messagingProfileId: session.messagingProfileId,
+    })
+
+    const response = NextResponse.json({ success: true, session })
+    response.headers.set('Set-Cookie', buildSessionCookie(token))
+    return response
   } catch (error) {
     console.error('Signup error:', error)
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })

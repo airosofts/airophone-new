@@ -99,6 +99,18 @@ export async function POST(request) {
         await handleMessageFinalized(event)
         break
 
+      case '10dlc.phone_number_campaign.created':
+        await handleCampaignAssigned(event, 'pending')
+        break
+
+      case '10dlc.phone_number_campaign.approved':
+        await handleCampaignAssigned(event, 'approved')
+        break
+
+      case '10dlc.phone_number_campaign.rejected':
+        await handleCampaignAssigned(event, 'rejected')
+        break
+
       default:
         console.log(`Unhandled event type: ${event.eventType}`)
     }
@@ -330,8 +342,31 @@ async function handleMessageFinalized(event) {
   }
 }
 
+async function handleCampaignAssigned(event, status) {
+  try {
+    // Telnyx sends phoneNumber in payload for 10dlc events
+    const phoneNumber = event.payload?.phoneNumber || event.payload?.phone_number
+    if (!phoneNumber) {
+      console.warn('10DLC webhook missing phoneNumber:', event)
+      return
+    }
+
+    const normalized = normalizePhoneNumber(phoneNumber)
+    console.log(`10DLC campaign ${status} for ${normalized}`)
+
+    await supabaseAdmin
+      .from('phone_numbers')
+      .update({ campaign_status: status, updated_at: new Date().toISOString() })
+      .eq('phone_number', normalized)
+
+    console.log(`10DLC status updated: ${normalized} → ${status}`)
+  } catch (error) {
+    console.error('Error handling 10DLC campaign event:', error)
+  }
+}
+
 export async function GET(request) {
-  return NextResponse.json({ 
+  return NextResponse.json({
     status: 'webhook endpoint active',
     timestamp: new Date().toISOString(),
     url: request.url

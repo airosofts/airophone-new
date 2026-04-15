@@ -279,7 +279,7 @@ export default function ContactsPage() {
                                 className="px-3 py-1.5 border border-[#D63B1F] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] w-full max-w-xs" autoFocus />
                             ) : (
                               <div className="flex items-center gap-2.5">
-                                <div className="w-7 h-7 bg-[#D63B1F] rounded-md flex items-center justify-center text-white text-xs font-bold flex-shrink-0">{list.name.charAt(0).toUpperCase()}</div>
+                                <div className="w-7 h-7 bg-[#D63B1F] rounded-md flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">{list.name.charAt(0).toUpperCase()}</div>
                                 <span className="text-sm font-medium text-[#131210]">{list.name}</span>
                               </div>
                             )}
@@ -301,7 +301,7 @@ export default function ContactsPage() {
                           <td className="px-5 py-3 text-right">
                             {editingList?.id === list.id ? (
                               <div className="flex items-center justify-end gap-1.5">
-                                <button onClick={() => handleUpdateList(list.id, { name: editingList.name, description: editingList.description })} className="px-2.5 py-1.5 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700">Save</button>
+                                <button onClick={() => handleUpdateList(list.id, { name: editingList.name, description: editingList.description })} className="px-2.5 py-1.5 text-xs font-medium text-white bg-[#D63B1F] rounded hover:bg-[#c4351b]">Save</button>
                                 <button onClick={() => setEditingList(null)} className="px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded hover:bg-[#F7F6F3]">Cancel</button>
                               </div>
                             ) : (
@@ -310,7 +310,7 @@ export default function ContactsPage() {
                                   <i className="fas fa-address-book text-[11px]"></i>View
                                 </button>
                                 <button onClick={() => setEditingList({ ...list })} className="p-1.5 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded transition-colors" title="Rename list"><i className="fas fa-pen text-[11px]"></i></button>
-                                <button onClick={() => setDeleteConfirm(list)} className="p-1.5 text-[#9B9890] hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="Delete list"><i className="fas fa-trash-alt text-[11px]"></i></button>
+                                <button onClick={() => setDeleteConfirm(list)} className="p-1.5 text-[#9B9890] hover:text-[#D63B1F] hover:bg-[rgba(214,59,31,0.07)] rounded transition-colors" title="Delete list"><i className="fas fa-trash-alt text-[11px]"></i></button>
                               </div>
                             )}
                           </td>
@@ -356,7 +356,7 @@ export default function ContactsPage() {
                 {selectedContacts.length > 0 && (
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-[#9B9890]">{selectedContacts.length} selected</span>
-                    <button onClick={() => setDeleteContactConfirm({ multiple: true })} className="px-2.5 py-1.5 text-xs font-medium text-white bg-red-600 rounded hover:bg-red-700">
+                    <button onClick={() => setDeleteContactConfirm({ multiple: true })} className="px-2.5 py-1.5 text-xs font-medium text-white bg-[#D63B1F] rounded hover:bg-[#c4351b]">
                       <i className="fas fa-trash mr-1"></i>Delete Selected
                     </button>
                   </div>
@@ -411,7 +411,7 @@ export default function ContactsPage() {
                               </div>
                             ) : (
                               <div className="flex items-center gap-2.5">
-                                <div className="w-7 h-7 bg-[#D63B1F] rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">{contactInitial(contact)}</div>
+                                <div className="w-7 h-7 bg-[#D63B1F] rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">{contactInitial(contact)}</div>
                                 <span className="text-sm font-medium text-[#131210]">{[contact.first_name, contact.last_name].filter(Boolean).join(' ') || '—'}</span>
                               </div>
                             )}
@@ -447,13 +447,13 @@ export default function ContactsPage() {
                             {editingContact?.id === contact.id ? (
                               <div className="flex items-center justify-end gap-1.5">
                                 <button onClick={() => updateContact(contact.id, { first_name: editingContact.first_name, last_name: editingContact.last_name, business_name: editingContact.business_name, phone_number: editingContact.phone_number, email: editingContact.email })}
-                                  className="px-2.5 py-1.5 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700">Save</button>
+                                  className="px-2.5 py-1.5 text-xs font-medium text-white bg-[#D63B1F] rounded hover:bg-[#c4351b]">Save</button>
                                 <button onClick={() => setEditingContact(null)} className="px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded hover:bg-[#F7F6F3]">Cancel</button>
                               </div>
                             ) : (
                               <div className="flex items-center justify-end gap-1">
                                 <button onClick={() => setEditingContact({ ...contact })} className="p-1.5 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded transition-colors" title="Edit"><i className="fas fa-pen text-[11px]"></i></button>
-                                <button onClick={() => setDeleteContactConfirm(contact)} className="p-1.5 text-[#9B9890] hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="Delete"><i className="fas fa-trash-alt text-[11px]"></i></button>
+                                <button onClick={() => setDeleteContactConfirm(contact)} className="p-1.5 text-[#9B9890] hover:text-[#D63B1F] hover:bg-[rgba(214,59,31,0.07)] rounded transition-colors" title="Delete"><i className="fas fa-trash-alt text-[11px]"></i></button>
                               </div>
                             )}
                           </td>
@@ -590,12 +590,12 @@ function DeleteConfirmModal({ list, onConfirm, onCancel }) {
         <div className="px-5 py-4 border-b border-[#E3E1DB]"><h3 className="text-sm font-semibold text-[#131210]">Delete Contact List</h3></div>
         <div className="px-5 py-4">
           <p className="text-sm text-[#5C5A55]">Delete <span className="font-medium text-[#131210]">"{list.name}"</span>? This cannot be undone.
-            {list.contactCount > 0 && <span className="block mt-1.5 text-xs text-red-600"><i className="fas fa-exclamation-circle mr-1"></i>This will also delete {list.contactCount} contact{list.contactCount !== 1 ? 's' : ''}.</span>}
+            {list.contactCount > 0 && <span className="block mt-1.5 text-xs text-[#D63B1F]"><i className="fas fa-exclamation-circle mr-1"></i>This will also delete {list.contactCount} contact{list.contactCount !== 1 ? 's' : ''}.</span>}
           </p>
         </div>
         <div className="px-5 py-3 border-t border-[#E3E1DB] flex justify-end gap-2">
           <button onClick={onCancel} disabled={loading} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3] disabled:opacity-50">Cancel</button>
-          <button onClick={handleConfirm} disabled={loading} className="px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md disabled:opacity-50">
+          <button onClick={handleConfirm} disabled={loading} className="px-3 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c4351b] rounded-md disabled:opacity-50">
             {loading ? <><i className="fas fa-spinner fa-spin mr-1.5"></i>Deleting…</> : 'Delete'}
           </button>
         </div>
@@ -618,7 +618,7 @@ function DeleteContactConfirmModal({ contact, selectedCount, onConfirm, onCancel
         </div>
         <div className="px-5 py-3 border-t border-[#E3E1DB] flex justify-end gap-2">
           <button onClick={onCancel} disabled={loading} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3] disabled:opacity-50">Cancel</button>
-          <button onClick={handleConfirm} disabled={loading} className="px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md disabled:opacity-50">
+          <button onClick={handleConfirm} disabled={loading} className="px-3 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c4351b] rounded-md disabled:opacity-50">
             {loading ? <><i className="fas fa-spinner fa-spin mr-1.5"></i>Deleting…</> : 'Delete'}
           </button>
         </div>
@@ -893,7 +893,7 @@ function ViewContactsModal({ list, onClose, onContactsUpdated, onError }) {
           {selectedContacts.length > 0 && (
             <div className="flex items-center gap-2">
               <span className="text-xs text-[#9B9890]">{selectedContacts.length} selected</span>
-              <button onClick={() => setDeleteContactConfirm({ multiple: true })} className="px-2.5 py-1.5 text-xs font-medium text-white bg-red-600 rounded hover:bg-red-700">
+              <button onClick={() => setDeleteContactConfirm({ multiple: true })} className="px-2.5 py-1.5 text-xs font-medium text-white bg-[#D63B1F] rounded hover:bg-[#c4351b]">
                 <i className="fas fa-trash mr-1"></i>Delete Selected
               </button>
             </div>
@@ -939,7 +939,7 @@ function ViewContactsModal({ list, onClose, onContactsUpdated, onError }) {
                             </div>
                           ) : (
                             <div className="flex items-center gap-2.5">
-                              <div className="w-7 h-7 bg-[#D63B1F] rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">{contactInitial(contact)}</div>
+                              <div className="w-7 h-7 bg-[#D63B1F] rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">{contactInitial(contact)}</div>
                               <span className="text-sm font-medium text-[#131210]">{[contact.first_name, contact.last_name].filter(Boolean).join(' ') || '—'}</span>
                             </div>
                           )}
@@ -969,13 +969,13 @@ function ViewContactsModal({ list, onClose, onContactsUpdated, onError }) {
                           {editingContact?.id === contact.id ? (
                             <div className="flex items-center justify-end gap-1.5">
                               <button onClick={() => updateContact(contact.id, { first_name: editingContact.first_name, last_name: editingContact.last_name, business_name: editingContact.business_name, phone_number: editingContact.phone_number, email: editingContact.email })}
-                                className="px-2.5 py-1.5 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700">Save</button>
+                                className="px-2.5 py-1.5 text-xs font-medium text-white bg-[#D63B1F] rounded hover:bg-[#c4351b]">Save</button>
                               <button onClick={() => setEditingContact(null)} className="px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded hover:bg-[#F7F6F3]">Cancel</button>
                             </div>
                           ) : (
                             <div className="flex items-center justify-end gap-1">
                               <button onClick={() => setEditingContact({ ...contact })} className="p-1.5 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded transition-colors" title="Edit"><i className="fas fa-pen text-[11px]"></i></button>
-                              <button onClick={() => setDeleteContactConfirm(contact)} className="p-1.5 text-[#9B9890] hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="Delete"><i className="fas fa-trash-alt text-[11px]"></i></button>
+                              <button onClick={() => setDeleteContactConfirm(contact)} className="p-1.5 text-[#9B9890] hover:text-[#D63B1F] hover:bg-[rgba(214,59,31,0.07)] rounded transition-colors" title="Delete"><i className="fas fa-trash-alt text-[11px]"></i></button>
                             </div>
                           )}
                         </td>

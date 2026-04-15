@@ -103,7 +103,7 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
     { name: 'Campaigns', href: '/campaigns' },
     { name: 'Scenarios', href: '/scenarios' },
     { name: 'Call History', href: '/call-history' },
-    { name: 'Credits', href: '/billing' },
+    { name: 'Billing', href: '/billing' },
     { name: 'Settings', href: '/settings' },
   ]
 
