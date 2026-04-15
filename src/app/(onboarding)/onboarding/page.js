@@ -137,8 +137,8 @@ const CheckIcon = ({ size = 10, color = 'currentColor' }) => (
 ══════════════════════════════════════════ */
 function ProgressBar({ step, isGoogleUser, isMobile }) {
   const labels = isGoogleUser
-    ? ['Welcome', 'Details', 'Phone', 'Billing', 'Number']
-    : ['Welcome', 'Details', 'Email', 'Phone', 'Billing', 'Number']
+    ? ['Welcome', 'Details', 'Phone', 'Number', 'Billing']
+    : ['Welcome', 'Details', 'Email', 'Phone', 'Number', 'Billing']
   let displayStep = step
   if (isGoogleUser && step >= 4) displayStep = step - 1
   const currentLabel = labels[displayStep - 1] || ''
@@ -421,6 +421,7 @@ export default function OnboardingPage() {
   const [availableNumbers, setAvailableNumbers] = useState([])
   const [searchingNumbers, setSearchingNumbers] = useState(false)
   const [purchasingNumber, setPurchasingNumber] = useState(null)
+  const [selectedPhoneNumber, setSelectedPhoneNumber] = useState(null)
 
   useEffect(() => {
     const u = getCurrentUser()
@@ -541,6 +542,8 @@ export default function OnboardingPage() {
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Failed to complete setup'); setSaving(false); return }
+      // Upgrade session so messagingProfileId is populated if already set
+      let currentUser = user
       const upgradeRes = await fetch('/api/auth/session-upgrade', { headers: { 'x-user-id': user.userId } })
       if (upgradeRes.ok) {
         const upgradeData = await upgradeRes.json()
@@ -548,10 +551,47 @@ export default function OnboardingPage() {
           const upgraded = { ...user, ...upgradeData.session }
           localStorage.setItem('user_session', JSON.stringify(upgraded))
           setUser(upgraded)
+          currentUser = upgraded
         }
       }
+
+      // Provision messaging profile if not already created
+      let profileId = currentUser.messagingProfileId
+      if (!profileId) {
+        const profileRes = await fetch('/api/onboarding/provision-messaging', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-user-id': currentUser.userId, 'x-workspace-id': currentUser.workspaceId },
+          body: JSON.stringify({ profileName: businessName || currentUser.name }),
+        })
+        const profileData = await profileRes.json()
+        if (profileRes.ok && profileData.messaging_profile_id) {
+          profileId = profileData.messaging_profile_id
+          const updated = updateSessionField('messagingProfileId', profileId)
+          if (updated) { setUser(updated); currentUser = updated }
+        }
+      }
+
+      // Purchase the pre-selected phone number
+      if (selectedPhoneNumber) {
+        const purchaseRes = await fetch('/api/telnyx/purchase-number', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': currentUser.userId,
+            'x-workspace-id': currentUser.workspaceId,
+            'x-messaging-profile-id': profileId || '',
+          },
+          body: JSON.stringify({ phoneNumber: selectedPhoneNumber.phone_number, upfrontCost: 1.00, monthlyCost: 1.00, vat: 0.30, totalCost: 2.30 }),
+        })
+        const purchaseData = await purchaseRes.json()
+        if (!purchaseRes.ok || !purchaseData.success) {
+          // Non-fatal — billing succeeded, number can be purchased from settings
+          console.warn('Number purchase failed after billing:', purchaseData.error)
+        }
+      }
+
       setSaving(false)
-      setStep(6)
+      window.location.href = '/inbox'
     } catch { setError('Something went wrong'); setSaving(false) }
   }
 
@@ -570,7 +610,7 @@ export default function OnboardingPage() {
     }}>
       <div style={{
         width: '100%',
-        maxWidth: isMobile ? '100%' : (step === 5 ? 1020 : 620),
+        maxWidth: isMobile ? '100%' : (step === 6 ? 1020 : 620),
       }}>
         <ProgressBar step={step} isGoogleUser={isGoogleUser} isMobile={isMobile} />
 
@@ -894,23 +934,199 @@ export default function OnboardingPage() {
                     )}
                   </>
                 ) : (
-                  <SuccessBanner title="Phone verified" subtitle="Redirecting to billing..." />
+                  <SuccessBanner title="Phone verified" subtitle="Redirecting to next step..." />
                 )}
               </div>
             </>
           )}
 
           {/* ════════════════════════════════════
-             STEP 5: Plan & Payment
+             STEP 5: Get a Phone Number
           ════════════════════════════════════ */}
           {step === 5 && (
             <>
               <StepHeader
                 kicker={`Step ${isGoogleUser ? 4 : 5} of ${totalSteps}`}
+                title="Get your phone number"
+                subtitle="Search for a US phone number by state or city. This will be your number for calls and messages."
+                isMobile={isMobile}
+              />
+
+              {/* Number search */}
+              <div style={{
+                background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14,
+                padding: isMobile ? 20 : 28,
+              }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14, marginBottom: 16 }}>
+                  <div>
+                    <label style={labelStyle}>State</label>
+                    <select value={searchState} onChange={e => setSearchState(e.target.value)} style={selectStyle}>
+                      <option value="">All States</option>
+                      {US_STATES.map(([val, name]) => <option key={val} value={val}>{name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>City <span style={{ color: C.text3, fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span></label>
+                    <input value={searchCity} onChange={e => setSearchCity(e.target.value)} placeholder="e.g. Dallas" style={inputStyle} onFocus={focusHandler} onBlur={blurHandler} />
+                  </div>
+                </div>
+
+                <button
+                  onClick={async () => {
+                    setSearchingNumbers(true); setError(''); setAvailableNumbers([])
+                    try {
+                      const params = new URLSearchParams()
+                      params.set('country_code', 'US')
+                      if (searchState) params.set('administrative_area', searchState)
+                      if (searchCity) params.set('locality', searchCity)
+                      const res = await fetch(`/api/telnyx/search-numbers?${params}`)
+                      const data = await res.json()
+                      if (data.success && data.numbers?.length > 0) {
+                        setAvailableNumbers(data.numbers)
+                      } else {
+                        setAvailableNumbers([])
+                        setError('No numbers found. Try a different state or city.')
+                      }
+                    } catch { setError('Failed to search numbers') }
+                    finally { setSearchingNumbers(false) }
+                  }}
+                  disabled={searchingNumbers}
+                  style={{ ...btnPrimary, marginBottom: 18, opacity: searchingNumbers ? 0.6 : 1, cursor: searchingNumbers ? 'not-allowed' : 'pointer' }}
+                  onMouseEnter={e => { if (!searchingNumbers) e.currentTarget.style.opacity = '0.88' }}
+                  onMouseLeave={e => { if (!searchingNumbers) e.currentTarget.style.opacity = '1' }}
+                >
+                  {searchingNumbers ? 'Searching...' : (
+                    <>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                      Search available numbers
+                    </>
+                  )}
+                </button>
+
+                <ErrorBanner error={error} />
+              </div>
+
+              {availableNumbers.length > 0 && (
+                <div style={{ marginTop: 20 }}>
+                  <div style={{
+                    fontFamily: C.mono, fontSize: 10.5, color: C.text3,
+                    letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 12,
+                  }}>
+                    {availableNumbers.length} numbers available — pick one to continue
+                  </div>
+                  <div style={{
+                    border: `1px solid ${C.border}`, borderRadius: 12,
+                    overflow: 'hidden', background: C.surface,
+                  }}>
+                    <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+                      {availableNumbers.slice(0, 25).map((num, i) => {
+                        const phone = num.phone_number
+                        const digits = phone.replace(/\D/g, '')
+                        const local = digits.startsWith('1') ? digits.slice(1) : digits
+                        const formatted = local.length === 10 ? `(${local.slice(0,3)}) ${local.slice(3,6)}-${local.slice(6)}` : phone
+                        const isChosen = selectedPhoneNumber?.phone_number === phone
+                        const features = []
+                        if (num.features?.find(f => f.name === 'sms')) features.push('SMS')
+                        if (num.features?.find(f => f.name === 'voice')) features.push('Voice')
+                        if (num.features?.find(f => f.name === 'mms')) features.push('MMS')
+
+                        return (
+                          <div key={i} style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            padding: '14px 18px',
+                            borderBottom: i < Math.min(availableNumbers.length, 25) - 1 ? `1px solid ${C.border}` : 'none',
+                            background: isChosen ? C.redBg : C.surface,
+                            transition: 'background 0.1s',
+                          }}
+                            onMouseEnter={e => { if (!isChosen) e.currentTarget.style.background = C.bg }}
+                            onMouseLeave={e => { e.currentTarget.style.background = isChosen ? C.redBg : C.surface }}
+                          >
+                            <div>
+                              <div style={{ fontSize: 15, fontWeight: 600, color: isChosen ? C.red : C.text, fontFamily: C.mono, letterSpacing: '0.01em' }}>
+                                {formatted}
+                              </div>
+                              <div style={{ display: 'flex', gap: 6, marginTop: 5, alignItems: 'center' }}>
+                                {num.locality && <span style={{ fontSize: 12, color: C.text3, fontWeight: 300 }}>{num.locality}{num.administrative_area ? `, ${num.administrative_area}` : ''}</span>}
+                                {features.map(f => (
+                                  <span key={f} style={{
+                                    fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 4,
+                                    fontFamily: C.mono, textTransform: 'uppercase', letterSpacing: '0.05em',
+                                    background: f === 'SMS' ? C.redBg : f === 'Voice' ? C.greenBg : C.bg2,
+                                    color: f === 'SMS' ? C.red : f === 'Voice' ? C.greenText : C.text3,
+                                  }}>{f}</span>
+                                ))}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => { setSelectedPhoneNumber(num); setError('') }}
+                              style={{
+                                padding: '8px 20px', borderRadius: 8, flexShrink: 0,
+                                background: isChosen ? C.red : C.text,
+                                color: '#fff', border: 'none', fontSize: 13, fontWeight: 500,
+                                cursor: 'pointer', fontFamily: C.sans, transition: 'opacity 0.15s',
+                                letterSpacing: '-0.01em',
+                              }}
+                            >
+                              {isChosen ? 'Selected' : 'Select'}
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                  <p style={{ fontSize: 12, color: C.text3, marginTop: 10, lineHeight: 1.5, fontWeight: 300 }}>
+                    Your first number is included in your plan. Pick one, then continue to billing.
+                  </p>
+                </div>
+              )}
+
+              {/* Continue to billing */}
+              <div style={{ display: 'flex', gap: 10, marginTop: 24 }}>
+                <button onClick={() => setStep(4)} style={btnSecondary}>
+                  <ArrowLeft /> Back
+                </button>
+                {selectedPhoneNumber && (
+                  <button
+                    onClick={() => setStep(6)}
+                    style={{ ...btnPrimary, flex: 1 }}
+                    onMouseEnter={e => { e.currentTarget.style.opacity = '0.88' }}
+                    onMouseLeave={e => { e.currentTarget.style.opacity = '1' }}
+                  >
+                    Continue to billing <ArrowRight />
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* ════════════════════════════════════
+             STEP 6: Plan & Payment
+          ════════════════════════════════════ */}
+          {step === 6 && (
+            <>
+              <StepHeader
+                kicker={`Step ${isGoogleUser ? 5 : 6} of ${totalSteps} — Final step`}
                 title="Choose your plan"
                 subtitle="Start free for 7 days. No charge until your trial ends. Cancel anytime."
                 isMobile={isMobile}
               />
+
+              {/* Selected number reminder */}
+              {selectedPhoneNumber && (() => {
+                const digits = selectedPhoneNumber.phone_number.replace(/\D/g, '')
+                const local = digits.startsWith('1') ? digits.slice(1) : digits
+                const formatted = local.length === 10 ? `(${local.slice(0,3)}) ${local.slice(3,6)}-${local.slice(6)}` : selectedPhoneNumber.phone_number
+                return (
+                  <div style={{
+                    padding: '12px 16px', background: C.redBg, border: `1px solid ${C.redDim}`,
+                    borderRadius: 10, fontSize: 13, color: C.text2, marginBottom: 20,
+                    display: 'flex', alignItems: 'center', gap: 10,
+                  }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.red} strokeWidth="2" style={{ flexShrink: 0 }}><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.8 19.79 19.79 0 01.22 1.18 2 2 0 012.22 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.91 7.09a16 16 0 006 6l.56-.56a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 14.92z"/></svg>
+                    <span>Your number: <strong style={{ fontWeight: 600, fontFamily: C.mono }}>{formatted}</strong> — included free in your plan</span>
+                  </div>
+                )
+              })()}
 
               {/* Plan cards */}
               <div style={{
@@ -1024,192 +1240,9 @@ export default function OnboardingPage() {
                 </Elements>
               </div>
 
-              <button onClick={() => setStep(4)} style={{ ...btnSecondary, marginTop: 14, width: 'auto' }}>
+              <button onClick={() => setStep(5)} style={{ ...btnSecondary, marginTop: 14, width: 'auto' }}>
                 <ArrowLeft /> Back
               </button>
-            </>
-          )}
-
-          {/* ════════════════════════════════════
-             STEP 6: Get a Phone Number
-          ════════════════════════════════════ */}
-          {step === 6 && (
-            <>
-              <StepHeader
-                kicker="Final step"
-                title="Get your phone number"
-                subtitle="Search for a US phone number by state or city. This will be your number for calls and messages."
-                isMobile={isMobile}
-              />
-
-              <div style={{
-                background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14,
-                padding: isMobile ? 20 : 28,
-              }}>
-                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14, marginBottom: 16 }}>
-                  <div>
-                    <label style={labelStyle}>State</label>
-                    <select value={searchState} onChange={e => setSearchState(e.target.value)} style={selectStyle}>
-                      <option value="">All States</option>
-                      {US_STATES.map(([val, name]) => <option key={val} value={val}>{name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={labelStyle}>City <span style={{ color: C.text3, fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span></label>
-                    <input value={searchCity} onChange={e => setSearchCity(e.target.value)} placeholder="e.g. Dallas" style={inputStyle} onFocus={focusHandler} onBlur={blurHandler} />
-                  </div>
-                </div>
-
-                <button
-                  onClick={async () => {
-                    setSearchingNumbers(true); setError(''); setAvailableNumbers([])
-                    try {
-                      const params = new URLSearchParams()
-                      params.set('country_code', 'US')
-                      if (searchState) params.set('administrative_area', searchState)
-                      if (searchCity) params.set('locality', searchCity)
-                      const res = await fetch(`/api/telnyx/search-numbers?${params}`)
-                      const data = await res.json()
-                      if (data.success && data.numbers?.length > 0) {
-                        setAvailableNumbers(data.numbers)
-                      } else {
-                        setAvailableNumbers([])
-                        setError('No numbers found. Try a different state or city.')
-                      }
-                    } catch { setError('Failed to search numbers') }
-                    finally { setSearchingNumbers(false) }
-                  }}
-                  disabled={searchingNumbers}
-                  style={{ ...btnPrimary, marginBottom: 18, opacity: searchingNumbers ? 0.6 : 1, cursor: searchingNumbers ? 'not-allowed' : 'pointer' }}
-                  onMouseEnter={e => { if (!searchingNumbers) e.currentTarget.style.opacity = '0.88' }}
-                  onMouseLeave={e => { if (!searchingNumbers) e.currentTarget.style.opacity = '1' }}
-                >
-                  {searchingNumbers ? 'Searching...' : (
-                    <>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                      Search available numbers
-                    </>
-                  )}
-                </button>
-
-                <ErrorBanner error={error} />
-              </div>
-
-              {availableNumbers.length > 0 && (
-                <div style={{ marginTop: 20 }}>
-                  <div style={{
-                    fontFamily: C.mono, fontSize: 10.5, color: C.text3,
-                    letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 12,
-                  }}>
-                    {availableNumbers.length} numbers available
-                  </div>
-                  <div style={{
-                    border: `1px solid ${C.border}`, borderRadius: 12,
-                    overflow: 'hidden', background: C.surface,
-                  }}>
-                    <div style={{ maxHeight: 400, overflowY: 'auto' }}>
-                      {availableNumbers.slice(0, 25).map((num, i) => {
-                        const phone = num.phone_number
-                        const digits = phone.replace(/\D/g, '')
-                        const local = digits.startsWith('1') ? digits.slice(1) : digits
-                        const formatted = local.length === 10 ? `(${local.slice(0,3)}) ${local.slice(3,6)}-${local.slice(6)}` : phone
-                        const isPurchasing = purchasingNumber === phone
-                        const features = []
-                        if (num.features?.find(f => f.name === 'sms')) features.push('SMS')
-                        if (num.features?.find(f => f.name === 'voice')) features.push('Voice')
-                        if (num.features?.find(f => f.name === 'mms')) features.push('MMS')
-
-                        return (
-                          <div key={i} style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                            padding: '14px 18px',
-                            borderBottom: i < Math.min(availableNumbers.length, 25) - 1 ? `1px solid ${C.border}` : 'none',
-                            transition: 'background 0.1s',
-                          }}
-                            onMouseEnter={e => { e.currentTarget.style.background = C.bg }}
-                            onMouseLeave={e => { e.currentTarget.style.background = C.surface }}
-                          >
-                            <div>
-                              <div style={{ fontSize: 15, fontWeight: 600, color: C.text, fontFamily: C.mono, letterSpacing: '0.01em' }}>
-                                {formatted}
-                              </div>
-                              <div style={{ display: 'flex', gap: 6, marginTop: 5, alignItems: 'center' }}>
-                                {num.locality && <span style={{ fontSize: 12, color: C.text3, fontWeight: 300 }}>{num.locality}{num.administrative_area ? `, ${num.administrative_area}` : ''}</span>}
-                                {features.map(f => (
-                                  <span key={f} style={{
-                                    fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 4,
-                                    fontFamily: C.mono, textTransform: 'uppercase', letterSpacing: '0.05em',
-                                    background: f === 'SMS' ? C.redBg : f === 'Voice' ? C.greenBg : C.bg2,
-                                    color: f === 'SMS' ? C.red : f === 'Voice' ? C.greenText : C.text3,
-                                  }}>{f}</span>
-                                ))}
-                              </div>
-                            </div>
-                            <button
-                              disabled={isPurchasing || !!purchasingNumber}
-                              onClick={async () => {
-                                setPurchasingNumber(phone); setError('')
-                                try {
-                                  let profileId = user.messagingProfileId
-                                  if (!profileId) {
-                                    const profileRes = await fetch('/api/onboarding/provision-messaging', {
-                                      method: 'POST',
-                                      headers: { 'Content-Type': 'application/json', 'x-user-id': user.userId, 'x-workspace-id': user.workspaceId },
-                                      body: JSON.stringify({ profileName: businessName || user.name }),
-                                    })
-                                    const profileData = await profileRes.json()
-                                    if (profileRes.ok && profileData.messaging_profile_id) {
-                                      profileId = profileData.messaging_profile_id
-                                      const updated = updateSessionField('messagingProfileId', profileId)
-                                      if (updated) setUser(updated)
-                                    } else {
-                                      setError('Failed to set up messaging. Please try again.')
-                                      setPurchasingNumber(null); return
-                                    }
-                                  }
-                                  const res = await fetch('/api/telnyx/purchase-number', {
-                                    method: 'POST',
-                                    headers: {
-                                      'Content-Type': 'application/json',
-                                      'x-user-id': user.userId,
-                                      'x-workspace-id': user.workspaceId,
-                                      'x-messaging-profile-id': profileId,
-                                    },
-                                    body: JSON.stringify({ phoneNumber: phone, upfrontCost: 1.00, monthlyCost: 1.00, vat: 0.30, totalCost: 2.30 }),
-                                  })
-                                  const data = await res.json()
-                                  if (!res.ok || !data.success) {
-                                    setError(data.error || data.message || 'Purchase failed')
-                                    setPurchasingNumber(null); return
-                                  }
-                                  window.location.href = '/inbox'
-                                } catch {
-                                  setError('Purchase failed. Please try again.')
-                                  setPurchasingNumber(null)
-                                }
-                              }}
-                              style={{
-                                padding: '8px 20px', borderRadius: 8, flexShrink: 0,
-                                background: isPurchasing ? C.text3 : C.text,
-                                color: '#fff', border: 'none', fontSize: 13, fontWeight: 500,
-                                cursor: isPurchasing || purchasingNumber ? 'not-allowed' : 'pointer',
-                                fontFamily: C.sans, transition: 'opacity 0.15s',
-                                opacity: purchasingNumber && !isPurchasing ? 0.3 : 1,
-                                letterSpacing: '-0.01em',
-                              }}
-                            >
-                              {isPurchasing ? 'Buying...' : 'Select'}
-                            </button>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                  <p style={{ fontSize: 12, color: C.text3, marginTop: 10, lineHeight: 1.5, fontWeight: 300 }}>
-                    Your first number is included in your plan. Pick one to complete setup.
-                  </p>
-                </div>
-              )}
             </>
           )}
 
