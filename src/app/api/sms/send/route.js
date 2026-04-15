@@ -82,13 +82,44 @@ export async function POST(request) {
       )
     }
 
-    // Get workspace messaging profile — use workspace-specific profile, not global
+    // Resolve messaging profile for the from number
+    // Priority: number's own profile (from phone_numbers table) → workspace profile → global env
     const { data: wsData } = await supabaseAdmin
       .from('workspaces')
       .select('messaging_profile_id')
       .eq('id', workspace.workspaceId)
       .single()
-    const messagingProfileId = wsData?.messaging_profile_id || process.env.TELNYX_PROFILE_ID
+
+    const workspaceProfileId = wsData?.messaging_profile_id || process.env.TELNYX_PROFILE_ID
+
+    // Look up the actual profile assigned to this specific number
+    const { data: numberRow } = await supabaseAdmin
+      .from('phone_numbers')
+      .select('id, messaging_profile_id')
+      .eq('phone_number', normalizePhoneNumber(from))
+      .eq('workspace_id', workspace.workspaceId)
+      .single()
+
+    let messagingProfileId = numberRow?.messaging_profile_id || workspaceProfileId
+
+    // If number has no profile assigned, assign the workspace profile now and save it
+    if (!numberRow?.messaging_profile_id && messagingProfileId && numberRow?.id) {
+      try {
+        const assignRes = await fetch(`https://api.telnyx.com/v2/phone_numbers/${numberRow.id}/messaging`, {
+          method: 'PATCH',
+          headers: { 'Authorization': `Bearer ${process.env.TELNYX_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messaging_profile_id: messagingProfileId }),
+        })
+        if (assignRes.ok) {
+          await supabaseAdmin.from('phone_numbers')
+            .update({ messaging_profile_id: messagingProfileId, updated_at: new Date().toISOString() })
+            .eq('id', numberRow.id)
+          console.log(`[sms/send] Assigned missing profile ${messagingProfileId} to ${from}`)
+        }
+      } catch (e) {
+        console.warn('[sms/send] Failed to auto-assign profile (non-fatal):', e.message)
+      }
+    }
 
     // Normalize phone numbers
     const normalizedFrom = normalizePhoneNumber(from)
