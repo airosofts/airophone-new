@@ -48,38 +48,47 @@ export async function POST(request) {
     // Use workspace owner's wallet for shared credits
     const walletOwnerId = await resolveWalletOwnerId(user.userId, workspace.workspaceId)
 
-    // Check if user can afford the message cost (actual wallet balance)
-    const { data: affordCheck, error: affordError } = await supabaseAdmin.rpc(
-      'can_afford_message_cost_v2',
-      {
-        p_user_id: walletOwnerId,
-        p_message_count: 1,
-        p_cost_per_message: messageRate
-      }
-    )
+    // Check credits — try by user_id first, fall back to workspace_id for older accounts
+    let canAfford = false
+    let currentCredits = 0
 
-    if (affordError) {
-      console.error('Error checking wallet balance:', affordError)
-      return NextResponse.json(
-        { error: 'Failed to verify balance' },
-        { status: 500 }
+    const { data: walletDirect } = await supabaseAdmin
+      .from('wallets')
+      .select('id, credits')
+      .eq('workspace_id', workspace.workspaceId)
+      .single()
+
+    if (walletDirect) {
+      currentCredits = parseFloat(walletDirect.credits) || 0
+      canAfford = currentCredits >= messageRate
+    } else {
+      // Fallback: RPC lookup by user_id
+      const { data: affordCheck } = await supabaseAdmin.rpc(
+        'can_afford_message_cost_v2',
+        { p_user_id: walletOwnerId, p_message_count: 1, p_cost_per_message: messageRate }
       )
+      canAfford = affordCheck?.can_afford ?? false
+      currentCredits = affordCheck?.current_balance ?? 0
     }
 
-    if (!affordCheck?.can_afford) {
+    if (!canAfford) {
       return NextResponse.json(
         {
           error: 'Insufficient credits',
-          message: `Insufficient credits. Current credits: ${Math.floor(affordCheck?.current_balance || 0)}, Required: ${Math.floor(affordCheck?.required_amount || 1)} credit. Please top up your wallet to continue.`,
-          details: {
-            currentBalance: affordCheck?.current_balance || 0,
-            requiredAmount: affordCheck?.required_amount || 1,
-            shortage: affordCheck?.shortage || 0
-          }
+          message: `Insufficient credits. Current: ${Math.floor(currentCredits)}, required: ${Math.ceil(messageRate)}. Please top up your wallet.`,
+          details: { currentBalance: currentCredits, requiredAmount: messageRate }
         },
         { status: 402 }
       )
     }
+
+    // Get workspace messaging profile — use workspace-specific profile, not global
+    const { data: wsData } = await supabaseAdmin
+      .from('workspaces')
+      .select('messaging_profile_id')
+      .eq('id', workspace.workspaceId)
+      .single()
+    const messagingProfileId = wsData?.messaging_profile_id || process.env.TELNYX_PROFILE_ID
 
     // Normalize phone numbers
     const normalizedFrom = normalizePhoneNumber(from)
@@ -114,9 +123,11 @@ export async function POST(request) {
       )
     }
 
-    // Send SMS via Telnyx
+    // Send SMS via Telnyx — use workspace-specific messaging profile
     const result = await telnyx.sendMessage(normalizedFrom, normalizedTo, message, {
+      messaging_profile_id: messagingProfileId,
       webhook_url: `${process.env.NEXT_PUBLIC_SITE_URL}/api/webhooks/telnyx`,
+      webhook_failover_url: `${process.env.NEXT_PUBLIC_SITE_URL}/api/webhooks/telnyx/failover`,
       use_profile_webhooks: false
     })
 
@@ -174,25 +185,31 @@ export async function POST(request) {
       )
     }
 
-    // Deduct message cost from workspace owner's wallet (shared credits)
-    const { data: deductionResult, error: deductionError } = await supabaseAdmin.rpc(
-      'deduct_message_cost',
-      {
-        p_user_id: walletOwnerId,
-        p_workspace_id: workspace.workspaceId,
-        p_message_count: 1,
-        p_cost_per_message: messageRate,
-        p_description: `SMS to ${normalizedTo}`,
-        p_campaign_id: null,
-        p_message_id: messageRecord?.id,
-        p_recipient_phone: normalizedTo
+    // Deduct credits directly by workspace_id — reliable for all account ages
+    if (walletDirect) {
+      const newCredits = Math.max(0, currentCredits - messageRate)
+      await supabaseAdmin
+        .from('wallets')
+        .update({ credits: newCredits, updated_at: new Date().toISOString() })
+        .eq('id', walletDirect.id)
+    } else {
+      // Fallback: RPC deduction by user_id
+      const { data: deductionResult, error: deductionError } = await supabaseAdmin.rpc(
+        'deduct_message_cost',
+        {
+          p_user_id: walletOwnerId,
+          p_workspace_id: workspace.workspaceId,
+          p_message_count: 1,
+          p_cost_per_message: messageRate,
+          p_description: `SMS to ${normalizedTo}`,
+          p_campaign_id: null,
+          p_message_id: messageRecord?.id,
+          p_recipient_phone: normalizedTo
+        }
+      )
+      if (deductionError || !deductionResult?.success) {
+        console.error('Error deducting from wallet:', deductionError || deductionResult)
       }
-    )
-
-    if (deductionError || !deductionResult?.success) {
-      console.error('Error deducting from wallet:', deductionError || deductionResult)
-      // Message was sent but wallet deduction failed - log this issue
-      // You may want to handle this differently based on your business logic
     }
 
     // Log successful message transaction for tracking

@@ -140,24 +140,16 @@ class TelnyxClient {
   // Send SMS message with conditional webhook URLs
   async sendMessage(from, to, text, options = {}) {
     try {
+      // Build payload — options spread last so callers can override messaging_profile_id, webhook_url, etc.
       const payload = {
         from: this.toE164(from),
         to: this.toE164(to),
         text: text,
         messaging_profile_id: this.profileId,
-        ...options
-      }
-
-      // Only add webhook URLs in production
-      if (!this.isDevelopment()) {
-        payload.webhook_url = `${process.env.NEXT_PUBLIC_SITE_URL}/api/webhooks/telnyx`
-        payload.webhook_failover_url = `${process.env.NEXT_PUBLIC_SITE_URL}/api/webhooks/telnyx/failover`
-        payload.use_profile_webhooks = false
-        console.log('Production mode: Adding webhook URLs')
-      } else {
-        // In development, use profile webhooks or no webhooks
-        payload.use_profile_webhooks = true
-        console.log('Development mode: Using profile webhooks')
+        webhook_url: `${process.env.NEXT_PUBLIC_SITE_URL}/api/webhooks/telnyx`,
+        webhook_failover_url: `${process.env.NEXT_PUBLIC_SITE_URL}/api/webhooks/telnyx/failover`,
+        use_profile_webhooks: false,
+        ...options  // caller can override any of the above
       }
 
       console.log('Sending SMS via Telnyx:', JSON.stringify(payload, null, 2))
