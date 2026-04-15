@@ -94,7 +94,8 @@ export async function POST(request) {
       .eq('id', workspace.workspaceId)
       .single()
 
-    const workspaceProfileId = wsData?.messaging_profile_id || process.env.TELNYX_PROFILE_ID
+    // Use workspace-specific profile only — TELNYX_PROFILE_ID is the alphanumeric profile, not for regular SMS
+    const workspaceProfileId = wsData?.messaging_profile_id
 
     // Look up the actual profile assigned to this specific number
     const { data: numberRow } = await supabaseAdmin
@@ -188,9 +189,8 @@ export async function POST(request) {
       )
     }
 
-    // Send SMS via Telnyx — include messaging_profile_id so Telnyx routes through the correct profile
-    const sendOptions = messagingProfileId ? { messaging_profile_id: messagingProfileId } : {}
-    const result = await telnyx.sendMessage(normalizedFrom, normalizedTo, message, sendOptions)
+    // Send SMS via Telnyx — no profile in payload; Telnyx auto-resolves from the number's assigned profile
+    const result = await telnyx.sendMessage(normalizedFrom, normalizedTo, message)
 
     if (!result.success) {
       // Create failed message record
