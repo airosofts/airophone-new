@@ -140,17 +140,20 @@ class TelnyxClient {
   // Send SMS message with conditional webhook URLs
   async sendMessage(from, to, text, options = {}) {
     try {
-      // Build payload — options spread last so callers can override messaging_profile_id, webhook_url, etc.
+      // Build payload — do NOT include messaging_profile_id by default.
+      // Telnyx routes the message through whichever profile the `from` number belongs to.
+      // Specifying a profile that doesn't match the from number causes error 40305.
       const payload = {
         from: this.toE164(from),
         to: this.toE164(to),
         text: text,
-        messaging_profile_id: this.profileId,
         webhook_url: `${process.env.NEXT_PUBLIC_SITE_URL}/api/webhooks/telnyx`,
         webhook_failover_url: `${process.env.NEXT_PUBLIC_SITE_URL}/api/webhooks/telnyx/failover`,
         use_profile_webhooks: false,
-        ...options  // caller can override any of the above
+        ...options
       }
+      // Remove messaging_profile_id if caller passed it — let Telnyx auto-resolve from the number
+      delete payload.messaging_profile_id
 
       console.log('Sending SMS via Telnyx:', JSON.stringify(payload, null, 2))
 

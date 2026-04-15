@@ -154,13 +154,8 @@ export async function POST(request) {
       )
     }
 
-    // Send SMS via Telnyx — use workspace-specific messaging profile
-    const result = await telnyx.sendMessage(normalizedFrom, normalizedTo, message, {
-      messaging_profile_id: messagingProfileId,
-      webhook_url: `${process.env.NEXT_PUBLIC_SITE_URL}/api/webhooks/telnyx`,
-      webhook_failover_url: `${process.env.NEXT_PUBLIC_SITE_URL}/api/webhooks/telnyx/failover`,
-      use_profile_webhooks: false
-    })
+    // Send SMS via Telnyx — no messaging_profile_id in payload; Telnyx resolves it from the from number
+    const result = await telnyx.sendMessage(normalizedFrom, normalizedTo, message)
 
     if (!result.success) {
       // Create failed message record
