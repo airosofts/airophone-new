@@ -9,7 +9,7 @@ const PLANS = {
   growth:     { name: 'Growth',     price: 29, credits: 500,  overage: 0.03, color: '#D63B1F', bg: 'rgba(214,59,31,0.07)' },
   enterprise: { name: 'Enterprise', price: 59, credits: 1000, overage: 0.02, color: '#16a34a', bg: '#f0fdf4' },
 }
-
+//ok
 export default function BillingPage() {
   const [user, setUser] = useState(null)
   const [tab, setTab] = useState('subscription')
