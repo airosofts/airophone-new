@@ -1074,6 +1074,33 @@ export default function OnboardingPage() {
                       })}
                     </div>
                   </div>
+                  {/* Sticky selected number + continue bar inside the list box */}
+                  {selectedPhoneNumber && (() => {
+                    const d = selectedPhoneNumber.phone_number.replace(/\D/g, '')
+                    const loc = d.startsWith('1') ? d.slice(1) : d
+                    const fmt = loc.length === 10 ? `(${loc.slice(0,3)}) ${loc.slice(3,6)}-${loc.slice(6)}` : selectedPhoneNumber.phone_number
+                    return (
+                      <div style={{
+                        borderTop: `1px solid ${C.redDim}`, background: C.redBg,
+                        padding: '12px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: C.red, flexShrink: 0 }} />
+                          <span style={{ fontSize: 13, fontWeight: 600, color: C.red, fontFamily: C.mono }}>{fmt}</span>
+                          <span style={{ fontSize: 12, color: C.text2 }}>selected</span>
+                        </div>
+                        <button
+                          onClick={() => setStep(6)}
+                          style={{ ...btnPrimary, width: 'auto', height: 36, padding: '0 20px', fontSize: 13 }}
+                          onMouseEnter={e => { e.currentTarget.style.opacity = '0.88' }}
+                          onMouseLeave={e => { e.currentTarget.style.opacity = '1' }}
+                        >
+                          Continue to billing <ArrowRight />
+                        </button>
+                      </div>
+                    )
+                  })()}
+
                   <p style={{ fontSize: 12, color: C.text3, marginTop: 10, lineHeight: 1.5, fontWeight: 300 }}>
                     Your first number is included in your plan. Pick one, then continue to billing.
                   </p>
@@ -1085,16 +1112,15 @@ export default function OnboardingPage() {
                 <button onClick={() => setStep(4)} style={btnSecondary}>
                   <ArrowLeft /> Back
                 </button>
-                {selectedPhoneNumber && (
-                  <button
-                    onClick={() => setStep(6)}
-                    style={{ ...btnPrimary, flex: 1 }}
-                    onMouseEnter={e => { e.currentTarget.style.opacity = '0.88' }}
-                    onMouseLeave={e => { e.currentTarget.style.opacity = '1' }}
-                  >
-                    Continue to billing <ArrowRight />
-                  </button>
-                )}
+                <button
+                  onClick={() => selectedPhoneNumber && setStep(6)}
+                  disabled={!selectedPhoneNumber}
+                  style={{ ...btnPrimary, flex: 1, opacity: selectedPhoneNumber ? 1 : 0.4, cursor: selectedPhoneNumber ? 'pointer' : 'not-allowed' }}
+                  onMouseEnter={e => { if (selectedPhoneNumber) e.currentTarget.style.opacity = '0.88' }}
+                  onMouseLeave={e => { e.currentTarget.style.opacity = selectedPhoneNumber ? '1' : '0.4' }}
+                >
+                  Continue to billing <ArrowRight />
+                </button>
               </div>
             </>
           )}

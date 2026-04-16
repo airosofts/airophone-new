@@ -1,15 +1,16 @@
-// src/app/(auth)/signup/page.js
 'use client'
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
-const COLORS = {
+const C = {
   bg: '#F7F6F3', bg2: '#EFEDE8', surface: '#FFFFFF',
   border: '#E3E1DB', border2: '#D4D1C9',
   text: '#131210', text2: '#5C5A55', text3: '#9B9890',
   red: '#D63B1F', redBg: 'rgba(214,59,31,0.07)', redDim: 'rgba(214,59,31,0.14)',
+  sans: "'Plus Jakarta Sans', system-ui, sans-serif",
+  mono: "'JetBrains Mono', monospace",
 }
 
 function Logo({ size = 34 }) {
@@ -27,18 +28,30 @@ function CheckIcon() {
   return (
     <div style={{
       width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
-      background: COLORS.redBg, border: `1px solid ${COLORS.redDim}`,
+      background: C.redBg, border: `1px solid ${C.redDim}`,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
-      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={COLORS.red} strokeWidth="2.5">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={C.red} strokeWidth="2.5">
         <polyline points="20 6 9 17 4 12" />
       </svg>
     </div>
   )
 }
 
+const focusHandler = (e) => { e.target.style.borderColor = C.red; e.target.style.boxShadow = `0 0 0 3px ${C.redDim}` }
+const blurHandler = (e) => { e.target.style.borderColor = C.border2; e.target.style.boxShadow = 'none' }
+
+const labelStyle = {
+  display: 'block', fontFamily: C.mono, fontSize: '10.5px',
+  color: C.text2, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 7,
+}
+const inputBaseStyle = {
+  height: 42, border: `1px solid ${C.border2}`, borderRadius: 9,
+  background: C.surface, fontFamily: C.sans, fontSize: 14, color: C.text, padding: '0 14px',
+}
+
 export default function SignupPage() {
-  const [mode, setMode] = useState('choose') // 'choose' | 'email'
+  const [mode, setMode] = useState('choose')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -62,16 +75,8 @@ export default function SignupPage() {
     setError('')
     setSuccess('')
 
-    if (password !== confirmPassword) {
-      setError('Passwords do not match')
-      setLoading(false)
-      return
-    }
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters')
-      setLoading(false)
-      return
-    }
+    if (password !== confirmPassword) { setError('Passwords do not match'); setLoading(false); return }
+    if (password.length < 6) { setError('Password must be at least 6 characters'); setLoading(false); return }
 
     try {
       const res = await fetch('/api/auth/signup', {
@@ -81,7 +86,6 @@ export default function SignupPage() {
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Signup failed'); return }
-      // Store session and redirect
       localStorage.setItem('user_session', JSON.stringify(data.session))
       router.push('/onboarding')
     } catch {
@@ -91,139 +95,95 @@ export default function SignupPage() {
     }
   }
 
-  const inputStyle = {
-    width: '100%', height: 42,
-    border: `1px solid ${COLORS.border2}`, borderRadius: 9,
-    background: COLORS.surface,
-    fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
-    fontSize: 14, color: COLORS.text,
-    padding: '0 14px', outline: 'none',
-    transition: 'border-color 0.15s, box-shadow 0.15s',
-  }
-
-  const labelStyle = {
-    display: 'block',
-    fontFamily: "'JetBrains Mono', monospace",
-    fontSize: '10.5px', color: COLORS.text2,
-    letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 7,
-  }
-
   return (
-    <div style={{
-      minHeight: '100vh', display: 'flex', overflow: 'hidden',
-      fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
-      WebkitFontSmoothing: 'antialiased',
-    }}>
+    <div className="min-h-screen flex flex-col lg:flex-row" style={{ fontFamily: C.sans, WebkitFontSmoothing: 'antialiased' }}>
 
-      {/* ═══ LEFT PANEL ═══ */}
-      <div style={{
-        flex: 1, background: COLORS.bg2,
-        display: 'flex', flexDirection: 'column', justifyContent: 'center',
-        alignItems: 'flex-start', padding: '72px 80px 72px 10%',
-        position: 'relative', overflow: 'hidden',
-        borderRight: `1px solid ${COLORS.border}`,
-      }} className="hidden lg:flex">
-        <div style={{
-          position: 'absolute', inset: 0, pointerEvents: 'none',
-          backgroundImage: `linear-gradient(${COLORS.border} 1px, transparent 1px), linear-gradient(90deg, ${COLORS.border} 1px, transparent 1px)`,
+      {/* ═══ LEFT PANEL — Desktop only ═══ */}
+      <div className="hidden lg:flex flex-1 flex-col justify-center items-start relative overflow-hidden"
+        style={{ background: C.bg2, padding: '72px 80px 72px 10%', borderRight: `1px solid ${C.border}` }}>
+
+        <div className="absolute inset-0 pointer-events-none" style={{
+          backgroundImage: `linear-gradient(${C.border} 1px, transparent 1px), linear-gradient(90deg, ${C.border} 1px, transparent 1px)`,
           backgroundSize: '40px 40px', opacity: 0.5,
         }} />
-        <div style={{
-          position: 'absolute', inset: 0, pointerEvents: 'none',
+        <div className="absolute inset-0 pointer-events-none" style={{
           background: 'linear-gradient(160deg, transparent 40%, rgba(239,237,232,0.95) 100%)',
         }} />
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 52, position: 'relative', zIndex: 1 }}>
-          <Logo size={34} />
-          <span style={{ fontSize: 17, fontWeight: 600, letterSpacing: '-0.03em', color: COLORS.text }}>AiroPhone</span>
-        </div>
+        <div className="relative z-10">
+          <div className="flex items-center gap-2.5 mb-12">
+            <Logo size={34} />
+            <span style={{ fontSize: 17, fontWeight: 600, letterSpacing: '-0.03em', color: C.text }}>AiroPhone</span>
+          </div>
 
-        <div style={{ position: 'relative', zIndex: 1 }}>
-          <div className="mono" style={{
-            fontSize: 11, color: COLORS.red,
-            letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 14,
-          }}>
+          <div style={{ fontFamily: C.mono, fontSize: 11, color: C.red, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 14 }}>
             Start your free account
           </div>
 
-          <h1 style={{
-            fontSize: 'clamp(26px, 2.6vw, 40px)', fontWeight: 600,
-            color: COLORS.text, lineHeight: 1.1, letterSpacing: '-0.04em', marginBottom: 14,
-          }}>
-            Everything you need<br />to communicate at <span style={{ color: COLORS.red }}>scale.</span>
+          <h1 style={{ fontSize: 'clamp(26px, 2.6vw, 40px)', fontWeight: 600, color: C.text, lineHeight: 1.1, letterSpacing: '-0.04em', marginBottom: 14 }}>
+            Everything you need<br />to communicate at <span style={{ color: C.red }}>scale.</span>
           </h1>
 
-          <p style={{
-            fontSize: 14, color: COLORS.text2, lineHeight: 1.72,
-            maxWidth: 340, fontWeight: 300, marginBottom: 32,
-          }}>
+          <p style={{ fontSize: 14, color: C.text2, lineHeight: 1.72, maxWidth: 340, fontWeight: 300, marginBottom: 32 }}>
             Get started in minutes. No credit card required. Full access to every feature on your free trial.
           </p>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 44 }}>
-            {[
-              'VoIP calling across multiple lines',
-              'Bulk SMS campaigns & scheduling',
-              'AI agent scenarios with auto-replies',
-              'Unified inbox & contact management',
-            ].map((f, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '13.5px', color: COLORS.text2, fontWeight: 300 }}>
+          <div className="flex flex-col gap-2.5 mb-11">
+            {['VoIP calling across multiple lines', 'Bulk SMS campaigns & scheduling', 'AI agent scenarios with auto-replies', 'Unified inbox & contact management'].map((f, i) => (
+              <div key={i} className="flex items-center gap-2.5" style={{ fontSize: '13.5px', color: C.text2, fontWeight: 300 }}>
                 <CheckIcon />{f}
               </div>
             ))}
           </div>
 
-          <div style={{ display: 'flex', gap: 36, paddingTop: 28, borderTop: `1px solid ${COLORS.border}` }}>
+          <div className="flex gap-9 pt-7" style={{ borderTop: `1px solid ${C.border}` }}>
             {[
               { val: '99.9', unit: '%', label: 'Uptime' },
               { val: '2', unit: 'M+', label: 'Messages' },
               { val: '24', unit: '/7', label: 'Support' },
             ].map((s, i) => (
               <div key={i}>
-                <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.04em', color: COLORS.text }}>
-                  {s.val}<span style={{ color: COLORS.red }}>{s.unit}</span>
+                <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.04em', color: C.text }}>
+                  {s.val}<span style={{ color: C.red }}>{s.unit}</span>
                 </div>
-                <div className="mono" style={{
-                  fontSize: 10, color: COLORS.text3,
-                  letterSpacing: '0.05em', textTransform: 'uppercase', marginTop: 3,
-                }}>{s.label}</div>
+                <div style={{ fontFamily: C.mono, fontSize: 10, color: C.text3, letterSpacing: '0.05em', textTransform: 'uppercase', marginTop: 3 }}>
+                  {s.label}
+                </div>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      {/* ═══ RIGHT PANEL ═══ */}
-      <div style={{
-        width: 540, flexShrink: 0, background: COLORS.surface,
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '56px 60px',
-      }} className="max-lg:!w-full max-lg:!p-8">
+      {/* ═══ RIGHT PANEL — Form ═══ */}
+      <div className="w-full lg:w-135 lg:shrink-0 flex items-center justify-center px-6 py-10 sm:px-10 sm:py-14 lg:px-15"
+        style={{ background: C.surface, minHeight: '100vh' }}>
 
-        <div style={{ width: '100%', maxWidth: 400 }}>
+        <div className="w-full max-w-100">
+
+          {/* Mobile logo */}
+          <div className="flex lg:hidden items-center gap-2.5 justify-center mb-10">
+            <Logo size={30} />
+            <span style={{ fontSize: 16, fontWeight: 600, letterSpacing: '-0.03em', color: C.text }}>AiroPhone</span>
+          </div>
 
           {/* ── CHOOSE MODE ── */}
           {mode === 'choose' && (
             <>
-              <div style={{ textAlign: 'center', marginBottom: 32 }}>
-                <div style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.03em', color: COLORS.text, marginBottom: 6 }}>
+              <div className="text-center mb-8">
+                <div style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.03em', color: C.text, marginBottom: 6 }}>
                   Welcome to AiroPhone!
                 </div>
-                <div style={{ fontSize: '13.5px', color: COLORS.text3 }}>
+                <div style={{ fontSize: '13.5px', color: C.text3 }}>
                   Create an account to start your free trial
                 </div>
               </div>
 
               {/* Google */}
-              <button onClick={handleGoogleSignup} style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-                width: '100%', height: 46, border: `1px solid ${COLORS.border2}`, borderRadius: 9,
-                background: COLORS.surface, cursor: 'pointer',
-                fontSize: 14, fontWeight: 500, color: COLORS.text,
-                fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
-                transition: 'border-color 0.15s, background 0.15s',
-              }}
-                onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#9B9890'; e.currentTarget.style.background = '#F7F6F3' }}
-                onMouseLeave={(e) => { e.currentTarget.style.borderColor = COLORS.border2; e.currentTarget.style.background = COLORS.surface }}
+              <button onClick={handleGoogleSignup} className="w-full flex items-center justify-center gap-2.5 transition-colors"
+                style={{ height: 46, border: `1px solid ${C.border2}`, borderRadius: 9, background: C.surface, cursor: 'pointer', fontSize: 14, fontWeight: 500, color: C.text, fontFamily: C.sans }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.text3; e.currentTarget.style.background = C.bg }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.border2; e.currentTarget.style.background = C.surface }}
               >
                 <svg width="18" height="18" viewBox="0 0 48 48">
                   <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
@@ -235,89 +195,76 @@ export default function SignupPage() {
               </button>
 
               {/* Email */}
-              <button onClick={() => setMode('email')} style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-                width: '100%', height: 46, marginTop: 12,
-                border: `1px solid ${COLORS.border2}`, borderRadius: 9,
-                background: COLORS.surface, cursor: 'pointer',
-                fontSize: 14, fontWeight: 500, color: COLORS.text,
-                fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
-                transition: 'border-color 0.15s, background 0.15s',
-              }}
-                onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#9B9890'; e.currentTarget.style.background = '#F7F6F3' }}
-                onMouseLeave={(e) => { e.currentTarget.style.borderColor = COLORS.border2; e.currentTarget.style.background = COLORS.surface }}
+              <button onClick={() => setMode('email')} className="w-full flex items-center justify-center gap-2.5 mt-3 transition-colors"
+                style={{ height: 46, border: `1px solid ${C.border2}`, borderRadius: 9, background: C.surface, cursor: 'pointer', fontSize: 14, fontWeight: 500, color: C.text, fontFamily: C.sans }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.text3; e.currentTarget.style.background = C.bg }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.border2; e.currentTarget.style.background = C.surface }}
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                  <rect x="2" y="4" width="20" height="16" rx="3" stroke={COLORS.red} strokeWidth="1.5"/>
-                  <path d="M2 7l10 7 10-7" stroke={COLORS.red} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  <rect x="2" y="4" width="20" height="16" rx="3" stroke={C.red} strokeWidth="1.5"/>
+                  <path d="M2 7l10 7 10-7" stroke={C.red} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
                 Continue with email
               </button>
 
-              {/* Error from Google */}
               {error && (
-                <div style={{
-                  marginTop: 16, display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '10px 14px', borderRadius: 9,
-                  background: COLORS.redBg, border: `1px solid ${COLORS.redDim}`,
-                  fontSize: 13, color: COLORS.red,
-                }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <div className="mt-4 flex items-center gap-2" style={{ padding: '10px 14px', borderRadius: 9, background: C.redBg, border: `1px solid ${C.redDim}`, fontSize: 13, color: C.red }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
                     <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
                   </svg>
                   {error}
                 </div>
               )}
 
-              {/* Divider */}
-              <div style={{ textAlign: 'center', margin: '28px 0', position: 'relative' }}>
-                <div style={{ height: 1, background: COLORS.border }} />
-              </div>
+              <div className="my-7" style={{ height: 1, background: C.border }} />
 
-              {/* Login link */}
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 13, color: COLORS.text3, marginBottom: 6 }}>
-                  Already have an account?
-                </div>
-                <Link href="/login" style={{ fontSize: 14, fontWeight: 500, color: COLORS.red, textDecoration: 'none' }}>
+              <div className="text-center">
+                <div style={{ fontSize: 13, color: C.text3, marginBottom: 6 }}>Already have an account?</div>
+                <Link href="/login" style={{ fontSize: 14, fontWeight: 500, color: C.red, textDecoration: 'none' }}>
                   Log back in
                 </Link>
               </div>
             </>
           )}
 
-          {/* ── EMAIL FORM MODE ── */}
+          {/* ── EMAIL FORM ── */}
           {mode === 'email' && (
             <>
-              <div style={{ marginBottom: 28 }}>
+              <div className="mb-7">
                 <button onClick={() => { setMode('choose'); setError(''); setSuccess('') }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', color: COLORS.text3, fontSize: 13, marginBottom: 20, padding: 0 }}>
+                  className="flex items-center gap-1.5 mb-5 p-0 bg-transparent border-none cursor-pointer"
+                  style={{ color: C.text3, fontSize: 13 }}>
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M10 4l-4 4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   Back
                 </button>
-                <div style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.03em', color: COLORS.text, marginBottom: 6 }}>
+                <div style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.03em', color: C.text, marginBottom: 6 }}>
                   Create your account
                 </div>
-                <div style={{ fontSize: '13.5px', color: COLORS.text3 }}>
+                <div style={{ fontSize: '13.5px', color: C.text3 }}>
                   Sign up with your email address
                 </div>
               </div>
 
               <form onSubmit={handleEmailSignup}>
-                <div style={{ marginBottom: 18 }}>
+                <div className="mb-4">
                   <label style={labelStyle}>Email</label>
                   <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@company.com" style={inputStyle} />
+                    placeholder="you@company.com"
+                    className="w-full outline-none transition-all"
+                    style={inputBaseStyle} onFocus={focusHandler} onBlur={blurHandler} />
                 </div>
 
-                <div style={{ marginBottom: 18 }}>
+                <div className="mb-4">
                   <label style={labelStyle}>Password</label>
-                  <div style={{ position: 'relative' }}>
+                  <div className="relative">
                     <input type={showPassword ? 'text' : 'password'} required value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Min 6 characters" style={{ ...inputStyle, paddingRight: 40 }} />
+                      placeholder="Min 6 characters"
+                      className="w-full outline-none transition-all"
+                      style={{ ...inputBaseStyle, paddingRight: 40 }} onFocus={focusHandler} onBlur={blurHandler} />
                     <button type="button" onClick={() => setShowPassword(!showPassword)}
-                      style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: COLORS.text3, cursor: 'pointer', display: 'flex', background: 'none', border: 'none', padding: 0 }}>
+                      className="absolute right-3 top-1/2 -translate-y-1/2 flex p-0 bg-transparent border-none cursor-pointer"
+                      style={{ color: C.text3 }}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                         {showPassword
                           ? <><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></>
@@ -328,21 +275,18 @@ export default function SignupPage() {
                   </div>
                 </div>
 
-                <div style={{ marginBottom: 18 }}>
+                <div className="mb-4">
                   <label style={labelStyle}>Confirm Password</label>
                   <input type="password" required value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Confirm your password" style={inputStyle} />
+                    placeholder="Confirm your password"
+                    className="w-full outline-none transition-all"
+                    style={inputBaseStyle} onFocus={focusHandler} onBlur={blurHandler} />
                 </div>
 
                 {error && (
-                  <div style={{
-                    marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8,
-                    padding: '10px 14px', borderRadius: 9,
-                    background: COLORS.redBg, border: `1px solid ${COLORS.redDim}`,
-                    fontSize: 13, color: COLORS.red,
-                  }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <div className="mb-4 flex items-center gap-2" style={{ padding: '10px 14px', borderRadius: 9, background: C.redBg, border: `1px solid ${C.redDim}`, fontSize: 13, color: C.red }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
                       <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
                     </svg>
                     {error}
@@ -350,35 +294,28 @@ export default function SignupPage() {
                 )}
 
                 {success && (
-                  <div style={{
-                    marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8,
-                    padding: '10px 14px', borderRadius: 9,
-                    background: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.2)',
-                    fontSize: 13, color: '#16a34a',
-                  }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <div className="mb-4 flex items-center gap-2" style={{ padding: '10px 14px', borderRadius: 9, background: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.2)', fontSize: 13, color: '#16a34a' }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
                       <circle cx="12" cy="12" r="10"/><polyline points="16 8 10 14 8 12"/>
                     </svg>
                     {success}
                   </div>
                 )}
 
-                <button type="submit" disabled={loading} style={{
-                  width: '100%', height: 42, borderRadius: 9,
-                  background: loading ? COLORS.text3 : COLORS.red,
-                  color: '#fff', border: 'none',
-                  fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
-                  fontSize: 14, fontWeight: 500,
-                  cursor: loading ? 'not-allowed' : 'pointer', marginTop: 6,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                  letterSpacing: '-0.01em', transition: 'opacity 0.15s, transform 0.15s',
-                }}
-                  onMouseEnter={(e) => { if (!loading) { e.currentTarget.style.opacity = '0.88'; e.currentTarget.style.transform = 'translateY(-1px)' } }}
-                  onMouseLeave={(e) => { if (!loading) { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'translateY(0)' } }}
+                <button type="submit" disabled={loading}
+                  className="w-full flex items-center justify-center gap-2 transition-all mt-1.5"
+                  style={{
+                    height: 42, borderRadius: 9,
+                    background: loading ? C.text3 : C.red, color: '#fff', border: 'none',
+                    fontFamily: C.sans, fontSize: 14, fontWeight: 500,
+                    cursor: loading ? 'not-allowed' : 'pointer', letterSpacing: '-0.01em',
+                  }}
+                  onMouseEnter={(e) => { if (!loading) e.currentTarget.style.opacity = '0.88' }}
+                  onMouseLeave={(e) => { if (!loading) e.currentTarget.style.opacity = '1' }}
                 >
                   {loading ? (
                     <>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ animation: 'spin 1s linear infinite' }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="animate-spin">
                         <circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                         <path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
                       </svg>
@@ -395,9 +332,9 @@ export default function SignupPage() {
                 </button>
               </form>
 
-              <div style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: COLORS.text3 }}>
+              <div className="text-center mt-5" style={{ fontSize: 13, color: C.text3 }}>
                 Already have an account?{' '}
-                <Link href="/login" style={{ color: COLORS.red, textDecoration: 'none' }}>Sign in</Link>
+                <Link href="/login" style={{ color: C.red, textDecoration: 'none' }}>Sign in</Link>
               </div>
             </>
           )}

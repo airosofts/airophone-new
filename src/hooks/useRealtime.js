@@ -318,13 +318,39 @@ export function usePhoneNumbers(workspaceId) {
   const [phoneNumbers, setPhoneNumbers] = useState([])
   const [loading, setLoading] = useState(true)
   const channelRef = useRef(null)
+  const syncedRef = useRef(false)
 
   useEffect(() => {
     const fetchAndSubscribe = async () => {
       try {
         const response = await apiGet('/api/phone-numbers')
         const data = await response.json()
-        if (data.success) setPhoneNumbers(data.phoneNumbers || [])
+        if (data.success) {
+          const numbers = data.phoneNumbers || []
+          setPhoneNumbers(numbers)
+
+          // If any numbers are still pending and we haven't synced yet this session,
+          // query Telnyx for the real status and update the DB
+          const hasPending = numbers.some(p => p.campaign_status === 'pending')
+          if (hasPending && workspaceId && !syncedRef.current) {
+            syncedRef.current = true
+            fetch('/api/telnyx/sync-campaign-status', {
+              method: 'POST',
+              headers: { 'x-workspace-id': workspaceId },
+            })
+              .then(r => r.json())
+              .then(result => {
+                if (result.synced > 0) {
+                  // Re-fetch phone numbers to pick up the updated statuses
+                  apiGet('/api/phone-numbers')
+                    .then(r => r.json())
+                    .then(d => { if (d.success) setPhoneNumbers(d.phoneNumbers || []) })
+                    .catch(() => {})
+                }
+              })
+              .catch(() => {})
+          }
+        }
       } catch (e) {
         console.error('Error fetching phone numbers:', e)
       } finally {

@@ -43,6 +43,25 @@ export async function POST(request, { params }) {
       )
     }
 
+    // Block trial accounts from sending campaigns
+    const { data: sub } = await supabaseAdmin
+      .from('subscriptions')
+      .select('status')
+      .eq('workspace_id', workspace.workspaceId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
+
+    if (sub?.status === 'trialing') {
+      return NextResponse.json(
+        {
+          error: 'trial_restriction',
+          message: 'Campaign sending requires an active paid subscription. End your trial to start sending now.',
+        },
+        { status: 402 }
+      )
+    }
+
     // Get contacts from selected lists (workspace-filtered)
     const { data: contacts, error: contactsError } = await supabaseAdmin
       .from('contacts')

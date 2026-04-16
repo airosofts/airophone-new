@@ -17,6 +17,8 @@ export default function CampaignsPage() {
   const [user, setUser] = useState(null)
   const [errorModal, setErrorModal] = useState(null)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
+  const [subscription, setSubscription] = useState(null)
+  const [showTrialUpsell, setShowTrialUpsell] = useState(false)
 
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -56,14 +58,19 @@ export default function CampaignsPage() {
       try {
         const user = getCurrentUser()
         setUser(user)
-        const [contactListRes, phoneNumberRes] = await Promise.all([
+        const [contactListRes, phoneNumberRes, subRes] = await Promise.all([
           apiGet('/api/contact-lists'),
           apiGet('/api/phone-numbers'),
+          fetch('/api/subscription', {
+            headers: { 'x-workspace-id': user?.workspaceId, 'x-user-id': user?.userId },
+          }),
         ])
         const contactListData = await contactListRes.json()
         const phoneNumberData = await phoneNumberRes.json()
+        const subData = await subRes.json()
         if (contactListData.success) setContactLists(contactListData.contactLists || [])
         if (phoneNumberData.success) setPhoneNumbers(phoneNumberData.phoneNumbers || [])
+        if (subData.subscription) setSubscription(subData.subscription)
       } catch (error) {
         console.error('Error fetching data:', error)
       }
@@ -99,6 +106,30 @@ export default function CampaignsPage() {
       }
     } catch {
       setErrorModal({ title: 'Error', message: 'Failed to update campaign. Please try again.' })
+    }
+  }
+
+  const handleLaunchCampaign = async (campaignId) => {
+    if (subscription?.status === 'trialing') {
+      setShowTrialUpsell(true)
+      return
+    }
+    try {
+      const response = await apiPost(`/api/campaigns/${campaignId}/start`, {})
+      const data = await response.json()
+      if (response.status === 402 && data.error === 'trial_restriction') {
+        setShowTrialUpsell(true)
+        return
+      }
+      if (data.success) {
+        setShowViewCampaign(false)
+        setSelectedCampaign(null)
+        await fetchCampaigns()
+      } else {
+        setErrorModal({ title: 'Cannot Launch', message: data.message || data.error || 'Failed to start campaign' })
+      }
+    } catch {
+      setErrorModal({ title: 'Error', message: 'Failed to start campaign. Please try again.' })
     }
   }
 
@@ -177,6 +208,27 @@ export default function CampaignsPage() {
   return (
     <div className="h-full bg-[#F7F6F3] overflow-auto">
       <div className="p-6 space-y-4">
+
+        {/* Trial Banner */}
+        {subscription?.status === 'trialing' && (
+          <div className="flex items-center justify-between gap-4 px-4 py-3 bg-gradient-to-r from-[#fff8f7] to-[#fff3f1] border border-[rgba(214,59,31,0.2)] rounded-lg">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-7 h-7 rounded-full bg-[rgba(214,59,31,0.1)] flex items-center justify-center flex-shrink-0">
+                <i className="fas fa-rocket text-[#D63B1F] text-xs"></i>
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-[#131210]">Your campaigns are ready to launch</p>
+                <p className="text-xs text-[#5C5A55]">You&rsquo;re on a free trial &mdash; activate your plan to start sending SMS campaigns to your contacts.</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowTrialUpsell(true)}
+              className="flex-shrink-0 px-3.5 py-1.5 text-xs font-semibold text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md transition-colors whitespace-nowrap"
+            >
+              Activate Now
+            </button>
+          </div>
+        )}
 
         {/* Main Card */}
         <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg overflow-hidden">
@@ -351,11 +403,22 @@ export default function CampaignsPage() {
           campaign={selectedCampaign}
           contactLists={contactLists}
           phoneNumbers={phoneNumbers}
+          isTrial={subscription?.status === 'trialing'}
           onClose={() => { setShowViewCampaign(false); setSelectedCampaign(null) }}
           onCampaignUpdated={() => fetchCampaigns()}
+          onLaunch={() => handleLaunchCampaign(selectedCampaign.id)}
           onPause={() => handlePauseCampaign(selectedCampaign.id, selectedCampaign.status === 'paused')}
           onArchive={() => handleArchiveCampaign(selectedCampaign.id, selectedCampaign.status === 'archived')}
           onDelete={() => setDeleteConfirm({ campaignId: selectedCampaign.id, campaignName: selectedCampaign.name })}
+        />
+      )}
+
+      {showTrialUpsell && (
+        <TrialUpsellModal
+          subscription={subscription}
+          onClose={() => setShowTrialUpsell(false)}
+          onActivated={() => { setShowTrialUpsell(false); setSubscription(s => ({ ...s, status: 'active' })) }}
+          user={user}
         />
       )}
 
@@ -705,7 +768,7 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
   )
 }
 
-function ViewCampaignModal({ campaign, contactLists, phoneNumbers, onClose, onCampaignUpdated, onPause, onArchive, onDelete }) {
+function ViewCampaignModal({ campaign, contactLists, phoneNumbers, isTrial, onClose, onCampaignUpdated, onLaunch, onPause, onArchive, onDelete }) {
   const [isEditing, setIsEditing] = useState(false)
   const [editFormData, setEditFormData] = useState({ name: campaign.name, message: campaign.message_template || '' })
   const [errors, setErrors] = useState({})
@@ -871,7 +934,19 @@ function ViewCampaignModal({ campaign, contactLists, phoneNumbers, onClose, onCa
 
             {/* Actions */}
             <div className="border-t border-[#E3E1DB] px-5 py-3.5 flex flex-wrap items-center gap-2">
-              <button onClick={() => setIsEditing(true)} className="px-3 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md">Edit</button>
+              {campaign.status === 'draft' && (
+                <button
+                  onClick={onLaunch}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-semibold text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md transition-colors"
+                >
+                  {isTrial ? (
+                    <><i className="fas fa-lock text-xs"></i> Launch Campaign</>
+                  ) : (
+                    <><i className="fas fa-rocket text-xs"></i> Launch Campaign</>
+                  )}
+                </button>
+              )}
+              <button onClick={() => setIsEditing(true)} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Edit</button>
               <button onClick={onPause} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">
                 {campaign.status === 'paused' ? 'Resume' : 'Pause'}
               </button>
@@ -883,6 +958,99 @@ function ViewCampaignModal({ campaign, contactLists, phoneNumbers, onClose, onCa
             </div>
           </>
         )}
+      </div>
+    </div>
+  )
+}
+
+function TrialUpsellModal({ subscription, user, onClose, onActivated }) {
+  const [activating, setActivating] = useState(false)
+  const [error, setError] = useState(null)
+
+  const trialEnd = subscription?.trial_end ? new Date(subscription.trial_end) : null
+  const daysLeft = trialEnd ? Math.max(0, Math.ceil((trialEnd - Date.now()) / 86400000)) : null
+
+  const handleActivate = async () => {
+    setActivating(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/stripe/activate-now', {
+        method: 'POST',
+        headers: { 'x-workspace-id': user?.workspaceId },
+      })
+      const data = await res.json()
+      if (data.success) {
+        onActivated()
+      } else {
+        setError(data.error || 'Failed to activate. Please try again.')
+      }
+    } catch {
+      setError('Something went wrong. Please try again.')
+    } finally {
+      setActivating(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-[#FFFFFF] rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
+        {/* Header gradient */}
+        <div className="bg-gradient-to-br from-[#D63B1F] to-[#b83318] px-6 pt-6 pb-8 text-white text-center relative overflow-hidden">
+          <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 80% 20%, white 1px, transparent 1px)', backgroundSize: '24px 24px' }}></div>
+          <div className="relative">
+            <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-3">
+              <i className="fas fa-rocket text-2xl"></i>
+            </div>
+            <h2 className="text-lg font-bold mb-1">Your campaigns are ready</h2>
+            <p className="text-sm text-white/80">
+              {daysLeft !== null
+                ? `You have ${daysLeft} day${daysLeft !== 1 ? 's' : ''} left on your trial — activate now to start sending before it ends.`
+                : 'Activate your plan to start reaching your contacts now.'}
+            </p>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="px-6 py-5">
+          <p className="text-xs font-semibold text-[#9B9890] uppercase tracking-wider mb-3">What you unlock</p>
+          <ul className="space-y-2.5 mb-5">
+            {[
+              { icon: 'fa-paper-plane', text: 'Send SMS campaigns to all your contacts instantly' },
+              { icon: 'fa-chart-line', text: 'Track delivery, open, and reply rates in real time' },
+              { icon: 'fa-clock', text: 'Schedule campaigns to send at the perfect time' },
+              { icon: 'fa-headset', text: 'Priority support from our team' },
+            ].map(({ icon, text }) => (
+              <li key={text} className="flex items-start gap-3">
+                <div className="w-6 h-6 rounded-full bg-[rgba(214,59,31,0.08)] flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <i className={`fas ${icon} text-[#D63B1F] text-[11px]`}></i>
+                </div>
+                <span className="text-sm text-[#5C5A55]">{text}</span>
+              </li>
+            ))}
+          </ul>
+
+          {error && (
+            <div className="mb-4 px-3 py-2.5 bg-[rgba(214,59,31,0.07)] border border-[rgba(214,59,31,0.14)] text-[#D63B1F] rounded-md text-xs">{error}</div>
+          )}
+
+          <button
+            onClick={handleActivate}
+            disabled={activating}
+            className="w-full py-3 text-sm font-bold text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+          >
+            {activating ? (
+              <><i className="fas fa-spinner fa-spin"></i> Activating…</>
+            ) : (
+              <><i className="fas fa-bolt"></i> Activate Now &amp; Start Sending</>
+            )}
+          </button>
+          <button
+            onClick={onClose}
+            className="w-full mt-2.5 py-2 text-sm text-[#9B9890] hover:text-[#5C5A55] transition-colors"
+          >
+            Continue trial
+          </button>
+        </div>
       </div>
     </div>
   )

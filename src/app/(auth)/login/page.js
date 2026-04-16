@@ -3,20 +3,14 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-// Auth is handled via API route which sets httpOnly cookie
 
-const COLORS = {
-  bg: '#F7F6F3',
-  bg2: '#EFEDE8',
-  surface: '#FFFFFF',
-  border: '#E3E1DB',
-  border2: '#D4D1C9',
-  text: '#131210',
-  text2: '#5C5A55',
-  text3: '#9B9890',
-  red: '#D63B1F',
-  redBg: 'rgba(214,59,31,0.07)',
-  redDim: 'rgba(214,59,31,0.14)',
+const C = {
+  bg: '#F7F6F3', bg2: '#EFEDE8', surface: '#FFFFFF',
+  border: '#E3E1DB', border2: '#D4D1C9',
+  text: '#131210', text2: '#5C5A55', text3: '#9B9890',
+  red: '#D63B1F', redBg: 'rgba(214,59,31,0.07)', redDim: 'rgba(214,59,31,0.14)',
+  sans: "'Plus Jakarta Sans', system-ui, sans-serif",
+  mono: "'JetBrains Mono', monospace",
 }
 
 function Logo({ size = 34 }) {
@@ -34,10 +28,10 @@ function CheckIcon() {
   return (
     <div style={{
       width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
-      background: COLORS.redBg, border: `1px solid ${COLORS.redDim}`,
+      background: C.redBg, border: `1px solid ${C.redDim}`,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
-      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={COLORS.red} strokeWidth="2.5">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={C.red} strokeWidth="2.5">
         <polyline points="20 6 9 17 4 12" />
       </svg>
     </div>
@@ -72,7 +66,6 @@ export default function LoginPage() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Invalid credentials')
-      // Cache session in localStorage for client-side reads
       localStorage.setItem('user_session', JSON.stringify(data.session))
       router.push('/inbox')
     } catch (err) {
@@ -82,130 +75,59 @@ export default function LoginPage() {
     }
   }
 
-  const inputStyle = {
-    width: '100%',
-    height: 42,
-    border: `1px solid ${COLORS.border2}`,
-    borderRadius: 9,
-    background: COLORS.surface,
-    fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
-    fontSize: 14,
-    color: COLORS.text,
-    padding: '0 14px',
-    outline: 'none',
-    transition: 'border-color 0.15s, box-shadow 0.15s',
-  }
-
-  const labelStyle = {
-    display: 'block',
-    fontFamily: "'JetBrains Mono', monospace",
-    fontSize: '10.5px',
-    color: COLORS.text2,
-    letterSpacing: '0.05em',
-    textTransform: 'uppercase',
-    marginBottom: 7,
-  }
-
   return (
-    <div style={{
-      minHeight: '100vh',
-      display: 'flex',
-      overflow: 'hidden',
-      fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
-      WebkitFontSmoothing: 'antialiased',
-    }}>
+    <div className="min-h-screen flex flex-col lg:flex-row" style={{ fontFamily: C.sans, WebkitFontSmoothing: 'antialiased' }}>
 
-      {/* ═══ LEFT PANEL ═══ */}
-      <div style={{
-        flex: 1,
-        background: COLORS.bg2,
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'center',
-        alignItems: 'flex-start',
-        padding: '72px 80px 72px 10%',
-        position: 'relative',
-        overflow: 'hidden',
-        borderRight: `1px solid ${COLORS.border}`,
-      }} className="hidden lg:flex">
+      {/* ═══ LEFT PANEL — Desktop only ═══ */}
+      <div className="hidden lg:flex flex-1 flex-col justify-center items-start relative overflow-hidden"
+        style={{ background: C.bg2, padding: '72px 80px 72px 10%', borderRight: `1px solid ${C.border}` }}>
 
         {/* Grid pattern */}
-        <div style={{
-          position: 'absolute', inset: 0, pointerEvents: 'none',
-          backgroundImage: `linear-gradient(${COLORS.border} 1px, transparent 1px), linear-gradient(90deg, ${COLORS.border} 1px, transparent 1px)`,
-          backgroundSize: '40px 40px',
-          opacity: 0.5,
+        <div className="absolute inset-0 pointer-events-none" style={{
+          backgroundImage: `linear-gradient(${C.border} 1px, transparent 1px), linear-gradient(90deg, ${C.border} 1px, transparent 1px)`,
+          backgroundSize: '40px 40px', opacity: 0.5,
         }} />
-
-        {/* Gradient fade */}
-        <div style={{
-          position: 'absolute', inset: 0, pointerEvents: 'none',
+        <div className="absolute inset-0 pointer-events-none" style={{
           background: 'linear-gradient(160deg, transparent 40%, rgba(239,237,232,0.95) 100%)',
         }} />
 
-        {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 52, position: 'relative', zIndex: 1 }}>
-          <Logo size={34} />
-          <span style={{ fontSize: 17, fontWeight: 600, letterSpacing: '-0.03em', color: COLORS.text }}>
-            AiroPhone
-          </span>
-        </div>
-
-        {/* Content */}
-        <div style={{ position: 'relative', zIndex: 1 }}>
-          {/* Kicker */}
-          <div className="mono" style={{
-            fontSize: 11, color: COLORS.red,
-            letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 14,
-          }}>
-            {'Calls · AI · Bulk SMS · All in one'}
+        <div className="relative z-10">
+          <div className="flex items-center gap-2.5 mb-12">
+            <Logo size={34} />
+            <span style={{ fontSize: 17, fontWeight: 600, letterSpacing: '-0.03em', color: C.text }}>AiroPhone</span>
           </div>
 
-          {/* Heading */}
-          <h1 style={{
-            fontSize: 'clamp(26px, 2.6vw, 40px)', fontWeight: 600,
-            color: COLORS.text, lineHeight: 1.1, letterSpacing: '-0.04em', marginBottom: 14,
-          }}>
-            Business calls &amp;<br />messaging, <span style={{ color: COLORS.red, fontStyle: 'normal' }}>automated.</span>
+          <div style={{ fontFamily: C.mono, fontSize: 11, color: C.red, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 14 }}>
+            Calls · AI · Bulk SMS · All in one
+          </div>
+
+          <h1 style={{ fontSize: 'clamp(26px, 2.6vw, 40px)', fontWeight: 600, color: C.text, lineHeight: 1.1, letterSpacing: '-0.04em', marginBottom: 14 }}>
+            Business calls &amp;<br />messaging, <span style={{ color: C.red }}>automated.</span>
           </h1>
 
-          {/* Subtitle */}
-          <p style={{
-            fontSize: 14, color: COLORS.text2, lineHeight: 1.72,
-            maxWidth: 340, fontWeight: 300, marginBottom: 32,
-          }}>
+          <p style={{ fontSize: 14, color: C.text2, lineHeight: 1.72, maxWidth: 340, fontWeight: 300, marginBottom: 32 }}>
             Manage all your business conversations, run bulk campaigns, and let AI handle replies — 24/7.
           </p>
 
-          {/* Features */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 44 }}>
-            {[
-              'VoIP calling across multiple lines',
-              'Bulk SMS with scheduling & personalization',
-              'AI agent scenarios — custom auto-replies',
-            ].map((f, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '13.5px', color: COLORS.text2, fontWeight: 300 }}>
-                <CheckIcon />
-                {f}
+          <div className="flex flex-col gap-2.5 mb-11">
+            {['VoIP calling across multiple lines', 'Bulk SMS with scheduling & personalization', 'AI agent scenarios — custom auto-replies'].map((f, i) => (
+              <div key={i} className="flex items-center gap-2.5" style={{ fontSize: '13.5px', color: C.text2, fontWeight: 300 }}>
+                <CheckIcon />{f}
               </div>
             ))}
           </div>
 
-          {/* Stats */}
-          <div style={{ display: 'flex', gap: 36, paddingTop: 28, borderTop: `1px solid ${COLORS.border}` }}>
+          <div className="flex gap-9 pt-7" style={{ borderTop: `1px solid ${C.border}` }}>
             {[
               { val: '99.9', unit: '%', label: 'Uptime' },
               { val: '2', unit: 'M+', label: 'Messages' },
               { val: '24', unit: '/7', label: 'Support' },
             ].map((s, i) => (
               <div key={i}>
-                <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.04em', color: COLORS.text }}>
-                  {s.val}<span style={{ color: COLORS.red }}>{s.unit}</span>
+                <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.04em', color: C.text }}>
+                  {s.val}<span style={{ color: C.red }}>{s.unit}</span>
                 </div>
-                <div className="mono" style={{
-                  fontSize: 10, color: COLORS.text3,
-                  letterSpacing: '0.05em', textTransform: 'uppercase', marginTop: 3,
-                }}>
+                <div style={{ fontFamily: C.mono, fontSize: 10, color: C.text3, letterSpacing: '0.05em', textTransform: 'uppercase', marginTop: 3 }}>
                   {s.label}
                 </div>
               </div>
@@ -214,33 +136,35 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* ═══ RIGHT PANEL — FORM ═══ */}
-      <div style={{
-        width: 540, flexShrink: 0, background: COLORS.surface,
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '56px 60px',
-      }} className="max-lg:!w-full max-lg:!p-8">
+      {/* ═══ RIGHT PANEL — Form ═══ */}
+      <div className="w-full lg:w-135 lg:shrink-0 flex items-center justify-center px-6 py-10 sm:px-10 sm:py-14 lg:px-15"
+        style={{ background: C.surface, minHeight: '100vh' }}>
 
-        <div style={{ width: '100%', maxWidth: 400 }}>
+        <div className="w-full max-w-100">
+
+          {/* Mobile logo */}
+          <div className="flex lg:hidden items-center gap-2.5 justify-center mb-10">
+            <Logo size={30} />
+            <span style={{ fontSize: 16, fontWeight: 600, letterSpacing: '-0.03em', color: C.text }}>AiroPhone</span>
+          </div>
 
           {/* Title */}
-          <div style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.03em', color: COLORS.text, marginBottom: 6 }}>
+          <div style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.03em', color: C.text, marginBottom: 6 }}>
             Welcome back
           </div>
-          <div style={{ fontSize: '13.5px', color: COLORS.text3, marginBottom: 28 }}>
+          <div style={{ fontSize: '13.5px', color: C.text3, marginBottom: 28 }}>
             Sign in to your account
           </div>
 
-          {/* Google login */}
-          <button onClick={handleGoogleLogin} style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-            width: '100%', height: 46, border: `1px solid ${COLORS.border2}`, borderRadius: 9,
-            background: COLORS.surface, cursor: 'pointer',
-            fontSize: 14, fontWeight: 500, color: COLORS.text,
-            fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
-            transition: 'border-color 0.15s, background 0.15s', marginBottom: 0,
-          }}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#9B9890'; e.currentTarget.style.background = '#F7F6F3' }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = COLORS.border2; e.currentTarget.style.background = COLORS.surface }}
+          {/* Google */}
+          <button onClick={handleGoogleLogin} className="w-full flex items-center justify-center gap-2.5 transition-colors"
+            style={{
+              height: 46, border: `1px solid ${C.border2}`, borderRadius: 9,
+              background: C.surface, cursor: 'pointer',
+              fontSize: 14, fontWeight: 500, color: C.text, fontFamily: C.sans,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.text3; e.currentTarget.style.background = C.bg }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.border2; e.currentTarget.style.background = C.surface }}
           >
             <svg width="18" height="18" viewBox="0 0 48 48">
               <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
@@ -252,111 +176,80 @@ export default function LoginPage() {
           </button>
 
           {/* Divider */}
-          <div style={{ textAlign: 'center', margin: '20px 0', position: 'relative' }}>
-            <div style={{ height: 1, background: COLORS.border }} />
-            <span style={{
-              position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-              background: COLORS.surface, padding: '0 12px',
-              fontSize: 12, color: COLORS.text3,
-              fontFamily: "'JetBrains Mono', monospace",
-            }}>
+          <div className="relative my-5">
+            <div style={{ height: 1, background: C.border }} />
+            <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 px-3"
+              style={{ background: C.surface, fontSize: 12, color: C.text3, fontFamily: C.mono }}>
               or
             </span>
           </div>
 
           {/* Form */}
           <form onSubmit={handleLogin}>
-
-            {/* Email */}
-            <div style={{ marginBottom: 18 }}>
-              <label style={labelStyle}>Email</label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+            <div className="mb-4">
+              <label style={{ display: 'block', fontFamily: C.mono, fontSize: '10.5px', color: C.text2, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 7 }}>Email</label>
+              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@company.com"
-                style={inputStyle}
+                className="w-full outline-none transition-all"
+                style={{ height: 42, border: `1px solid ${C.border2}`, borderRadius: 9, background: C.surface, fontFamily: C.sans, fontSize: 14, color: C.text, padding: '0 14px' }}
+                onFocus={e => { e.target.style.borderColor = C.red; e.target.style.boxShadow = `0 0 0 3px ${C.redDim}` }}
+                onBlur={e => { e.target.style.borderColor = C.border2; e.target.style.boxShadow = 'none' }}
               />
             </div>
 
-            {/* Password */}
-            <div style={{ marginBottom: 18 }}>
-              <label style={labelStyle}>Password</label>
-              <div style={{ position: 'relative' }}>
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  value={password}
+            <div className="mb-4">
+              <label style={{ display: 'block', fontFamily: C.mono, fontSize: '10.5px', color: C.text2, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 7 }}>Password</label>
+              <div className="relative">
+                <input type={showPassword ? 'text' : 'password'} required value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your password"
-                  style={{ ...inputStyle, paddingRight: 40 }}
+                  className="w-full outline-none transition-all"
+                  style={{ height: 42, border: `1px solid ${C.border2}`, borderRadius: 9, background: C.surface, fontFamily: C.sans, fontSize: 14, color: C.text, padding: '0 40px 0 14px' }}
+                  onFocus={e => { e.target.style.borderColor = C.red; e.target.style.boxShadow = `0 0 0 3px ${C.redDim}` }}
+                  onBlur={e => { e.target.style.borderColor = C.border2; e.target.style.boxShadow = 'none' }}
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  style={{
-                    position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
-                    color: COLORS.text3, cursor: 'pointer', display: 'flex',
-                    background: 'none', border: 'none', padding: 0,
-                  }}
-                >
+                <button type="button" onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 flex p-0 bg-transparent border-none cursor-pointer"
+                  style={{ color: C.text3 }}>
                   {showPassword ? (
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" />
-                      <line x1="1" y1="1" x2="23" y2="23" />
+                      <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/>
+                      <line x1="1" y1="1" x2="23" y2="23"/>
                     </svg>
                   ) : (
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                      <circle cx="12" cy="12" r="3" />
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
                     </svg>
                   )}
                 </button>
               </div>
             </div>
 
-            {/* Error */}
             {error && (
-              <div style={{
-                marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8,
-                padding: '10px 14px', borderRadius: 9,
-                background: COLORS.redBg, border: `1px solid ${COLORS.redDim}`,
-                fontSize: 13, color: COLORS.red,
-              }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="15" y1="9" x2="9" y2="15" />
-                  <line x1="9" y1="9" x2="15" y2="15" />
+              <div className="mb-4 flex items-center gap-2" style={{ padding: '10px 14px', borderRadius: 9, background: C.redBg, border: `1px solid ${C.redDim}`, fontSize: 13, color: C.red }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
+                  <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
                 </svg>
                 {error}
               </div>
             )}
 
-            {/* Button */}
-            <button
-              type="submit"
-              disabled={loading}
+            <button type="submit" disabled={loading}
+              className="w-full flex items-center justify-center gap-2 transition-all mt-1.5"
               style={{
-                width: '100%', height: 42, borderRadius: 9,
-                background: loading ? COLORS.text3 : COLORS.red,
-                color: '#fff', border: 'none',
-                fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
-                fontSize: 14, fontWeight: 500,
-                cursor: loading ? 'not-allowed' : 'pointer',
-                marginTop: 6,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                letterSpacing: '-0.01em',
-                transition: 'opacity 0.15s, transform 0.15s',
+                height: 42, borderRadius: 9,
+                background: loading ? C.text3 : C.red, color: '#fff', border: 'none',
+                fontFamily: C.sans, fontSize: 14, fontWeight: 500,
+                cursor: loading ? 'not-allowed' : 'pointer', letterSpacing: '-0.01em',
               }}
-              onMouseEnter={(e) => { if (!loading) { e.currentTarget.style.opacity = '0.88'; e.currentTarget.style.transform = 'translateY(-1px)' } }}
-              onMouseLeave={(e) => { if (!loading) { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'translateY(0)' } }}
+              onMouseEnter={(e) => { if (!loading) e.currentTarget.style.opacity = '0.88' }}
+              onMouseLeave={(e) => { if (!loading) e.currentTarget.style.opacity = '1' }}
             >
               {loading ? (
                 <>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ animation: 'spin 1s linear infinite' }}>
-                    <circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="animate-spin">
+                    <circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                    <path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
                   </svg>
                   Signing in...
                 </>
@@ -364,17 +257,16 @@ export default function LoginPage() {
                 <>
                   Sign in
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                    <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                 </>
               )}
             </button>
           </form>
 
-          {/* Footer */}
-          <div style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: COLORS.text3 }}>
+          <div className="text-center mt-5" style={{ fontSize: 13, color: C.text3 }}>
             Don&apos;t have an account?{' '}
-            <Link href="/signup" style={{ color: COLORS.red, textDecoration: 'none', fontWeight: 500 }}>Sign up now</Link>
+            <Link href="/signup" style={{ color: C.red, textDecoration: 'none', fontWeight: 500 }}>Sign up now</Link>
           </div>
         </div>
       </div>
