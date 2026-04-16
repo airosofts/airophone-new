@@ -6,8 +6,17 @@ import AudioUnlock from '@/components/AudioUnlock'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata = {
-  title: 'SMS Dashboard - Two-Way SMS Management',
-  description: 'Manage your two-way SMS conversations with Telnyx integration',
+  title: 'AiroPhone — Business Calls & Messaging, Automated',
+  description: 'Manage your business conversations, run bulk SMS campaigns, and let AI handle replies — all from one app.',
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
+      { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
+    ],
+    apple: '/apple-touch-icon.png',
+  },
+  manifest: '/site.webmanifest',
 }
 
 export default function RootLayout({ children }) {
