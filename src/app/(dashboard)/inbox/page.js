@@ -20,7 +20,7 @@ export default function InboxPage() {
   const [loading, setLoading] = useState(true)
   const [workspaceId, setWorkspaceId] = useState(null)
 
-  const { phoneNumbers, loading: phoneNumbersLoading } = usePhoneNumbers(workspaceId)
+  const { phoneNumbers, setPhoneNumbers } = usePhoneNumbers(workspaceId)
 
   const [selectedConversation, setSelectedConversation] = useState(null)
   const [isCreatingNewConversation, setIsCreatingNewConversation] = useState(false)
@@ -431,18 +431,21 @@ export default function InboxPage() {
   }
 
   const campaignStatus = selectedPhoneNumber?.campaign_status
-  const approvalDismissedKey = selectedPhoneNumber?.id ? `dismissed_approval_${selectedPhoneNumber.id}` : null
-  const [approvalDismissed, setApprovalDismissed] = useState(false)
-
-  useEffect(() => {
-    if (approvalDismissedKey) {
-      setApprovalDismissed(!!localStorage.getItem(approvalDismissedKey))
-    }
-  }, [approvalDismissedKey])
+  const approvalDismissed = !!selectedPhoneNumber?.approval_notified_at
 
   const dismissApproval = () => {
-    if (approvalDismissedKey) localStorage.setItem(approvalDismissedKey, '1')
-    setApprovalDismissed(true)
+    if (!selectedPhoneNumber?.id) return
+    // Optimistically hide the banner immediately
+    setPhoneNumbers(current => current.map(p =>
+      p.id === selectedPhoneNumber.id
+        ? { ...p, approval_notified_at: new Date().toISOString() }
+        : p
+    ))
+    // Persist to DB so it stays dismissed on any device
+    fetch(`/api/phone-numbers/${selectedPhoneNumber.id}/dismiss-notification`, {
+      method: 'POST',
+      headers: { 'x-workspace-id': workspaceId },
+    }).catch(() => {})
   }
 
   return (
