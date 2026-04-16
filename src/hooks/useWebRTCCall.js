@@ -730,8 +730,10 @@ const setupAudioRouting = (call, isParticipant = false) => {
       const cleanDestination = phoneNumber.replace(/\D/g, '')
       const cleanCaller = callerNumber.replace(/\D/g, '')
 
-      const formattedDestination = cleanDestination.startsWith('1') ? cleanDestination : `1${cleanDestination}`
-      const formattedCaller = cleanCaller.startsWith('1') ? cleanCaller : `1${cleanCaller}`
+      // E.164 format with + prefix required by Telnyx for proper outbound routing
+      const withCountry = (digits) => digits.startsWith('1') && digits.length === 11 ? digits : digits.length === 10 ? `1${digits}` : digits
+      const formattedDestination = `+${withCountry(cleanDestination)}`
+      const formattedCaller = `+${withCountry(cleanCaller)}`
 
       // Set flag BEFORE newCall() — prevents any synchronous callUpdate from being treated as incoming
       isInitiatingOutboundRef.current = true

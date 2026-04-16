@@ -10,12 +10,35 @@ const TELNYX_HEADERS = {
   'Content-Type': 'application/json'
 }
 
-// Fetch the shared outbound voice profile ID (one profile covers all connections)
+// Fetch (or create) the shared outbound voice profile ID
 async function getVoiceProfileId() {
   const res = await fetch(`${TELNYX_API}/outbound_voice_profiles?page[size]=5`, { headers: TELNYX_HEADERS })
-  if (!res.ok) return null
-  const data = await res.json()
-  return data.data?.[0]?.id || null
+  if (res.ok) {
+    const data = await res.json()
+    if (data.data?.length > 0) return data.data[0].id
+  }
+
+  // No profile exists — create one
+  console.log('[sip-credentials] No outbound voice profile found, creating one...')
+  const createRes = await fetch(`${TELNYX_API}/outbound_voice_profiles`, {
+    method: 'POST',
+    headers: TELNYX_HEADERS,
+    body: JSON.stringify({
+      name: 'AiroPhone Default',
+      traffic_type: 'conversational',
+      service_plan: 'global',
+      max_destination_rate: 10.0,
+      daily_spend_limit: '100.00',
+      daily_spend_limit_enabled: false,
+      enabled: true
+    })
+  })
+  if (!createRes.ok) {
+    console.warn('[sip-credentials] Failed to create outbound voice profile')
+    return null
+  }
+  const createData = await createRes.json()
+  return createData.data?.id || null
 }
 
 // Create a new Telnyx credential connection + SIP username/password for a workspace
@@ -75,11 +98,6 @@ async function reassignPhoneNumbers(workspaceId, connectionId) {
 
   const results = []
   for (const phone of phones) {
-    if (!phone.telnyx_phone_number_id) {
-      results.push({ phone: phone.phone_number, status: 'skipped_no_id' })
-      continue
-    }
-
     // Get the Telnyx phone number record ID first
     const listRes = await fetch(
       `${TELNYX_API}/phone_numbers?filter[phone_number]=${encodeURIComponent(phone.phone_number)}`,

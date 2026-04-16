@@ -33,6 +33,7 @@ export default function ManageNumbers() {
   const [editingNumberId, setEditingNumberId] = useState(null)
   const [editingNumberName, setEditingNumberName] = useState('')
   const [editingNumberPrefix, setEditingNumberPrefix] = useState('')
+  const [repairingCalling, setRepairingCalling] = useState(false)
 
   useEffect(() => {
     const init = async () => {
@@ -352,6 +353,34 @@ export default function ManageNumbers() {
     }
   }
 
+  const handleRepairCalling = async () => {
+    setRepairingCalling(true)
+    try {
+      const currentUser = user || getCurrentUser()
+      const headers = {
+        'Content-Type': 'application/json',
+        'x-user-id': currentUser?.userId || '',
+        'x-workspace-id': currentUser?.workspaceId || '',
+      }
+      const res = await fetch('/api/workspace/sip-credentials', { method: 'POST', headers })
+      const data = await res.json()
+      if (data.success) {
+        setShowError({
+          title: 'Calling Repaired',
+          message: `Voice connection repaired. Numbers reassigned: ${
+            (data.numbersReassigned || []).map(n => `${n.phone} (${n.status})`).join(', ') || 'none'
+          }. Please refresh the page to reconnect.`
+        })
+      } else {
+        setShowError({ title: 'Repair Failed', message: data.error || 'Could not repair calling' })
+      }
+    } catch (e) {
+      setShowError({ title: 'Repair Error', message: e.message })
+    } finally {
+      setRepairingCalling(false)
+    }
+  }
+
   return (
     <div className="space-y-4">
       {/* Success Toast */}
@@ -439,6 +468,19 @@ export default function ManageNumbers() {
             {!loadingMyNumbers && myNumbers.length > 0 && (
               <span className="text-xs text-[#9B9890]">{myNumbers.length} number{myNumbers.length !== 1 ? 's' : ''}</span>
             )}
+            <button
+              onClick={handleRepairCalling}
+              disabled={repairingCalling}
+              title="Fix outbound calling if calls aren't connecting"
+              className="text-xs text-[#9B9890] hover:text-[#5C5A55] flex items-center gap-1 px-2 py-0.5 border border-[#E3E1DB] rounded hover:bg-[#F7F6F3] transition-colors"
+            >
+              {repairingCalling ? (
+                <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="32" strokeDashoffset="12"/></svg>
+              ) : (
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+              )}
+              Repair Calling
+            </button>
           </div>
         </div>
         {myNumbers.some(n => n.campaign_status === 'pending') && (
