@@ -439,7 +439,7 @@ export default function InboxPage() {
       {campaignStatus === 'pending' && (
         <div style={{
           background: '#FFF8E6', borderBottom: '1px solid #F5D87A',
-          padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0
+          padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexShrink: 0
         }}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#B45309" strokeWidth="2" style={{ flexShrink: 0 }}>
             <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
@@ -453,7 +453,7 @@ export default function InboxPage() {
       {campaignStatus === 'rejected' && (
         <div style={{
           background: '#FEF2F2', borderBottom: '1px solid #FCA5A5',
-          padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0
+          padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexShrink: 0
         }}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#991B1B" strokeWidth="2" style={{ flexShrink: 0 }}>
             <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
