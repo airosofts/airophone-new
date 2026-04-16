@@ -135,7 +135,7 @@ const CheckIcon = ({ size = 10, color = 'currentColor' }) => (
 /* ══════════════════════════════════════════
    PROGRESS BAR (mobile + desktop)
 ══════════════════════════════════════════ */
-function ProgressBar({ step, isGoogleUser, isMobile }) {
+function ProgressBar({ step, isGoogleUser, isMobile, onBack }) {
   const labels = isGoogleUser
     ? ['Welcome', 'Details', 'Phone', 'Number', 'Billing']
     : ['Welcome', 'Details', 'Email', 'Phone', 'Number', 'Billing']
@@ -147,10 +147,21 @@ function ProgressBar({ step, isGoogleUser, isMobile }) {
     <div style={{ marginBottom: 32 }}>
       {isMobile ? (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          {onBack ? (
+            <button onClick={onBack} style={{
+              background: 'none', border: 'none', cursor: 'pointer', padding: '4px 2px',
+              display: 'flex', alignItems: 'center', gap: 4, color: C.text2,
+            }}>
+              <ArrowLeft />
+              <span style={{ fontSize: 11, fontFamily: C.sans, fontWeight: 500 }}>Back</span>
+            </button>
+          ) : (
+            <span style={{ width: 44 }} />
+          )}
           <span style={{ fontSize: 10, fontWeight: 600, color: C.red, fontFamily: C.mono, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
             {currentLabel}
           </span>
-          <span style={{ fontSize: 10, color: C.text3, fontFamily: C.mono }}>
+          <span style={{ fontSize: 10, color: C.text3, fontFamily: C.mono, width: 44, textAlign: 'right' }}>
             {displayStep} / {labels.length}
           </span>
         </div>
@@ -612,7 +623,18 @@ export default function OnboardingPage() {
         width: '100%',
         maxWidth: isMobile ? '100%' : (step === 6 ? 1020 : 620),
       }}>
-        <ProgressBar step={step} isGoogleUser={isGoogleUser} isMobile={isMobile} />
+        <ProgressBar
+          step={step}
+          isGoogleUser={isGoogleUser}
+          isMobile={isMobile}
+          onBack={isMobile && step > 1 ? () => {
+            if (step === 2) setStep(1)
+            else if (step === 3) setStep(2)
+            else if (step === 4) setStep(isGoogleUser ? 2 : 3)
+            else if (step === 5) setStep(4)
+            else if (step === 6) setStep(5)
+          } : null}
+        />
 
           {/* ════════════════════════════════════
              STEP 1: Welcome
