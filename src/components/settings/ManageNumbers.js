@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { getCurrentUser } from '@/lib/auth'
 import { apiGet, apiPost } from '@/lib/api-client'
+import { supabase } from '@/lib/supabase'
 
 export default function ManageNumbers() {
   const [loading, setLoading] = useState(false)
@@ -10,9 +11,12 @@ export default function ManageNumbers() {
   const [myNumbers, setMyNumbers] = useState([])
   const [wallet, setWallet] = useState(null)
   const [user, setUser] = useState(null)
+  const [subscription, setSubscription] = useState(null)
   const [purchasing, setPurchasing] = useState(null)
   const [showSuccess, setShowSuccess] = useState(false)
   const [showError, setShowError] = useState(null)
+  const channelRef = useRef(null)
+  const syncedRef = useRef(false)
   const [filters, setFilters] = useState({
     country_code: 'US',
     locality: '',
@@ -33,18 +37,54 @@ export default function ManageNumbers() {
   useEffect(() => {
     const init = async () => {
       const currentUser = getCurrentUser()
-      console.log('Current user:', currentUser)
       setUser(currentUser)
 
-      // Wait a bit for session to be ready
       await new Promise(resolve => setTimeout(resolve, 100))
 
       await fetchWallet()
       await fetchMyNumbers()
+
+      // Fetch subscription status
+      if (currentUser?.workspaceId) {
+        try {
+          const res = await fetch('/api/subscription', {
+            headers: { 'x-workspace-id': currentUser.workspaceId, 'x-user-id': currentUser.userId },
+          })
+          const data = await res.json()
+          if (data.subscription) setSubscription(data.subscription)
+        } catch {}
+      }
     }
 
     init()
   }, [])
+
+  // Realtime subscription — update campaign_status live when Telnyx approves
+  useEffect(() => {
+    const workspaceId = user?.workspaceId
+    if (!workspaceId) return
+
+    if (channelRef.current) supabase.removeChannel(channelRef.current)
+
+    channelRef.current = supabase
+      .channel(`manage_numbers_${workspaceId}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'phone_numbers', filter: `workspace_id=eq.${workspaceId}` },
+        (payload) => {
+          setMyNumbers(current => current.map(n =>
+            n.id === payload.new.id
+              ? { ...n, campaign_status: payload.new.campaign_status, status: payload.new.status }
+              : n
+          ))
+        }
+      )
+      .subscribe()
+
+    return () => {
+      if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null }
+    }
+  }, [user?.workspaceId])
 
   const fetchWallet = async () => {
     try {
@@ -76,7 +116,28 @@ export default function ManageNumbers() {
       const response = await apiGet('/api/phone-numbers')
       const data = await response.json()
       if (data.success) {
-        setMyNumbers(data.phoneNumbers || [])
+        const numbers = data.phoneNumbers || []
+        setMyNumbers(numbers)
+
+        // Auto-sync pending numbers from Telnyx (once per session)
+        const workspaceId = getCurrentUser()?.workspaceId
+        const hasPending = numbers.some(n => n.campaign_status === 'pending')
+        if (hasPending && workspaceId && !syncedRef.current) {
+          syncedRef.current = true
+          fetch('/api/telnyx/sync-campaign-status', {
+            method: 'POST',
+            headers: { 'x-workspace-id': workspaceId },
+          })
+            .then(r => r.json())
+            .then(result => {
+              if (result.synced > 0) {
+                apiGet('/api/phone-numbers').then(r => r.json()).then(d => {
+                  if (d.success) setMyNumbers(d.phoneNumbers || [])
+                }).catch(() => {})
+              }
+            })
+            .catch(() => {})
+        }
       }
     } catch (error) {
       console.error('Error fetching my numbers:', error)
@@ -129,6 +190,16 @@ export default function ManageNumbers() {
   }
 
   const handlePurchase = async (number) => {
+    // Block trial accounts from buying additional numbers
+    if (subscription?.status === 'trialing' && myNumbers.length >= 1) {
+      setShowError({
+        title: 'Trial Limitation',
+        message: 'Trial accounts are limited to 1 phone number. Activate your paid plan to add more numbers.',
+        action: 'upgrade'
+      })
+      return
+    }
+
     // Calculate total cost: $1 one-time + $1 monthly + $0.30 VAT = $2.30
     const oneTimeCost = 1.00
     const monthlyCost = 1.00
@@ -343,6 +414,12 @@ export default function ManageNumbers() {
                   Go to Billing
                 </button>
               )}
+              {showError.action === 'upgrade' && (
+                <button onClick={() => { setShowError(null); window.location.href = '/billing' }}
+                  className="px-3 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md">
+                  Activate Paid Plan
+                </button>
+              )}
               <button onClick={() => setShowError(null)} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Close</button>
             </div>
           </div>
@@ -353,10 +430,28 @@ export default function ManageNumbers() {
       <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg overflow-hidden">
         <div className="px-5 py-3.5 border-b border-[#E3E1DB] flex items-center justify-between">
           <h3 className="text-sm font-semibold text-[#131210]">Phone Numbers</h3>
-          {!loadingMyNumbers && myNumbers.length > 0 && (
-            <span className="text-xs text-[#9B9890]">{myNumbers.length} active</span>
-          )}
+          <div className="flex items-center gap-3">
+            {subscription?.status === 'trialing' && (
+              <span className="text-xs text-[#9B9890] bg-[#F7F6F3] border border-[#E3E1DB] px-2 py-0.5 rounded">
+                Trial: 1 number max
+              </span>
+            )}
+            {!loadingMyNumbers && myNumbers.length > 0 && (
+              <span className="text-xs text-[#9B9890]">{myNumbers.length} number{myNumbers.length !== 1 ? 's' : ''}</span>
+            )}
+          </div>
         </div>
+        {myNumbers.some(n => n.campaign_status === 'pending') && (
+          <div className="px-5 py-2.5 bg-[#FFF8E6] border-b border-[#F5D87A] flex items-center gap-2">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#B45309" strokeWidth="2" className="shrink-0">
+              <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <span className="text-xs text-[#92400E]">
+              One or more numbers are pending 10DLC carrier approval. SMS delivery may be limited — this usually resolves within a few hours.
+            </span>
+          </div>
+        )}
         {loadingMyNumbers ? (
           <div className="px-5 py-4 space-y-3">
             {[1,2].map(i => (
@@ -378,7 +473,11 @@ export default function ManageNumbers() {
               const isEditing = editingNumberId === number.id
               return (
                 <div key={index} className="px-5 py-3 flex items-center gap-4 hover:bg-[#F7F6F3]">
-                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${number.status === 'active' ? 'bg-green-500' : 'bg-[#D4D1C9]'}`} />
+                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                    number.campaign_status === 'rejected' ? 'bg-red-500' :
+                    number.campaign_status === 'pending' ? 'bg-yellow-400' :
+                    number.status === 'active' ? 'bg-green-500' : 'bg-[#D4D1C9]'
+                  }`} />
                   <div className="flex-1 min-w-0">
                     {isEditing ? (
                       <div className="flex gap-2">

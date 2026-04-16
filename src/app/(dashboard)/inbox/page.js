@@ -431,10 +431,23 @@ export default function InboxPage() {
   }
 
   const campaignStatus = selectedPhoneNumber?.campaign_status
+  const approvalDismissedKey = selectedPhoneNumber?.id ? `dismissed_approval_${selectedPhoneNumber.id}` : null
+  const [approvalDismissed, setApprovalDismissed] = useState(false)
+
+  useEffect(() => {
+    if (approvalDismissedKey) {
+      setApprovalDismissed(!!localStorage.getItem(approvalDismissedKey))
+    }
+  }, [approvalDismissedKey])
+
+  const dismissApproval = () => {
+    if (approvalDismissedKey) localStorage.setItem(approvalDismissedKey, '1')
+    setApprovalDismissed(true)
+  }
 
   return (
     <div className="flex flex-col h-full" style={{ background: '#FFFFFF' }}>
-      {/* Campaign pending/rejected banner */}
+      {/* Campaign pending/rejected/approved banner */}
       {campaignStatus === 'pending' && (
         <div style={{
           background: '#FFF8E6', borderBottom: '1px solid #F5D87A',
@@ -460,6 +473,20 @@ export default function InboxPage() {
           <span style={{ fontSize: 12.5, color: '#991B1B' }}>
             <strong>10DLC campaign registration was rejected for this number.</strong> Please contact support to resolve this before sending SMS.
           </span>
+        </div>
+      )}
+      {campaignStatus === 'approved' && !approvalDismissed && (
+        <div style={{
+          background: '#F0FDF4', borderBottom: '1px solid #86EFAC',
+          padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexShrink: 0
+        }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#15803D" strokeWidth="2" style={{ flexShrink: 0 }}>
+            <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+          <span style={{ fontSize: 12.5, color: '#15803D', flex: 1, textAlign: 'center' }}>
+            <strong>Your number is approved!</strong> All carriers have verified your 10DLC registration — you&apos;re ready to send SMS.
+          </span>
+          <button onClick={dismissApproval} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#15803D', opacity: 0.6, padding: '0 4px', flexShrink: 0, fontSize: 16, lineHeight: 1 }}>×</button>
         </div>
       )}
 

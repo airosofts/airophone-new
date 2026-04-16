@@ -72,6 +72,22 @@ export async function POST(request) {
       )
     }
 
+    // Trial accounts can only have 1 number — block additional purchases
+    if (subCheck?.status === 'trialing') {
+      const { data: existingForTrialCheck } = await supabaseAdmin
+        .from('phone_numbers')
+        .select('id')
+        .eq('workspace_id', workspace.workspaceId)
+        .limit(1)
+
+      if (existingForTrialCheck && existingForTrialCheck.length > 0) {
+        return NextResponse.json(
+          { error: 'trial_restriction', message: 'Trial accounts are limited to 1 phone number. Activate your paid plan to add more.' },
+          { status: 403 }
+        )
+      }
+    }
+
     // Step 2: Check wallet
     const { data: wallet, error: walletError } = await supabaseAdmin
       .from('wallets')

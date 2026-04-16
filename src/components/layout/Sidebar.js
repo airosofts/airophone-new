@@ -1,13 +1,14 @@
 // components/Sidebar.jsx
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { logout } from '@/lib/auth'
 import { apiGet } from '@/lib/api-client'
 import { validateAndUpgradeSession } from '@/lib/session-validator'
 import NotificationPanel from './NotificationPanel'
+import { supabase } from '@/lib/supabase'
 
 /* ── Brand SVG icons for nav (matching v2.2 design) ── */
 const NAV_ICONS = {
@@ -58,6 +59,7 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const channelRef = useRef(null)
 
   // Get the currently selected phone number from URL
   const selectedPhoneNumber = searchParams?.get('from')
@@ -69,6 +71,36 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
     }
     init()
   }, [])
+
+  // Subscribe to phone_number updates so campaign_status changes reflect immediately
+  useEffect(() => {
+    const workspaceId = user?.workspaceId
+    if (!workspaceId) return
+
+    if (channelRef.current) supabase.removeChannel(channelRef.current)
+
+    channelRef.current = supabase
+      .channel(`sidebar_phone_numbers_${workspaceId}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'phone_numbers', filter: `workspace_id=eq.${workspaceId}` },
+        (payload) => {
+          setPhoneNumbers(current => current.map(p =>
+            p.id === payload.new.id
+              ? { ...p, campaign_status: payload.new.campaign_status, status: payload.new.status }
+              : p
+          ))
+        }
+      )
+      .subscribe()
+
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current)
+        channelRef.current = null
+      }
+    }
+  }, [user?.workspaceId])
 
   const fetchPhoneNumbers = async () => {
     try {
@@ -220,7 +252,10 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
               >
                 <div style={{
                   width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
-                  background: phone.status === 'active' || phone.status === 'purchased' ? '#22c55e' : '#f59e0b',
+                  background: phone.campaign_status === 'rejected' ? '#ef4444'
+                    : phone.campaign_status === 'pending' ? '#f59e0b'
+                    : (phone.status === 'active' || phone.status === 'purchased') ? '#22c55e'
+                    : '#f59e0b',
                 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: '11.5px', color: '#5C5A55', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
