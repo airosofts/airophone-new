@@ -18,11 +18,7 @@ import SkeletonLoader from '@/components/ui/skeleton-loader'
 export default function InboxPage() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
-
-  // workspaceId from session — needed for realtime phone_numbers subscription
-  const workspaceId = typeof window !== 'undefined'
-    ? (() => { try { return JSON.parse(localStorage.getItem('user_session') || '{}').workspaceId } catch { return null } })()
-    : null
+  const [workspaceId, setWorkspaceId] = useState(null)
 
   const { phoneNumbers, loading: phoneNumbersLoading } = usePhoneNumbers(workspaceId)
 
@@ -72,14 +68,17 @@ export default function InboxPage() {
         try {
           const userData = JSON.parse(userSession)
           setUser(userData)
+          if (userData.workspaceId) setWorkspaceId(userData.workspaceId)
         } catch (error) {
           console.error('Error parsing user session:', error)
           const currentUser = getCurrentUser()
           setUser(currentUser)
+          if (currentUser?.workspaceId) setWorkspaceId(currentUser.workspaceId)
         }
       } else {
         const currentUser = getCurrentUser()
         setUser(currentUser)
+        if (currentUser?.workspaceId) setWorkspaceId(currentUser.workspaceId)
       }
 
       setLoading(false)
