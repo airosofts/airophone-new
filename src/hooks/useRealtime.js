@@ -314,6 +314,56 @@ export function useRealtimeMessages(conversationId) {
   }
 }
 
+export function usePhoneNumbers(workspaceId) {
+  const [phoneNumbers, setPhoneNumbers] = useState([])
+  const [loading, setLoading] = useState(true)
+  const channelRef = useRef(null)
+
+  useEffect(() => {
+    const fetchAndSubscribe = async () => {
+      try {
+        const response = await apiGet('/api/phone-numbers')
+        const data = await response.json()
+        if (data.success) setPhoneNumbers(data.phoneNumbers || [])
+      } catch (e) {
+        console.error('Error fetching phone numbers:', e)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchAndSubscribe()
+
+    if (!workspaceId) return
+
+    if (channelRef.current) supabase.removeChannel(channelRef.current)
+
+    channelRef.current = supabase
+      .channel(`phone_numbers_${workspaceId}_${Date.now()}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'phone_numbers', filter: `workspace_id=eq.${workspaceId}` },
+        (payload) => {
+          setPhoneNumbers(current => current.map(p =>
+            p.id === payload.new.id
+              ? { ...p, campaign_status: payload.new.campaign_status, status: payload.new.status, messaging_profile_id: payload.new.messaging_profile_id }
+              : p
+          ))
+        }
+      )
+      .subscribe()
+
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current)
+        channelRef.current = null
+      }
+    }
+  }, [workspaceId])
+
+  return { phoneNumbers, setPhoneNumbers, loading }
+}
+
 export function useRealtimeConversations(fromNumber) {
   const [conversations, setConversations] = useState([])
   const [loading, setLoading] = useState(true)

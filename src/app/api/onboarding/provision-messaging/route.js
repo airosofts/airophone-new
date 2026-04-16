@@ -50,6 +50,7 @@ export async function POST(request) {
       },
       body: JSON.stringify({
         name: profileName,
+        whitelisted_destinations: ['US', 'CA'],
         webhook_url: `${SITE_URL}/api/webhooks/telnyx`,
         webhook_failover_url: `${SITE_URL}/api/webhooks/telnyx/failover`,
         webhook_api_version: '2',

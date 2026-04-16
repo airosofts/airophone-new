@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
-import { apiGet, apiPost, fetchWithWorkspace } from '@/lib/api-client'
+import { apiPost, fetchWithWorkspace } from '@/lib/api-client'
 import { validateAndUpgradeSession } from '@/lib/session-validator'
 import ConversationList from '@/components/inbox/ConversationList'
 import ChatWindow from '@/components/inbox/ChatWindow'
@@ -11,19 +11,26 @@ import ContactPanel from '@/components/inbox/ContactPanel'
 import NewConversationView from '@/components/inbox/NewConversationView'
 import FilterTabs from '@/components/inbox/FilterTabs'
 import CallInterface from '@/components/calling/CallInterface'
-import { useRealtimeConversations, useRealtimeMessages } from '@/hooks/useRealtime'
+import { useRealtimeConversations, useRealtimeMessages, usePhoneNumbers } from '@/hooks/useRealtime'
 import { useWebRTCCall } from '@/hooks/useWebRTCCall'
 import SkeletonLoader from '@/components/ui/skeleton-loader'
 
 export default function InboxPage() {
-  const [phoneNumbers, setPhoneNumbers] = useState([])
+  const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  // workspaceId from session — needed for realtime phone_numbers subscription
+  const workspaceId = typeof window !== 'undefined'
+    ? (() => { try { return JSON.parse(localStorage.getItem('user_session') || '{}').workspaceId } catch { return null } })()
+    : null
+
+  const { phoneNumbers, loading: phoneNumbersLoading } = usePhoneNumbers(workspaceId)
+
   const [selectedConversation, setSelectedConversation] = useState(null)
   const [isCreatingNewConversation, setIsCreatingNewConversation] = useState(false)
 
   const [filter, setFilter] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
-  const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(true)
   const [mobileView, setMobileView] = useState('list') // 'list' | 'chat' | 'contact'
   const [assignScenarioModal, setAssignScenarioModal] = useState(null) // { conversationId, phoneNumber }
   const [highlightNoteId, setHighlightNoteId] = useState(null)
@@ -75,18 +82,7 @@ export default function InboxPage() {
         setUser(currentUser)
       }
 
-      // Fetch phone numbers
-      try {
-        const response = await apiGet('/api/phone-numbers')
-        const data = await response.json()
-        if (data.success) {
-          setPhoneNumbers(data.phoneNumbers || [])
-        }
-      } catch (error) {
-        console.error('Error fetching phone numbers:', error)
-      } finally {
-        setLoading(false)
-      }
+      setLoading(false)
     }
 
     initializeSession()
@@ -435,8 +431,40 @@ export default function InboxPage() {
     )
   }
 
+  const campaignStatus = selectedPhoneNumber?.campaign_status
+
   return (
-    <div className="flex h-full" style={{ background: '#FFFFFF' }}>
+    <div className="flex flex-col h-full" style={{ background: '#FFFFFF' }}>
+      {/* Campaign pending/rejected banner */}
+      {campaignStatus === 'pending' && (
+        <div style={{
+          background: '#FFF8E6', borderBottom: '1px solid #F5D87A',
+          padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0
+        }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#B45309" strokeWidth="2" style={{ flexShrink: 0 }}>
+            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          <span style={{ fontSize: 12.5, color: '#92400E' }}>
+            <strong>Your number is pending 10DLC campaign approval.</strong> SMS delivery may be limited until carriers approve it — usually within a few hours.
+          </span>
+        </div>
+      )}
+      {campaignStatus === 'rejected' && (
+        <div style={{
+          background: '#FEF2F2', borderBottom: '1px solid #FCA5A5',
+          padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0
+        }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#991B1B" strokeWidth="2" style={{ flexShrink: 0 }}>
+            <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+          </svg>
+          <span style={{ fontSize: 12.5, color: '#991B1B' }}>
+            <strong>10DLC campaign registration was rejected for this number.</strong> Please contact support to resolve this before sending SMS.
+          </span>
+        </div>
+      )}
+
+      <div className="flex flex-1 overflow-hidden">
       {/* Conversation List - Hidden on mobile when chat is open */}
       <div className={`${mobileView === 'chat' ? 'hidden' : 'flex'} md:flex w-full md:w-96 flex-col`} style={{ borderRight: '1px solid #E3E1DB' }}>
         <div className="sticky top-0 z-10" style={{ background: '#FFFFFF' }}>
@@ -653,6 +681,7 @@ export default function InboxPage() {
           </div>
         )}
       </div>
+      </div>{/* end flex-1 overflow-hidden */}
 
       {callHook && (
         <CallInterface

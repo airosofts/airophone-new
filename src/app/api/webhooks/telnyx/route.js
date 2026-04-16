@@ -99,16 +99,13 @@ export async function POST(request) {
         await handleMessageFinalized(event)
         break
 
-      case '10dlc.phone_number_campaign.created':
-        await handleCampaignAssigned(event, 'pending')
+      case '10dlc.phone_number.update':
+        await handlePhoneNumberUpdate(event)
         break
 
-      case '10dlc.phone_number_campaign.approved':
-        await handleCampaignAssigned(event, 'approved')
-        break
-
-      case '10dlc.phone_number_campaign.rejected':
-        await handleCampaignAssigned(event, 'rejected')
+      case '10dlc.campaign.update':
+      case '10dlc.brand.update':
+        console.log(`[10dlc] ${event.eventType}:`, JSON.stringify(event.payload))
         break
 
       default:
@@ -342,26 +339,37 @@ async function handleMessageFinalized(event) {
   }
 }
 
-async function handleCampaignAssigned(event, status) {
+async function handlePhoneNumberUpdate(event) {
   try {
-    // Telnyx sends phoneNumber in payload for 10dlc events
+    console.log('[10dlc.phone_number.update] payload:', JSON.stringify(event.payload))
+
+    // Payload fields (from Telnyx docs): phoneNumber, assignmentStatus,
+    // tmobileNumberMappingStatus, attNumberMappingStatus, nonTmobileNumberMappingStatus
     const phoneNumber = event.payload?.phoneNumber || event.payload?.phone_number
     if (!phoneNumber) {
-      console.warn('10DLC webhook missing phoneNumber:', event)
+      console.warn('[10dlc] phone_number.update missing phoneNumber:', event.payload)
       return
     }
 
     const normalized = normalizePhoneNumber(phoneNumber)
-    console.log(`10DLC campaign ${status} for ${normalized}`)
 
-    await supabaseAdmin
-      .from('phone_numbers')
-      .update({ campaign_status: status, updated_at: new Date().toISOString() })
-      .eq('phone_number', normalized)
+    // Map Telnyx assignmentStatus → our campaign_status
+    const assignmentStatus = event.payload?.assignmentStatus
+    let status = null
+    if (assignmentStatus === 'ASSIGNED') status = 'approved'
+    else if (assignmentStatus === 'FAILED') status = 'rejected'
+    else if (assignmentStatus === 'PENDING_ASSIGNMENT') status = 'pending'
+    else if (assignmentStatus === 'DELETED') status = null
 
-    console.log(`10DLC status updated: ${normalized} → ${status}`)
+    if (status !== null) {
+      await supabaseAdmin
+        .from('phone_numbers')
+        .update({ campaign_status: status, updated_at: new Date().toISOString() })
+        .eq('phone_number', normalized)
+      console.log(`[10dlc] ${normalized} → campaign_status: ${status} (assignmentStatus: ${assignmentStatus})`)
+    }
   } catch (error) {
-    console.error('Error handling 10DLC campaign event:', error)
+    console.error('Error handling 10dlc.phone_number.update:', error)
   }
 }
 

@@ -87,15 +87,49 @@ export async function POST(request) {
     }
 
     // Resolve messaging profile for the from number
-    // Priority: number's own profile (from phone_numbers table) → workspace profile → global env
+    // Priority: number's own profile (from phone_numbers table) → workspace profile (auto-provisioned if missing)
     const { data: wsData } = await supabaseAdmin
       .from('workspaces')
-      .select('messaging_profile_id')
+      .select('messaging_profile_id, name')
       .eq('id', workspace.workspaceId)
       .single()
 
-    // Use workspace-specific profile only — TELNYX_PROFILE_ID is the alphanumeric profile, not for regular SMS
-    const workspaceProfileId = wsData?.messaging_profile_id
+    let workspaceProfileId = wsData?.messaging_profile_id
+
+    // Auto-provision a Telnyx messaging profile for this workspace if it doesn't have one yet
+    // (accounts that completed onboarding before per-workspace profiles were introduced)
+    if (!workspaceProfileId) {
+      try {
+        const profileName = wsData?.name || 'AiroPhone Workspace'
+        const createRes = await fetch('https://api.telnyx.com/v2/messaging_profiles', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${process.env.TELNYX_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: profileName,
+            whitelisted_destinations: ['US', 'CA'],
+            webhook_url: `${process.env.NEXT_PUBLIC_SITE_URL}/api/webhooks/telnyx`,
+            webhook_failover_url: `${process.env.NEXT_PUBLIC_SITE_URL}/api/webhooks/telnyx/failover`,
+            webhook_api_version: '2',
+            enabled: true,
+          }),
+        })
+        if (createRes.ok) {
+          const createData = await createRes.json()
+          workspaceProfileId = createData.data?.id
+          if (workspaceProfileId) {
+            await supabaseAdmin.from('workspaces')
+              .update({ messaging_profile_id: workspaceProfileId, updated_at: new Date().toISOString() })
+              .eq('id', workspace.workspaceId)
+            console.log(`[sms/send] Auto-provisioned messaging profile ${workspaceProfileId} for workspace ${workspace.workspaceId}`)
+          }
+        } else {
+          const err = await createRes.json().catch(() => ({}))
+          console.error('[sms/send] Failed to auto-provision messaging profile:', JSON.stringify(err))
+        }
+      } catch (e) {
+        console.error('[sms/send] Error auto-provisioning messaging profile:', e.message)
+      }
+    }
 
     // Look up the actual profile assigned to this specific number
     const { data: numberRow } = await supabaseAdmin
