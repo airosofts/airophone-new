@@ -952,6 +952,12 @@ export default function OnboardingPage() {
                             {whatsappLoading ? 'Verifying...' : 'Verify code'}
                           </button>
                         </div>
+                        <button
+                          onClick={() => { setWhatsappOtpSent(false); setWhatsappOtp(''); setError('') }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', marginTop: 14, fontSize: 13, color: C.text3, fontFamily: C.sans, padding: 0, textDecoration: 'underline' }}
+                        >
+                          Wrong number? Change it
+                        </button>
                       </>
                     )}
                   </>
