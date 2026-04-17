@@ -91,7 +91,7 @@ async function provisionTelnyxCredential(workspaceId, workspaceName) {
 async function reassignPhoneNumbers(workspaceId, connectionId) {
   const { data: phones } = await supabaseAdmin
     .from('phone_numbers')
-    .select('phone_number, telnyx_phone_number_id')
+    .select('phone_number')
     .eq('workspace_id', workspaceId)
 
   if (!phones?.length) return []
