@@ -230,22 +230,43 @@ export async function POST(request) {
       }
     }
 
-    // Step 4.5: Assign voice/call connection so the number can make & receive calls
-    const callConnectionId = TELNYX_CALL_CONNECTION_ID || workspace.connectionId || process.env.NEXT_PUBLIC_TELNYX_CONNECTION_ID
-    if (callConnectionId && phoneNumberId) {
-      try {
-        await fetch(`https://api.telnyx.com/v2/phone_numbers/${phoneNumberId}`, {
-          method: 'PATCH',
+    // Step 4.5: Assign to workspace's SIP credential connection (enables WebRTC calling)
+    // We must use the workspace-specific SIP connection — not the shared TELNYX_CALL_CONNECTION_ID —
+    // so incoming calls are routed to the correct browser WebRTC client.
+    try {
+      // Look up (or auto-provision) the workspace SIP credential connection
+      const { data: ws } = await supabaseAdmin
+        .from('workspaces')
+        .select('telnyx_connection_id, name')
+        .eq('id', workspace.workspaceId)
+        .single()
+
+      let sipConnectionId = ws?.telnyx_connection_id
+
+      if (!sipConnectionId) {
+        // Auto-provision now so the number is immediately ready for calls
+        const provisionRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL}/api/workspace/sip-credentials`, {
           headers: {
-            'Authorization': `Bearer ${TELNYX_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ connection_id: callConnectionId }),
+            'x-user-id': user.userId,
+            'x-workspace-id': workspace.workspaceId,
+            'x-messaging-profile-id': workspace.messagingProfileId || '',
+          }
         })
-        console.log('Voice call connection assigned:', callConnectionId)
-      } catch (error) {
-        console.warn('Failed to assign call connection (non-critical):', error.message)
+        const provisionData = await provisionRes.json()
+        sipConnectionId = provisionData.connectionId
       }
+
+      if (sipConnectionId && phoneNumberId) {
+        const telnyxId = telnyxData.data.phone_numbers?.[0]?.id || phoneNumberId
+        await fetch(`https://api.telnyx.com/v2/phone_numbers/${telnyxId}/voice`, {
+          method: 'PATCH',
+          headers: { 'Authorization': `Bearer ${TELNYX_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ connection_id: sipConnectionId }),
+        })
+        console.log('Voice assigned to workspace SIP connection:', sipConnectionId)
+      }
+    } catch (error) {
+      console.warn('Failed to assign SIP connection (non-critical):', error.message)
     }
 
     // Step 5: Update billing group in Telnyx (if not set during order)

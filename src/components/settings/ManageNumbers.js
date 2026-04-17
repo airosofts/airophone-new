@@ -382,7 +382,7 @@ export default function ManageNumbers() {
             smsFixed ? `SMS webhooks configured → ${webhookData.webhookUrl}` : 'SMS webhook: no profiles updated',
             callingFixed
               ? `Calling repaired (${(sipData.numbersReassigned || []).filter(n => n.status === 'reassigned').length} numbers reassigned)`
-              : 'Calling repair failed',
+              : `Calling repair failed: ${sipData.error || 'unknown error'}`,
             'Refresh the page to reconnect.'
           ].join('\n')
         })

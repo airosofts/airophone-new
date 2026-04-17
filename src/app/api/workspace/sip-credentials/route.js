@@ -189,7 +189,7 @@ export async function GET(request) {
   }
 }
 
-// Force re-provision (useful if connection was deleted on Telnyx side)
+// Repair calling — reuse existing connection if alive, only recreate if gone
 export async function POST(request) {
   try {
     const user = getUserFromRequest(request)
@@ -200,7 +200,7 @@ export async function POST(request) {
 
     const { data: workspace } = await supabaseAdmin
       .from('workspaces')
-      .select('id, name, telnyx_connection_id')
+      .select('id, name, telnyx_connection_id, telnyx_sip_username, telnyx_sip_password')
       .eq('id', workspaceId)
       .single()
 
@@ -208,35 +208,49 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Workspace not found' }, { status: 404 })
     }
 
-    // Delete old connection on Telnyx if it exists
-    if (workspace.telnyx_connection_id) {
-      await fetch(`${TELNYX_API}/credential_connections/${workspace.telnyx_connection_id}`, {
-        method: 'DELETE',
-        headers: TELNYX_HEADERS
-      }).catch(() => {}) // ignore if already deleted
+    let connectionId = workspace.telnyx_connection_id
+    let sipUsername = workspace.telnyx_sip_username
+    let sipPassword = workspace.telnyx_sip_password
+    let provisioned = false
+
+    // Check if existing connection is still alive on Telnyx
+    if (connectionId) {
+      const checkRes = await fetch(`${TELNYX_API}/credential_connections/${connectionId}`, { headers: TELNYX_HEADERS })
+      if (!checkRes.ok) {
+        // Connection gone — force recreate
+        connectionId = null
+      }
     }
 
-    const creds = await provisionTelnyxCredential(workspaceId, workspace.name)
+    if (!connectionId) {
+      // Create a fresh credential connection
+      const creds = await provisionTelnyxCredential(workspaceId, workspace.name)
+      connectionId = creds.connectionId
+      sipUsername = creds.sipUsername
+      sipPassword = creds.sipPassword
+      provisioned = true
 
-    await supabaseAdmin
-      .from('workspaces')
-      .update({
-        telnyx_connection_id: creds.connectionId,
-        telnyx_sip_username: creds.sipUsername,
-        telnyx_sip_password: creds.sipPassword
-      })
-      .eq('id', workspaceId)
+      await supabaseAdmin
+        .from('workspaces')
+        .update({
+          telnyx_connection_id: connectionId,
+          telnyx_sip_username: sipUsername,
+          telnyx_sip_password: sipPassword
+        })
+        .eq('id', workspaceId)
+    }
 
-    const reassigned = await reassignPhoneNumbers(workspaceId, creds.connectionId)
+    const reassigned = await reassignPhoneNumbers(workspaceId, connectionId)
 
     return NextResponse.json({
       success: true,
-      connectionId: creds.connectionId,
-      sipUsername: creds.sipUsername,
+      connectionId,
+      sipUsername,
+      provisioned,
       numbersReassigned: reassigned
     })
   } catch (err) {
-    console.error('[sip-credentials] Re-provision error:', err.message)
+    console.error('[sip-credentials] Re-provision error:', err.message, err.stack)
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }
