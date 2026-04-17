@@ -119,12 +119,9 @@ export function useWebRTCCall() {
   const playRingtone = () => {
     if (ringtoneRef.current) return // already playing
 
-    // --- Primary: AudioContext BufferSource (works in background tabs) ---
-    // AudioUnlock.js pre-decodes /call.mp3 into window.__airoRingBuffer on first user gesture.
-    // A running AudioContext's BufferSourceNode plays with NO autoplay restriction,
-    // even when the tab is hidden or in the background — this is the WhatsApp Web approach.
     const ctx = window.__airoCtx
     const buffer = window.__airoRingBuffer
+    console.log('[Ringtone] playRingtone — ctx:', ctx?.state ?? 'null', 'buffer:', !!buffer, 'preloadedAudio:', !!window.__airoRingAudio)
 
     if (ctx && buffer && ctx.state !== 'closed') {
       try {
@@ -186,19 +183,23 @@ export function useWebRTCCall() {
   const playRingtoneFallback = () => {
     if (ringtoneRef.current) return
     try {
-      const audio = new Audio('/call.mp3')
+      // Prefer the pre-loaded HTMLAudio element (created during user gesture in AudioUnlock)
+      // — it has gesture context so .play() works even in background tabs in Chrome.
+      const audio = window.__airoRingAudio || new Audio('/call.mp3')
       audio.loop = true
       audio.volume = 1.0
+      // Reset to start in case it was stopped mid-playback
+      try { audio.currentTime = 0 } catch (_) {}
       ringtoneRef.current = audio
 
       const tryPlay = () => {
         if (ringtoneRef.current !== audio) return
         audio.play().then(() => {
-          console.log('[Ringtone] HTMLAudio playing')
+          console.log('[Ringtone] HTMLAudio playing (pre-loaded:', !!window.__airoRingAudio, ')')
         }).catch(e => {
           console.warn('[Ringtone] HTMLAudio blocked:', e.name)
           if (e.name === 'NotAllowedError') {
-            // Retry on ANY user interaction — de-duplicate with a flag
+            // Retry on ANY user interaction
             let retried = false
             const retry = () => {
               if (retried || ringtoneRef.current !== audio) return

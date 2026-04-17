@@ -72,6 +72,21 @@ export default function AudioUnlock() {
           }
         }
 
+        // Also pre-load an HTMLAudio element as a backup ringtone.
+        // HTMLAudio created + .load()-ed inside a gesture can be .play()-ed later
+        // even in background tabs in Chrome, bypassing the autoplay restriction.
+        if (!window.__airoRingAudio) {
+          try {
+            const a = new Audio('/call.mp3')
+            a.loop = true
+            a.load()
+            window.__airoRingAudio = a
+            console.log('[AudioUnlock] HTMLAudio backup pre-loaded')
+          } catch (e) {
+            console.warn('[AudioUnlock] HTMLAudio pre-load failed:', e.message)
+          }
+        }
+
         console.log('[AudioUnlock] Ringtone buffer ready — ctx state:', ctx.state)
       } catch (e) {
         console.warn('[AudioUnlock] Failed:', e.message)

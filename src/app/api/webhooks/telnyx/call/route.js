@@ -8,7 +8,11 @@ import webpush from 'web-push'
 
 // Send Web Push to all subscriptions for a workspace (non-blocking)
 async function sendCallPush(workspaceId, fromNumber) {
-  if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) return
+  console.log('[call-push] sendCallPush called — workspace:', workspaceId, 'from:', fromNumber, 'vapid set:', !!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY)
+  if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
+    console.warn('[call-push] VAPID keys not set — skipping push')
+    return
+  }
   if (!workspaceId) return
 
   // setVapidDetails must be called at runtime (not module level) so env vars are available
