@@ -18,7 +18,18 @@ import SkeletonLoader from '@/components/ui/skeleton-loader'
 export default function InboxPage() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [workspaceId, setWorkspaceId] = useState(null)
+
+  // Initialize workspaceId synchronously from localStorage so usePhoneNumbers
+  // and useRealtimeConversations get the correct value on the very first render.
+  // If we set it inside useEffect (async), the hooks start with undefined and
+  // never set up their Supabase Realtime subscriptions properly.
+  const [workspaceId, setWorkspaceId] = useState(() => {
+    if (typeof window === 'undefined') return null
+    try {
+      const session = localStorage.getItem('user_session')
+      return session ? JSON.parse(session).workspaceId || null : null
+    } catch { return null }
+  })
 
   const { phoneNumbers, setPhoneNumbers } = usePhoneNumbers(workspaceId)
 
