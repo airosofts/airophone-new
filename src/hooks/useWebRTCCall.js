@@ -97,7 +97,8 @@ export function useWebRTCCall() {
           body: `Call from ${from} — click to answer`,
           icon: '/favicon.ico',
           requireInteraction: true,
-          tag: 'incoming-call'
+          tag: 'incoming-call',
+          renotify: true   // MUST be true — without this, 2nd+ calls with same tag are silent
         })
         n.onclick = () => { window.focus(); n.close() }
         console.log('[Notification] Shown for', from)
@@ -288,6 +289,8 @@ const performCompleteCleanup = () => {
   // (don't wait for React re-render which may be too slow)
   currentCallRef.current = null
   isCallActiveRef.current = false
+  callStatusRef.current = 'idle'   // reset so next incoming call isn't mistaken for a missed call
+  incomingCallRef.current = null
   outboundCallIdRef.current = null
   isInitiatingOutboundRef.current = false
   pendingParticipantRef.current = null
@@ -454,7 +457,9 @@ const handleCallUpdate = (call) => {
         console.log('Main call hangup detected, callStatus was:', callStatusRef.current)
         stopRingtone()
         clearBrowserNotification()
-        // Use refs — state is stale in this handler
+        // Use refs — state is stale in this handler.
+        // 'rejected' means the user pressed Decline — don't show missed call.
+        // 'incoming' means the caller hung up before we answered — show missed call.
         if (callStatusRef.current === 'incoming') {
           const missedFrom = incomingCallRef.current?.from || call.params?.caller_id_number || 'Unknown'
           setMissedCallNotice({ from: missedFrom, time: new Date() })
@@ -709,6 +714,7 @@ const setupAudioRouting = (call, isParticipant = false) => {
         const call = currentCallRef.current
         if (call && callStatusRef.current === 'incoming') {
           console.log('[WebRTC] Declining from SW notification')
+          callStatusRef.current = 'rejected'  // prevent "missed call" notice
           try { call.hangup() } catch (e) { console.warn('[WebRTC] hangup() failed:', e.message) }
         }
       }
@@ -823,6 +829,9 @@ const setupAudioRouting = (call, isParticipant = false) => {
     try {
       stopRingtone()
       clearBrowserNotification()
+      // Mark as rejected BEFORE calling hangup() so the hangup event handler
+      // knows NOT to show a "missed call" notice (we declined, caller didn't hang up)
+      callStatusRef.current = 'rejected'
       await currentCall.hangup()
       performCompleteCleanup()
     } catch (error) {
