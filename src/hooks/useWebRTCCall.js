@@ -465,15 +465,14 @@ const handleCallUpdate = (call) => {
           const missedFrom = incomingCallRef.current?.from || call.params?.caller_id_number || 'Unknown'
           setMissedCallNotice({ from: missedFrom, time: new Date() })
         }
-        // Sync refs immediately — BEFORE the setTimeout so the next incoming
-        // call event isn't blocked by a stale currentCallRef
+        // Sync refs immediately
         currentCallRef.current = null
         isCallActiveRef.current = false
         callStatusRef.current = 'ended'
-        setCallStatus('ended')
-        cleanupTimeoutRef.current = setTimeout(() => {
-          performCompleteCleanup()
-        }, 800)
+        // Perform cleanup immediately — no delay. The 'destroy' event usually
+        // fires right after 'hangup' and also calls performCompleteCleanup(),
+        // which is idempotent so double-calling is fine.
+        performCompleteCleanup()
         return  // don't call setCurrentCall — would re-dirty the ref on next render
       case 'destroy':
         console.log('Main call destroy detected')
@@ -722,10 +721,8 @@ const setupAudioRouting = (call, isParticipant = false) => {
         if (call && callStatusRef.current === 'incoming') {
           console.log('[WebRTC] Declining from SW notification')
           callStatusRef.current = 'rejected'
-          try {
-            if (typeof call.reject === 'function') { call.reject() }
-            else { call.hangup() }
-          } catch (e) { console.warn('[WebRTC] reject() failed:', e.message) }
+          try { call.hangup() } catch (e) { console.warn('[WebRTC] hangup() failed:', e.message) }
+          performCompleteCleanup()
         }
       }
     }
@@ -835,22 +832,17 @@ const setupAudioRouting = (call, isParticipant = false) => {
   }
 
   const rejectCall = async () => {
-    if (!currentCall) return
+    const call = currentCallRef.current  // always use ref — state can be stale
+    if (!call) return
     try {
       stopRingtone()
       clearBrowserNotification()
       // Mark as rejected BEFORE the SIP response so the hangup event handler
       // knows NOT to show a "missed call" notice (we declined, caller didn't hang up)
       callStatusRef.current = 'rejected'
-      // Use reject() for unanswered incoming calls — sends SIP 486 Busy Here.
-      // This properly terminates the call on the caller's side immediately.
-      // hangup() sends SIP BYE which is for active calls and may leave the
-      // caller's phone ringing until their carrier times out.
-      if (typeof currentCall.reject === 'function') {
-        await currentCall.reject()
-      } else {
-        await currentCall.hangup()
-      }
+      // Telnyx v2 SDK: hangup() works for both rejecting unanswered calls and
+      // terminating active calls. reject() does not exist in v2.
+      await call.hangup()
       performCompleteCleanup()
     } catch (error) {
       console.error('Error rejecting call:', error)
@@ -860,34 +852,31 @@ const setupAudioRouting = (call, isParticipant = false) => {
 // ALSO UPDATE the endCall function to prevent unexpected call endings:
 const endCall = async () => {
   try {
-    console.log('endCall function called - currentCall:', currentCall?.id, 'status:', callStatus)
-    
-    // Only proceed if there's actually an active call
-    if (!currentCall) {
-      console.log('No current call to end, performing cleanup only')
+    // Always use ref — React state `currentCall` can be stale in async closures
+    const call = currentCallRef.current
+    console.log('endCall — call:', call?.id, 'status:', callStatusRef.current)
+
+    if (!call) {
       performCompleteCleanup()
       return
     }
-    
-    // Clear participant tracking immediately
+
     pendingParticipantRef.current = null
     setConferenceStatus('')
     setCallStatus('ending')
-    
-    // Try to hang up the call
-    if (typeof currentCall.hangup === 'function') {
-      console.log('Attempting to hang up call:', currentCall.id)
-      await currentCall.hangup()
-      console.log('Hangup successful')
-    } else {
-      console.log('No hangup method available on current call')
-    }
-    
-    // Cleanup will be handled by the call update handler when it receives hangup/destroy
-    
+    callStatusRef.current = 'ending'
+
+    await call.hangup()
+    // SDK will fire hangup → destroy events; those handlers do the final cleanup.
+    // But also force-cleanup after a short safety timeout in case SDK events don't fire.
+    setTimeout(() => {
+      if (callStatusRef.current === 'ending') {
+        console.warn('[endCall] SDK events did not fire — forcing cleanup')
+        performCompleteCleanup()
+      }
+    }, 1500)
   } catch (error) {
     console.error('Error ending call:', error)
-    // Always perform cleanup even if hangup fails
     performCompleteCleanup()
   }
 }
