@@ -18,6 +18,13 @@ import SkeletonLoader from '@/components/ui/skeleton-loader'
 export default function InboxPage() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [audioUnlocked, setAudioUnlocked] = useState(() => {
+    if (typeof window === 'undefined') return false
+    // Already unlocked from a previous session
+    if (localStorage.getItem('airo_audio_unlocked') === '1') return true
+    // Context already running (e.g. login click carried over via SPA navigation)
+    return window.__airoCtx?.state === 'running'
+  })
 
   // Initialize workspaceId synchronously from localStorage so usePhoneNumbers
   // and useRealtimeConversations get the correct value on the very first render.
@@ -47,6 +54,14 @@ export default function InboxPage() {
   const audioRef = useRef(null)
 
   const callHook = useWebRTCCall()
+
+  const handleAudioUnlock = () => {
+    // This click is the user gesture browsers require to unlock AudioContext + HTMLAudio.
+    // AudioUnlock.js listens for the same events and will resume/decode automatically.
+    // We just need to dismiss the banner and remember the choice.
+    localStorage.setItem('airo_audio_unlocked', '1')
+    setAudioUnlocked(true)
+  }
 
   const fromParam = searchParams.get('from')
   const selectedPhoneNumber = phoneNumbers.find(p => p.phoneNumber === fromParam) || phoneNumbers[0] || null
@@ -461,6 +476,21 @@ export default function InboxPage() {
 
   return (
     <div className="flex flex-col h-full" style={{ background: '#FFFFFF' }}>
+      {/* Audio unlock banner — shown until user clicks once, which satisfies browser autoplay policy */}
+      {!audioUnlocked && (
+        <div
+          onClick={handleAudioUnlock}
+          style={{
+            background: '#1a1a2e', color: '#fff', padding: '8px 16px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            gap: 10, cursor: 'pointer', flexShrink: 0, fontSize: 13
+          }}
+        >
+          <span style={{ fontSize: 16 }}>🔔</span>
+          <span><strong>Click here to enable call ringtone & notifications</strong> — required by your browser</span>
+          <span style={{ marginLeft: 8, background: '#D63B1F', borderRadius: 6, padding: '2px 10px', fontSize: 12, fontWeight: 600 }}>Enable</span>
+        </div>
+      )}
       {/* Campaign pending/rejected/approved banner */}
       {campaignStatus === 'pending' && (
         <div style={{

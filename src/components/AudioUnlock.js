@@ -9,6 +9,74 @@ export default function AudioUnlock() {
   useEffect(() => {
     if (typeof window === 'undefined') return
 
+    // ── Pre-load on mount ──────────────────────────────────────────────────
+    // 1. Create AudioContext immediately (suspended is fine for decodeAudioData)
+    // 2. Try resume() right away — Chrome allows it if the user recently clicked
+    //    anything on this origin (e.g. the Login button). This is a SPA so that
+    //    click gesture persists across client-side navigation.
+    // 3. Kick off buffer fetch + HTMLAudio preload in parallel — both work without gesture.
+    const preloadOnMount = async () => {
+      try {
+        const AC = window.AudioContext || window.webkitAudioContext
+        if (!AC) return
+
+        if (!window.__airoCtx || window.__airoCtx.state === 'closed') {
+          window.__airoCtx = new AC()
+        }
+        const ctx = window.__airoCtx
+
+        // Try resume immediately — succeeds if there was a recent user gesture
+        // (e.g. login button click on this SPA). Silently ignore if blocked.
+        if (ctx.state === 'suspended') {
+          try {
+            await Promise.race([
+              ctx.resume(),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 300))
+            ])
+            console.log('[AudioUnlock] ctx resumed on mount without gesture — ctx state:', ctx.state)
+          } catch (_) {
+            // Normal on first-ever visit. Will be resumed on first click.
+          }
+        }
+
+        // If context is running, start keep-alive oscillator right away
+        if (ctx.state === 'running' && !window.__airoKeepAlive) {
+          const osc = ctx.createOscillator()
+          const gain = ctx.createGain()
+          gain.gain.value = 0
+          osc.connect(gain)
+          gain.connect(ctx.destination)
+          osc.start()
+          window.__airoKeepAlive = { osc, gain }
+          console.log('[AudioUnlock] Keep-alive started on mount')
+          // Signal inbox to hide the banner
+          window.dispatchEvent(new Event('airo:audio-unlocked'))
+        }
+
+        // Fetch + decode buffer (works regardless of ctx state)
+        if (!window.__airoRingBuffer) {
+          const res = await fetch('/call.mp3')
+          if (!res.ok) return
+          const arrayBuf = await res.arrayBuffer()
+          window.__airoRingBuffer = await ctx.decodeAudioData(arrayBuf)
+          console.log('[AudioUnlock] Buffer pre-decoded on mount, ctx state:', ctx.state)
+        }
+
+        // HTMLAudio preload — load() needs no gesture, play() does
+        if (!window.__airoRingAudio) {
+          const a = new Audio('/call.mp3')
+          a.loop = true
+          a.load()
+          window.__airoRingAudio = a
+          console.log('[AudioUnlock] HTMLAudio pre-loaded on mount')
+        }
+      } catch (e) {
+        console.warn('[AudioUnlock] Mount pre-load failed:', e.message)
+      }
+    }
+    preloadOnMount()
+    // ───────────────────────────────────────────────────────────────────────
+
     const load = async () => {
       try {
         const AC = window.AudioContext || window.webkitAudioContext
@@ -88,6 +156,8 @@ export default function AudioUnlock() {
         }
 
         console.log('[AudioUnlock] Ringtone buffer ready — ctx state:', ctx.state)
+        // Tell inbox page to hide the "Enable Audio" banner
+        window.dispatchEvent(new Event('airo:audio-unlocked'))
       } catch (e) {
         console.warn('[AudioUnlock] Failed:', e.message)
         // Don't set __airoRingBuffer so next gesture retries

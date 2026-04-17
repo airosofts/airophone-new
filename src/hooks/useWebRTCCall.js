@@ -715,8 +715,11 @@ const setupAudioRouting = (call, isParticipant = false) => {
         const call = currentCallRef.current
         if (call && callStatusRef.current === 'incoming') {
           console.log('[WebRTC] Declining from SW notification')
-          callStatusRef.current = 'rejected'  // prevent "missed call" notice
-          try { call.hangup() } catch (e) { console.warn('[WebRTC] hangup() failed:', e.message) }
+          callStatusRef.current = 'rejected'
+          try {
+            if (typeof call.reject === 'function') { call.reject() }
+            else { call.hangup() }
+          } catch (e) { console.warn('[WebRTC] reject() failed:', e.message) }
         }
       }
     }
@@ -830,10 +833,18 @@ const setupAudioRouting = (call, isParticipant = false) => {
     try {
       stopRingtone()
       clearBrowserNotification()
-      // Mark as rejected BEFORE calling hangup() so the hangup event handler
+      // Mark as rejected BEFORE the SIP response so the hangup event handler
       // knows NOT to show a "missed call" notice (we declined, caller didn't hang up)
       callStatusRef.current = 'rejected'
-      await currentCall.hangup()
+      // Use reject() for unanswered incoming calls — sends SIP 486 Busy Here.
+      // This properly terminates the call on the caller's side immediately.
+      // hangup() sends SIP BYE which is for active calls and may leave the
+      // caller's phone ringing until their carrier times out.
+      if (typeof currentCall.reject === 'function') {
+        await currentCall.reject()
+      } else {
+        await currentCall.hangup()
+      }
       performCompleteCleanup()
     } catch (error) {
       console.error('Error rejecting call:', error)
