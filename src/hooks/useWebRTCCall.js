@@ -465,7 +465,8 @@ const handleCallUpdate = (call) => {
           const missedFrom = incomingCallRef.current?.from || call.params?.caller_id_number || 'Unknown'
           setMissedCallNotice({ from: missedFrom, time: new Date() })
         }
-        // Sync refs immediately
+        // Sync refs immediately — BEFORE the setTimeout so the next incoming
+        // call event isn't blocked by a stale currentCallRef
         currentCallRef.current = null
         isCallActiveRef.current = false
         callStatusRef.current = 'ended'
@@ -473,7 +474,7 @@ const handleCallUpdate = (call) => {
         cleanupTimeoutRef.current = setTimeout(() => {
           performCompleteCleanup()
         }, 800)
-        break
+        return  // don't call setCurrentCall — would re-dirty the ref on next render
       case 'destroy':
         console.log('Main call destroy detected')
         stopRingtone()
@@ -483,10 +484,15 @@ const handleCallUpdate = (call) => {
           cleanupTimeoutRef.current = null
         }
         performCompleteCleanup()
-        break
+        return  // don't call setCurrentCall — cleanup already nulled it
     }
 
-    setCurrentCall(call)
+    // Don't update React state with a dead call object — that would re-set
+    // currentCallRef.current on the next render via the sync lines at top of hook,
+    // which would block the next incoming call from being detected.
+    if (call.state !== 'hangup' && call.state !== 'destroy') {
+      setCurrentCall(call)
+    }
   }
 }
 
