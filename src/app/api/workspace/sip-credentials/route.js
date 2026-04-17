@@ -91,14 +91,14 @@ async function provisionTelnyxCredential(workspaceId, workspaceName) {
 async function reassignPhoneNumbers(workspaceId, connectionId) {
   const { data: phones } = await supabaseAdmin
     .from('phone_numbers')
-    .select('phone_number')
+    .select('id, phone_number')
     .eq('workspace_id', workspaceId)
 
   if (!phones?.length) return []
 
   const results = []
   for (const phone of phones) {
-    // Get the Telnyx phone number record ID first
+    // Look up the Telnyx numeric ID by phone number
     const listRes = await fetch(
       `${TELNYX_API}/phone_numbers?filter[phone_number]=${encodeURIComponent(phone.phone_number)}`,
       { headers: TELNYX_HEADERS }
@@ -119,6 +119,14 @@ async function reassignPhoneNumbers(workspaceId, connectionId) {
       headers: TELNYX_HEADERS,
       body: JSON.stringify({ connection_id: connectionId })
     })
+
+    if (patchRes.ok) {
+      // Keep DB in sync
+      await supabaseAdmin
+        .from('phone_numbers')
+        .update({ connection_id: connectionId, updated_at: new Date().toISOString() })
+        .eq('id', phone.id)
+    }
 
     results.push({
       phone: phone.phone_number,
