@@ -599,23 +599,27 @@ export default function InboxPage() {
                 </svg>
               </button>
 
-              {/* Dialer dropdown */}
+              {/* Dialer dropdown — centered modal */}
               {showDialer && (
-                <div ref={dialerRef} style={{
-                  position: 'absolute', top: 32, right: 0, zIndex: 100,
-                  width: 280, background: '#FFFFFF',
-                  border: '1px solid #E3E1DB', borderRadius: 12,
-                  boxShadow: '0 8px 32px rgba(19,18,16,0.12)',
-                  overflow: 'hidden',
-                }}>
+                <>
+                  {/* Backdrop */}
+                  <div style={{ position: 'fixed', inset: 0, zIndex: 99, background: 'rgba(19,18,16,0.18)' }} />
+                  <div ref={dialerRef} style={{
+                    position: 'fixed', top: '50%', left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    zIndex: 100, width: 380, background: '#FFFFFF',
+                    border: '1px solid #E3E1DB', borderRadius: 16,
+                    boxShadow: '0 16px 48px rgba(19,18,16,0.18)',
+                    overflow: 'hidden',
+                  }}>
                   {/* Header */}
-                  <div style={{ padding: '12px 14px 8px', borderBottom: '1px solid #F0EEE9' }}>
-                    <p style={{ fontSize: 12, fontWeight: 600, color: '#131210', marginBottom: 8 }}>Start a call</p>
-                    <p style={{ fontSize: 11, color: '#9B9890', marginBottom: 8 }}>
+                  <div style={{ padding: '18px 20px 12px', borderBottom: '1px solid #F0EEE9' }}>
+                    <p style={{ fontSize: 15, fontWeight: 600, color: '#131210', marginBottom: 6 }}>Start a call</p>
+                    <p style={{ fontSize: 12, color: '#9B9890', marginBottom: 12 }}>
                       From: <span style={{ color: '#5C5A55', fontWeight: 500 }}>{selectedPhoneNumber?.phoneNumber || '—'}</span>
                     </p>
                     <div style={{ position: 'relative' }}>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9B9890" strokeWidth="2" style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)' }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9B9890" strokeWidth="2" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }}>
                         <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
                       </svg>
                       <input
@@ -631,9 +635,9 @@ export default function InboxPage() {
                         }}
                         placeholder="Enter a name or phone number..."
                         style={{
-                          width: '100%', height: 32, borderRadius: 7,
+                          width: '100%', height: 40, borderRadius: 8,
                           border: '1px solid #E3E1DB', background: '#F7F6F3',
-                          fontSize: 12, color: '#131210', padding: '0 10px 0 28px',
+                          fontSize: 13, color: '#131210', padding: '0 12px 0 34px',
                           outline: 'none', fontFamily: 'inherit',
                         }}
                       />
@@ -696,6 +700,7 @@ export default function InboxPage() {
                     )}
                   </div>
                 </div>
+                </>
               )}
 
               {/* Compose button */}
