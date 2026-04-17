@@ -6,16 +6,17 @@ import { supabaseAdmin } from '@/lib/supabase-server'
 import { CALL_CREDITS_PER_MINUTE } from '@/lib/pricing'
 import webpush from 'web-push'
 
-webpush.setVapidDetails(
-  process.env.VAPID_SUBJECT || 'mailto:support@airophone.com',
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
-  process.env.VAPID_PRIVATE_KEY
-)
-
 // Send Web Push to all subscriptions for a workspace (non-blocking)
 async function sendCallPush(workspaceId, fromNumber) {
   if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) return
   if (!workspaceId) return
+
+  // setVapidDetails must be called at runtime (not module level) so env vars are available
+  webpush.setVapidDetails(
+    process.env.VAPID_SUBJECT || 'mailto:support@airophone.com',
+    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+    process.env.VAPID_PRIVATE_KEY
+  )
 
   try {
     const { data: subs } = await supabaseAdmin
