@@ -18,6 +18,12 @@ import SkeletonLoader from '@/components/ui/skeleton-loader'
 export default function InboxPage() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [showDialer, setShowDialer] = useState(false)
+  const [dialerQuery, setDialerQuery] = useState('')
+  const [dialerContacts, setDialerContacts] = useState([])
+  const [dialerLoading, setDialerLoading] = useState(false)
+  const dialerRef = useRef(null)
+
   const [audioUnlocked, setAudioUnlocked] = useState(() => {
     if (typeof window === 'undefined') return false
     // Already unlocked from a previous session
@@ -56,11 +62,44 @@ export default function InboxPage() {
   const callHook = useWebRTCCall()
 
   const handleAudioUnlock = () => {
-    // This click is the user gesture browsers require to unlock AudioContext + HTMLAudio.
-    // AudioUnlock.js listens for the same events and will resume/decode automatically.
-    // We just need to dismiss the banner and remember the choice.
     localStorage.setItem('airo_audio_unlocked', '1')
     setAudioUnlocked(true)
+  }
+
+  // Dialer: search contacts as user types
+  useEffect(() => {
+    if (!dialerQuery.trim()) { setDialerContacts([]); return }
+    const t = setTimeout(async () => {
+      setDialerLoading(true)
+      try {
+        const session = localStorage.getItem('user_session')
+        const s = session ? JSON.parse(session) : {}
+        const res = await fetch(`/api/contacts?q=${encodeURIComponent(dialerQuery)}`, {
+          headers: { 'x-user-id': s.userId || '', 'x-workspace-id': s.workspaceId || '' }
+        })
+        const data = await res.json()
+        setDialerContacts(data.contacts || [])
+      } catch (_) { setDialerContacts([]) }
+      finally { setDialerLoading(false) }
+    }, 250)
+    return () => clearTimeout(t)
+  }, [dialerQuery])
+
+  // Close dialer on outside click
+  useEffect(() => {
+    if (!showDialer) return
+    const handler = (e) => { if (dialerRef.current && !dialerRef.current.contains(e.target)) setShowDialer(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showDialer])
+
+  const handleDialerCall = (phoneNumber) => {
+    setShowDialer(false)
+    setDialerQuery('')
+    setDialerContacts([])
+    if (callHook?.initiateCall && selectedPhoneNumber?.phoneNumber) {
+      callHook.initiateCall(phoneNumber, selectedPhoneNumber.phoneNumber).catch(console.error)
+    }
   }
 
   const fromParam = searchParams.get('from')
@@ -538,29 +577,149 @@ export default function InboxPage() {
       {/* Conversation List - Hidden on mobile when chat is open */}
       <div className={`${mobileView === 'chat' ? 'hidden' : 'flex'} md:flex w-full md:w-96 flex-col`} style={{ borderRight: '1px solid #E3E1DB' }}>
         <div className="sticky top-0 z-10" style={{ background: '#FFFFFF' }}>
-          {/* Row 1: Chats tab + compose icon */}
+          {/* Row 1: Chats tab + call + compose icons */}
           <div className="flex items-center justify-between" style={{ padding: '12px 16px 8px' }}>
             <span style={{ fontSize: 14, fontWeight: 600, letterSpacing: '-0.02em', color: '#131210' }}>Chats</span>
-            <button
-              onClick={() => {
-                setIsCreatingNewConversation(true)
-                setSelectedConversation(null)
-                setMobileView('chat')
-              }}
-              style={{
-                width: 26, height: 26, borderRadius: 6,
-                border: '1px solid #E3E1DB', background: 'transparent',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: '#5C5A55', cursor: 'pointer', transition: 'all 0.15s',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = '#F7F6F3'; e.currentTarget.style.borderColor = '#D4D1C9' }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = '#E3E1DB' }}
-              title="New conversation"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
-              </svg>
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, position: 'relative' }}>
+              {/* Call button */}
+              <button
+                onClick={() => { setShowDialer(v => !v); setDialerQuery(''); setDialerContacts([]) }}
+                style={{
+                  width: 26, height: 26, borderRadius: 6,
+                  border: '1px solid #E3E1DB', background: showDialer ? '#F7F6F3' : 'transparent',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#5C5A55', cursor: 'pointer', transition: 'all 0.15s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = '#F7F6F3'; e.currentTarget.style.borderColor = '#D4D1C9' }}
+                onMouseLeave={(e) => { if (!showDialer) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = '#E3E1DB' } }}
+                title="Start a call"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.68A2 2 0 012 .99h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/>
+                </svg>
+              </button>
+
+              {/* Dialer dropdown */}
+              {showDialer && (
+                <div ref={dialerRef} style={{
+                  position: 'absolute', top: 32, right: 0, zIndex: 100,
+                  width: 280, background: '#FFFFFF',
+                  border: '1px solid #E3E1DB', borderRadius: 12,
+                  boxShadow: '0 8px 32px rgba(19,18,16,0.12)',
+                  overflow: 'hidden',
+                }}>
+                  {/* Header */}
+                  <div style={{ padding: '12px 14px 8px', borderBottom: '1px solid #F0EEE9' }}>
+                    <p style={{ fontSize: 12, fontWeight: 600, color: '#131210', marginBottom: 8 }}>Start a call</p>
+                    <p style={{ fontSize: 11, color: '#9B9890', marginBottom: 8 }}>
+                      From: <span style={{ color: '#5C5A55', fontWeight: 500 }}>{selectedPhoneNumber?.phoneNumber || '—'}</span>
+                    </p>
+                    <div style={{ position: 'relative' }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9B9890" strokeWidth="2" style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)' }}>
+                        <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+                      </svg>
+                      <input
+                        autoFocus
+                        value={dialerQuery}
+                        onChange={e => setDialerQuery(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            const val = dialerQuery.replace(/\D/g, '')
+                            if (val.length >= 10) handleDialerCall(dialerQuery.trim())
+                          }
+                          if (e.key === 'Escape') setShowDialer(false)
+                        }}
+                        placeholder="Enter a name or phone number..."
+                        style={{
+                          width: '100%', height: 32, borderRadius: 7,
+                          border: '1px solid #E3E1DB', background: '#F7F6F3',
+                          fontSize: 12, color: '#131210', padding: '0 10px 0 28px',
+                          outline: 'none', fontFamily: 'inherit',
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Results */}
+                  <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+                    {dialerLoading && (
+                      <div style={{ padding: '12px 14px', fontSize: 12, color: '#9B9890' }}>Searching…</div>
+                    )}
+                    {!dialerLoading && dialerContacts.length > 0 && dialerContacts.map(c => {
+                      const name = [c.first_name, c.last_name].filter(Boolean).join(' ') || c.business_name || c.phone_number
+                      return (
+                        <button key={c.id} onClick={() => handleDialerCall(c.phone_number)}
+                          style={{
+                            width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                            padding: '9px 14px', background: 'none', border: 'none',
+                            cursor: 'pointer', textAlign: 'left', transition: 'background 0.1s',
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.background = '#F7F6F3'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                        >
+                          <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#D63B1F', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <span style={{ fontSize: 11, fontWeight: 600, color: '#fff' }}>{name.charAt(0).toUpperCase()}</span>
+                          </div>
+                          <div>
+                            <p style={{ fontSize: 12, fontWeight: 500, color: '#131210', lineHeight: 1.3 }}>{name}</p>
+                            <p style={{ fontSize: 11, color: '#9B9890', lineHeight: 1.3 }}>{c.phone_number}</p>
+                          </div>
+                        </button>
+                      )
+                    })}
+                    {/* Direct dial if query looks like a number */}
+                    {dialerQuery.replace(/\D/g, '').length >= 6 && (
+                      <button onClick={() => handleDialerCall(dialerQuery.trim())}
+                        style={{
+                          width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                          padding: '9px 14px', background: 'none', border: 'none',
+                          cursor: 'pointer', textAlign: 'left', borderTop: dialerContacts.length ? '1px solid #F0EEE9' : 'none',
+                          transition: 'background 0.1s',
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = '#F7F6F3'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                      >
+                        <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.68A2 2 0 012 .99h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg>
+                        </div>
+                        <div>
+                          <p style={{ fontSize: 12, fontWeight: 500, color: '#131210', lineHeight: 1.3 }}>Call {dialerQuery.trim()}</p>
+                          <p style={{ fontSize: 11, color: '#9B9890', lineHeight: 1.3 }}>Press Enter or click to dial</p>
+                        </div>
+                      </button>
+                    )}
+                    {!dialerLoading && dialerQuery.trim() && dialerContacts.length === 0 && dialerQuery.replace(/\D/g, '').length < 6 && (
+                      <div style={{ padding: '12px 14px', fontSize: 12, color: '#9B9890' }}>No contacts found</div>
+                    )}
+                    {!dialerQuery.trim() && (
+                      <div style={{ padding: '12px 14px', fontSize: 12, color: '#9B9890' }}>Type a name or number to search</div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Compose button */}
+              <button
+                onClick={() => {
+                  setIsCreatingNewConversation(true)
+                  setSelectedConversation(null)
+                  setMobileView('chat')
+                }}
+                style={{
+                  width: 26, height: 26, borderRadius: 6,
+                  border: '1px solid #E3E1DB', background: 'transparent',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#5C5A55', cursor: 'pointer', transition: 'all 0.15s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = '#F7F6F3'; e.currentTarget.style.borderColor = '#D4D1C9' }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = '#E3E1DB' }}
+                title="New conversation"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+                </svg>
+              </button>
+            </div>
           </div>
 
           {/* Row 2: Filter tabs */}

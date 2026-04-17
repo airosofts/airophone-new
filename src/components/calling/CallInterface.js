@@ -247,43 +247,60 @@ export default function CallInterface({
     return (
       <>
         {/* Backdrop */}
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50" />
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50" />
         {/* Centered incoming card */}
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="bg-[#FFFFFF] rounded-3xl shadow-2xl w-80 overflow-hidden animate-bounce-in">
-            <div className="bg-linear-to-b from-[#1a1a2e] to-[#16213e] px-6 py-8 flex flex-col items-center gap-4">
-              <div className="w-20 h-20 rounded-full bg-[#FFFFFF]/10 flex items-center justify-center text-white text-2xl font-bold ring-4 ring-white/20">
-                {getInitials()}
+          <div className="bg-[#FFFFFF] rounded-3xl shadow-2xl w-80 overflow-hidden animate-bounce-in border border-[#E3E1DB]">
+            {/* Top accent bar */}
+            <div className="h-1 w-full bg-[#D63B1F]" />
+
+            {/* Header */}
+            <div className="px-6 pt-7 pb-6 flex flex-col items-center gap-5">
+              {/* Ripple + avatar stack */}
+              <div className="relative flex items-center justify-center">
+                {/* Outer ripple */}
+                <span className="absolute w-24 h-24 rounded-full bg-[#D63B1F]/10 animate-ping" style={{ animationDuration: '1.6s' }} />
+                <span className="absolute w-20 h-20 rounded-full bg-[#D63B1F]/15" />
+                {/* Avatar */}
+                <div className="relative w-16 h-16 rounded-full bg-[#D63B1F] flex items-center justify-center text-white text-xl font-bold shadow-md">
+                  {getInitials()}
+                </div>
               </div>
+
+              {/* Label + number */}
               <div className="text-center">
-                <p className="text-white/60 text-sm font-medium tracking-wider uppercase">Incoming Call</p>
-                <p className="text-white text-2xl font-bold mt-1">{formatPhoneNumber ? formatPhoneNumber(incomingCall?.from) : incomingCall?.from}</p>
+                <p className="text-[11px] font-semibold tracking-widest uppercase text-[#D63B1F] mb-1.5">Incoming Call</p>
+                <p className="text-[#131210] text-2xl font-semibold tracking-tight leading-none">
+                  {formatPhoneNumber ? formatPhoneNumber(incomingCall?.from) : incomingCall?.from}
+                </p>
                 {incomingCall?.to && (
-                  <p className="text-white/50 text-xs mt-1">→ {formatPhoneNumber ? formatPhoneNumber(incomingCall.to) : incomingCall.to}</p>
+                  <p className="text-[#9B9890] text-xs mt-1.5">
+                    to {formatPhoneNumber ? formatPhoneNumber(incomingCall.to) : incomingCall.to}
+                  </p>
                 )}
               </div>
-              {/* Ripple animation */}
-              <div className="relative flex items-center justify-center w-12 h-6">
-                <span className="absolute w-2 h-2 bg-green-400 rounded-full animate-ping" />
-                <span className="w-2 h-2 bg-green-400 rounded-full" />
-              </div>
             </div>
-            <div className="px-6 py-6 flex justify-center gap-10">
+
+            {/* Divider */}
+            <div className="border-t border-[#E3E1DB] mx-6" />
+
+            {/* Action buttons */}
+            <div className="px-6 py-5 flex justify-center gap-10">
               <div className="flex flex-col items-center gap-2">
                 <button
                   onClick={onRejectCall}
-                  className="w-16 h-16 bg-red-500 hover:bg-red-600 active:scale-95 rounded-full flex items-center justify-center text-white shadow-lg transition-all"
+                  className="w-14 h-14 bg-[#D63B1F] hover:bg-[#c23119] active:scale-95 rounded-full flex items-center justify-center text-white shadow-md transition-all"
                 >
-                  <PhoneOff className="w-6 h-6" />
+                  <PhoneOff className="w-5 h-5" />
                 </button>
                 <span className="text-xs text-[#9B9890] font-medium">Decline</span>
               </div>
               <div className="flex flex-col items-center gap-2">
                 <button
                   onClick={onAcceptCall}
-                  className="w-16 h-16 bg-emerald-500 hover:bg-emerald-600 active:scale-95 rounded-full flex items-center justify-center text-white shadow-lg transition-all"
+                  className="w-14 h-14 bg-emerald-500 hover:bg-emerald-600 active:scale-95 rounded-full flex items-center justify-center text-white shadow-md transition-all"
                 >
-                  <Phone className="w-6 h-6" />
+                  <Phone className="w-5 h-5" />
                 </button>
                 <span className="text-xs text-[#9B9890] font-medium">Accept</span>
               </div>

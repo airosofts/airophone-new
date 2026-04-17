@@ -224,8 +224,8 @@ export default function ContactsPage() {
         {/* Tabs */}
         <div className="flex items-center gap-1 bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg p-1 self-start w-fit">
           {[
-            { id: 'lists', label: 'Contact Lists', icon: 'fa-layer-group' },
             { id: 'all', label: 'All Contacts', icon: 'fa-address-book' },
+            { id: 'lists', label: 'Contact Lists', icon: 'fa-layer-group' },
           ].map(t => (
             <button
               key={t.id}
