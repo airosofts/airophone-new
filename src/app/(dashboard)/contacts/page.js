@@ -17,7 +17,7 @@ function contactInitial(contact) {
 }
 
 export default function ContactsPage() {
-  const [tab, setTab] = useState('lists') // 'lists' | 'all'
+  const [tab, setTab] = useState('all') // 'all' | 'lists'
   const [contactLists, setContactLists] = useState([])
   const [loading, setLoading] = useState(true)
   const [showAddList, setShowAddList] = useState(false)

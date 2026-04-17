@@ -171,6 +171,46 @@ async function handleIncomingMessage(event) {
 
     console.log('Inbound message saved successfully:', messageRecord.id)
 
+    // Deduct credit for received message
+    try {
+      const digits = normalizePhoneNumber(toNumber)?.replace(/\D/g, '').slice(-10)
+      if (digits) {
+        const { data: phoneRec } = await supabaseAdmin
+          .from('phone_numbers')
+          .select('workspace_id')
+          .like('phone_number', `%${digits}`)
+          .limit(1)
+          .maybeSingle()
+
+        if (phoneRec?.workspace_id) {
+          const { data: ws } = await supabaseAdmin
+            .from('workspaces')
+            .select('created_by')
+            .eq('id', phoneRec.workspace_id)
+            .single()
+
+          if (ws?.created_by) {
+            const { getWorkspaceMessageRate } = await import('@/lib/pricing')
+            const rate = await getWorkspaceMessageRate(phoneRec.workspace_id)
+            const { data: result, error } = await supabaseAdmin.rpc('deduct_message_cost', {
+              p_user_id: ws.created_by,
+              p_workspace_id: phoneRec.workspace_id,
+              p_message_count: 1,
+              p_cost_per_message: rate,
+              p_description: `Inbound SMS from ${normalizePhoneNumber(fromNumber)}`,
+              p_campaign_id: null,
+              p_message_id: messageRecord.id,
+              p_recipient_phone: normalizePhoneNumber(fromNumber)
+            })
+            if (error) console.error('[webhook] Inbound deduction error:', error.message)
+            else console.log(`[webhook] Inbound SMS deducted $${rate} — new balance: ${result?.new_balance}`)
+          }
+        }
+      }
+    } catch (deductErr) {
+      console.error('[webhook] Inbound deduction failed (non-critical):', deductErr.message)
+    }
+
     // Check for matching scenario
     const scenario = await findMatchingScenario(
       normalizePhoneNumber(toNumber),   // recipient (our number)

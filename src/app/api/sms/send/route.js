@@ -280,37 +280,25 @@ export async function POST(request) {
       )
     }
 
-    // Deduct credits directly by workspace_id — reliable for all account ages
-    if (walletDirect) {
-      const newCredits = Math.max(0, currentCredits - messageRate)
-      await supabaseAdmin
-        .from('wallets')
-        .update({ credits: newCredits, updated_at: new Date().toISOString() })
-        .eq('id', walletDirect.id)
-    } else {
-      // Fallback: RPC deduction by user_id
-      const { data: deductionResult, error: deductionError } = await supabaseAdmin.rpc(
-        'deduct_message_cost',
-        {
-          p_user_id: walletOwnerId,
-          p_workspace_id: workspace.workspaceId,
-          p_message_count: 1,
-          p_cost_per_message: messageRate,
-          p_description: `SMS to ${normalizedTo}`,
-          p_campaign_id: null,
-          p_message_id: messageRecord?.id,
-          p_recipient_phone: normalizedTo
-        }
-      )
-      if (deductionError || !deductionResult?.success) {
-        console.error('Error deducting from wallet:', deductionError || deductionResult)
+    // Deduct from wallet using RPC — handles both `balance` and `credits` columns atomically
+    // and logs to message_transactions in a single DB call.
+    const { data: deductionResult, error: deductionError } = await supabaseAdmin.rpc(
+      'deduct_message_cost',
+      {
+        p_user_id: walletOwnerId,
+        p_workspace_id: workspace.workspaceId,
+        p_message_count: 1,
+        p_cost_per_message: messageRate,
+        p_description: `SMS to ${normalizedTo}`,
+        p_campaign_id: null,
+        p_message_id: messageRecord?.id,
+        p_recipient_phone: normalizedTo
       }
-    }
-
-    // Log successful message transaction for tracking
-    await supabaseAdmin
-      .from('message_transactions')
-      .insert({
+    )
+    if (deductionError || !deductionResult?.success) {
+      console.error('[sms/send] Wallet deduction error:', deductionError || deductionResult)
+      // Non-fatal — message was already sent. Log it separately.
+      await supabaseAdmin.from('message_transactions').insert({
         workspace_id: workspace.workspaceId,
         user_id: walletOwnerId,
         campaign_id: null,
@@ -321,6 +309,9 @@ export async function POST(request) {
         message_type: 'sms',
         status: 'sent'
       })
+    } else {
+      console.log(`[sms/send] Deducted $${messageRate} — new balance: ${deductionResult.new_balance}`)
+    }
 
     // Update conversation timestamp
     await supabaseAdmin
