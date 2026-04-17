@@ -2,6 +2,7 @@
 import { Inter } from 'next/font/google'
 import './globals.css'
 import AudioUnlock from '@/components/AudioUnlock'
+import PushSetup from '@/components/PushSetup'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -33,6 +34,7 @@ export default function RootLayout({ children }) {
       </head>
       <body className={inter.className}>
         <AudioUnlock />
+        <PushSetup />
         {children}
       </body>
     </html>

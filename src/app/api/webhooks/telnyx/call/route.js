@@ -4,6 +4,57 @@ import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-server'
 import { CALL_CREDITS_PER_MINUTE } from '@/lib/pricing'
+import webpush from 'web-push'
+
+webpush.setVapidDetails(
+  process.env.VAPID_SUBJECT || 'mailto:support@airophone.com',
+  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+  process.env.VAPID_PRIVATE_KEY
+)
+
+// Send Web Push to all subscriptions for a workspace (non-blocking)
+async function sendCallPush(workspaceId, fromNumber) {
+  if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) return
+  if (!workspaceId) return
+
+  try {
+    const { data: subs } = await supabaseAdmin
+      .from('push_subscriptions')
+      .select('id, endpoint, p256dh, auth')
+      .eq('workspace_id', workspaceId)
+
+    if (!subs?.length) return
+
+    const payload = JSON.stringify({
+      title: '📞 Incoming Call',
+      body: `Call from ${fromNumber || 'Unknown'} — tap to answer`,
+      from: fromNumber,
+      callId: null,  // browser already has the call object via WebRTC SDK
+      workspaceId,
+      tag: 'incoming-call'
+    })
+
+    const results = await Promise.allSettled(
+      subs.map(sub =>
+        webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          payload
+        ).catch(async (err) => {
+          // 410 = subscription expired/revoked — clean it up
+          if (err.statusCode === 410) {
+            await supabaseAdmin.from('push_subscriptions').delete().eq('id', sub.id)
+            console.log('[call-push] Removed expired subscription:', sub.endpoint.slice(-20))
+          } else {
+            console.warn('[call-push] Push failed:', err.statusCode, err.message)
+          }
+        })
+      )
+    )
+    console.log(`[call-push] Sent ${results.length} push(es) for workspace:`, workspaceId)
+  } catch (err) {
+    console.warn('[call-push] Error sending push:', err.message)
+  }
+}
 
 function mapDirection(d) {
   if (d === 'incoming') return 'inbound'
@@ -162,6 +213,10 @@ async function handleCallInitiated(supabase, payload) {
     console.error('[call-webhook] Insert error:', error.message)
   } else {
     console.log('[call-webhook] Created call record:', callControlId?.slice(0, 20), 'conv:', conversationId?.slice(0, 8))
+    // Fire Web Push to all subscriptions for this workspace so background tabs get notified
+    if (isIncoming && workspaceId) {
+      sendCallPush(workspaceId, fromNumber)  // non-blocking, intentionally no await
+    }
   }
 }
 

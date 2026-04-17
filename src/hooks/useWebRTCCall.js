@@ -695,8 +695,29 @@ const setupAudioRouting = (call, isParticipant = false) => {
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
 
+    // Handle Answer / Decline actions coming from the Service Worker notification
+    // (fires when user taps "Answer" or "Decline" on the OS-level notification)
+    const handleSwMessage = (event) => {
+      const { type } = event.detail || {}
+      if (type === 'CALL_ANSWER') {
+        const call = currentCallRef.current
+        if (call && callStatusRef.current === 'incoming') {
+          console.log('[WebRTC] Auto-answering from SW notification')
+          try { call.answer() } catch (e) { console.warn('[WebRTC] answer() failed:', e.message) }
+        }
+      } else if (type === 'CALL_DECLINE') {
+        const call = currentCallRef.current
+        if (call && callStatusRef.current === 'incoming') {
+          console.log('[WebRTC] Declining from SW notification')
+          try { call.hangup() } catch (e) { console.warn('[WebRTC] hangup() failed:', e.message) }
+        }
+      }
+    }
+    window.addEventListener('airo:sw-message', handleSwMessage)
+
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('airo:sw-message', handleSwMessage)
       if (telnyxClientRef.current) telnyxClientRef.current.disconnect()
       stopCallTimer()
       if (cleanupTimeoutRef.current) {
