@@ -680,7 +680,23 @@ const setupAudioRouting = (call, isParticipant = false) => {
 
     initializeClient()
 
+    // When user returns to the tab with an incoming call waiting:
+    // - re-trigger the ringtone (may have been blocked while tab was backgrounded)
+    // - re-show the browser notification so they know there's still a call
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && callStatusRef.current === 'incoming' && incomingCallRef.current) {
+        const from = incomingCallRef.current.from
+        console.log('[WebRTC] Tab visible — re-triggering incoming call alert for', from)
+        if (!ringtoneRef.current) {
+          playRingtone()
+        }
+        showBrowserNotification(from)
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
     return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
       if (telnyxClientRef.current) telnyxClientRef.current.disconnect()
       stopCallTimer()
       if (cleanupTimeoutRef.current) {

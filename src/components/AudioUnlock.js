@@ -33,18 +33,17 @@ export default function AudioUnlock() {
         silentSrc.connect(ctx.destination)
         silentSrc.start(0)
 
-        // If the context gets suspended/interrupted (Chrome 136+ hardware interruption,
-        // iOS Safari tab switch, etc.), clear the buffer so the next user gesture
-        // re-runs load() and restores the running state.
-        // DO NOT call ctx.resume() here without a gesture — it fails silently on iOS Safari.
+        // If the context gets suspended/interrupted, log it but keep the buffer intact —
+        // the decoded AudioBuffer data is always valid regardless of context state.
+        // DO NOT clear __airoRingBuffer here: playRingtone() needs it to work.
+        // The statechange listener just ensures we try to resume on the next gesture.
         ctx.addEventListener('statechange', () => {
           if (ctx.state === 'interrupted' || ctx.state === 'suspended') {
-            console.log('[AudioUnlock] ctx state changed to', ctx.state, '— will re-unlock on next gesture')
-            window.__airoRingBuffer = null // force reload on next gesture
+            console.log('[AudioUnlock] ctx state changed to', ctx.state, '— will resume on next gesture')
           }
         })
 
-        // Skip if buffer already decoded successfully
+        // Skip decoding if buffer already ready
         if (window.__airoRingBuffer) return
 
         // Fetch and decode call.mp3 into an AudioBuffer.
@@ -54,6 +53,24 @@ export default function AudioUnlock() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const arrayBuf = await res.arrayBuffer()
         window.__airoRingBuffer = await ctx.decodeAudioData(arrayBuf)
+
+        // Start a silent oscillator to keep the AudioContext in 'running' state.
+        // A playing context is NOT suspended when the tab goes to the background,
+        // so the ringtone BufferSourceNode will play even while the tab is hidden.
+        if (!window.__airoKeepAlive) {
+          try {
+            const osc = ctx.createOscillator()
+            const gain = ctx.createGain()
+            gain.gain.value = 0 // completely silent
+            osc.connect(gain)
+            gain.connect(ctx.destination)
+            osc.start()
+            window.__airoKeepAlive = { osc, gain }
+            console.log('[AudioUnlock] Keep-alive oscillator started')
+          } catch (e) {
+            console.warn('[AudioUnlock] Keep-alive failed (non-critical):', e.message)
+          }
+        }
 
         console.log('[AudioUnlock] Ringtone buffer ready — ctx state:', ctx.state)
       } catch (e) {
@@ -65,8 +82,25 @@ export default function AudioUnlock() {
 
     const events = ['click', 'touchstart', 'keydown', 'mousedown', 'pointerdown']
 
-    // Use a non-once listener so retries work if buffer load failed
-    const handler = () => { load() }
+    // On every gesture: resume the context if suspended, then load buffer if missing.
+    // Resuming on gesture is needed after the keep-alive oscillator is paused by the browser
+    // on iOS Safari tab-switch or Chrome 136+ hardware interruption.
+    // Also request notification permission once — must be inside a user gesture.
+    const handler = () => {
+      const ctx = window.__airoCtx
+      if (ctx && ctx.state !== 'running' && ctx.state !== 'closed') {
+        ctx.resume().catch(() => {})
+      }
+      if (!window.__airoRingBuffer) {
+        load()
+      }
+      // Request notification permission on first gesture if not yet decided
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission().then(p => {
+          console.log('[AudioUnlock] Notification permission:', p)
+        }).catch(() => {})
+      }
+    }
     events.forEach(e => document.addEventListener(e, handler, { capture: true, passive: true }))
 
     // Also attempt immediately in case context was already unlocked
