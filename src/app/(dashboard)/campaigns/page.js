@@ -1056,27 +1056,28 @@ function TrialUpsellModal({ subscription, user, onClose, onActivated }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#FFFFFF] rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
-        {/* Header gradient */}
-        <div className="bg-gradient-to-br from-[#D63B1F] to-[#b83318] px-6 pt-6 pb-8 text-white text-center relative overflow-hidden">
-          <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 80% 20%, white 1px, transparent 1px)', backgroundSize: '24px 24px' }}></div>
-          <div className="relative">
-            <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-3">
-              <i className="fas fa-rocket text-2xl"></i>
-            </div>
-            <h2 className="text-lg font-bold mb-1">Your campaigns are ready</h2>
-            <p className="text-sm text-white/80">
-              {daysLeft !== null
-                ? `You have ${daysLeft} day${daysLeft !== 1 ? 's' : ''} left on your trial — activate now to start sending before it ends.`
-                : 'Activate your plan to start reaching your contacts now.'}
-            </p>
+    <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-[#FFFFFF] rounded-2xl shadow-2xl w-full max-w-md border border-[#E3E1DB] overflow-hidden">
+
+        {/* Top accent bar */}
+        <div className="h-1 w-full bg-[#D63B1F]" />
+
+        {/* Header */}
+        <div className="px-6 pt-7 pb-5 text-center border-b border-[#E3E1DB]">
+          <div className="w-12 h-12 bg-[rgba(214,59,31,0.08)] rounded-full flex items-center justify-center mx-auto mb-4">
+            <i className="fas fa-rocket text-[#D63B1F] text-lg"></i>
           </div>
+          <h2 className="text-[17px] font-semibold text-[#131210] tracking-tight mb-1.5">Your campaigns are ready to launch</h2>
+          <p className="text-sm text-[#5C5A55] leading-relaxed">
+            {daysLeft !== null
+              ? `You have ${daysLeft} day${daysLeft !== 1 ? 's' : ''} left on your trial — activate now to start sending before it ends.`
+              : 'Activate your plan to start reaching your contacts now.'}
+          </p>
         </div>
 
         {/* Body */}
         <div className="px-6 py-5">
-          <p className="text-xs font-semibold text-[#9B9890] uppercase tracking-wider mb-3">What you unlock</p>
+          <p className="text-[11px] font-semibold text-[#9B9890] uppercase tracking-widest mb-3">What you unlock</p>
           <ul className="space-y-2.5 mb-5">
             {[
               { icon: 'fa-paper-plane', text: 'Send SMS campaigns to all your contacts instantly' },
@@ -1084,8 +1085,8 @@ function TrialUpsellModal({ subscription, user, onClose, onActivated }) {
               { icon: 'fa-clock', text: 'Schedule campaigns to send at the perfect time' },
               { icon: 'fa-headset', text: 'Priority support from our team' },
             ].map(({ icon, text }) => (
-              <li key={text} className="flex items-start gap-3">
-                <div className="w-6 h-6 rounded-full bg-[rgba(214,59,31,0.08)] flex items-center justify-center flex-shrink-0 mt-0.5">
+              <li key={text} className="flex items-center gap-3">
+                <div className="w-6 h-6 rounded-full bg-[rgba(214,59,31,0.08)] flex items-center justify-center flex-shrink-0">
                   <i className={`fas ${icon} text-[#D63B1F] text-[11px]`}></i>
                 </div>
                 <span className="text-sm text-[#5C5A55]">{text}</span>
@@ -1094,13 +1095,13 @@ function TrialUpsellModal({ subscription, user, onClose, onActivated }) {
           </ul>
 
           {error && (
-            <div className="mb-4 px-3 py-2.5 bg-[rgba(214,59,31,0.07)] border border-[rgba(214,59,31,0.14)] text-[#D63B1F] rounded-md text-xs">{error}</div>
+            <div className="mb-4 px-3 py-2.5 bg-[rgba(214,59,31,0.07)] border border-[rgba(214,59,31,0.18)] text-[#D63B1F] rounded-lg text-xs">{error}</div>
           )}
 
           <button
             onClick={handleActivate}
             disabled={activating}
-            className="w-full py-3 text-sm font-bold text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+            className="w-full py-3 text-sm font-semibold text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {activating ? (
               <><i className="fas fa-spinner fa-spin"></i> Activating…</>
