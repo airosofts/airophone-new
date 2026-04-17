@@ -3,7 +3,12 @@ import { getSessionFromRequest } from '@/lib/jwt'
 
 // Routes that don't require authentication
 const PUBLIC_ROUTES = ['/login', '/signup', '/auth/callback']
-const PUBLIC_API_ROUTES = ['/api/auth/login', '/api/auth/signup', '/api/auth/google']
+const PUBLIC_API_ROUTES = [
+  '/api/auth/login',
+  '/api/auth/signup',
+  '/api/auth/google',
+  '/api/webhooks',   // Telnyx webhooks — no session, verified by signature
+]
 
 export async function middleware(request) {
   const { pathname } = request.nextUrl
