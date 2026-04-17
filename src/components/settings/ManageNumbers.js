@@ -361,18 +361,36 @@ export default function ManageNumbers() {
         'Content-Type': 'application/json',
         'x-user-id': currentUser?.userId || '',
         'x-workspace-id': currentUser?.workspaceId || '',
+        'x-messaging-profile-id': currentUser?.messagingProfileId || '',
       }
-      const res = await fetch('/api/workspace/sip-credentials', { method: 'POST', headers })
-      const data = await res.json()
-      if (data.success) {
+
+      // Step 1: Configure messaging profile webhook URL (fixes inbound SMS)
+      const webhookRes = await fetch('/api/telnyx/setup-webhooks', { method: 'POST', headers })
+      const webhookData = await webhookRes.json()
+
+      // Step 2: Re-provision SIP credential connection (fixes outbound calling)
+      const sipRes = await fetch('/api/workspace/sip-credentials', { method: 'POST', headers })
+      const sipData = await sipRes.json()
+
+      const smsFixed = webhookData.results?.some(r => r.status === 'updated')
+      const callingFixed = sipData.success
+
+      if (smsFixed || callingFixed) {
         setShowError({
-          title: 'Calling Repaired',
-          message: `Voice connection repaired. Numbers reassigned: ${
-            (data.numbersReassigned || []).map(n => `${n.phone} (${n.status})`).join(', ') || 'none'
-          }. Please refresh the page to reconnect.`
+          title: 'Repair Complete',
+          message: [
+            smsFixed ? `SMS webhooks configured → ${webhookData.webhookUrl}` : 'SMS webhook: no profiles updated',
+            callingFixed
+              ? `Calling repaired (${(sipData.numbersReassigned || []).filter(n => n.status === 'reassigned').length} numbers reassigned)`
+              : 'Calling repair failed',
+            'Refresh the page to reconnect.'
+          ].join('\n')
         })
       } else {
-        setShowError({ title: 'Repair Failed', message: data.error || 'Could not repair calling' })
+        setShowError({
+          title: 'Repair Issues',
+          message: `SMS: ${webhookData.error || JSON.stringify(webhookData.results)}\nCalling: ${sipData.error || 'failed'}`
+        })
       }
     } catch (e) {
       setShowError({ title: 'Repair Error', message: e.message })
@@ -471,7 +489,7 @@ export default function ManageNumbers() {
             <button
               onClick={handleRepairCalling}
               disabled={repairingCalling}
-              title="Fix outbound calling if calls aren't connecting"
+              title="Fix inbound SMS and outbound calling if they aren't working"
               className="text-xs text-[#9B9890] hover:text-[#5C5A55] flex items-center gap-1 px-2 py-0.5 border border-[#E3E1DB] rounded hover:bg-[#F7F6F3] transition-colors"
             >
               {repairingCalling ? (
@@ -479,7 +497,7 @@ export default function ManageNumbers() {
               ) : (
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
               )}
-              Repair Calling
+              Repair SMS & Calling
             </button>
           </div>
         </div>

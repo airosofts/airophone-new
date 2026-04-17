@@ -267,6 +267,22 @@ export async function POST(request) {
       }
     }
 
+    // Step 5.5: Configure messaging profile webhook URL so inbound SMS is delivered (non-blocking)
+    try {
+      const appUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL
+      const profileId = workspace.messagingProfileId || process.env.TELNYX_PROFILE_ID
+      if (appUrl && profileId) {
+        await fetch(`https://api.telnyx.com/v2/messaging_profiles/${profileId}`, {
+          method: 'PATCH',
+          headers: { 'Authorization': `Bearer ${TELNYX_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ webhook_url: `${appUrl}/api/webhooks/telnyx`, webhook_api_version: '2' })
+        })
+        console.log('Messaging profile webhook URL configured')
+      }
+    } catch (error) {
+      console.warn('Failed to set messaging profile webhook URL (non-critical):', error.message)
+    }
+
     // Step 6: Assign number to 10DLC campaign (non-blocking — US numbers only)
     if (TELNYX_10DLC_CAMPAIGN_ID && phoneNumber.startsWith('+1')) {
       try {
