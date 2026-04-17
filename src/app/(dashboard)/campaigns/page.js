@@ -963,55 +963,9 @@ function ViewCampaignModal({ campaign, contactLists, phoneNumbers, isTrial, onCl
   )
 }
 
-function ConfettiBlast({ onDone }) {
-  const canvasRef = useRef(null)
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    canvas.width = window.innerWidth
-    canvas.height = window.innerHeight
-    const colors = ['#D63B1F','#F06040','#FFD700','#16a34a','#3b82f6','#a855f7','#F97316','#ec4899']
-    const pieces = Array.from({ length: 140 }, () => ({
-      x: canvas.width / 2 + (Math.random() - 0.5) * 200,
-      y: canvas.height / 2 + (Math.random() - 0.5) * 100,
-      r: Math.random() * 7 + 3,
-      color: colors[Math.floor(Math.random() * colors.length)],
-      vx: (Math.random() - 0.5) * 12,
-      vy: Math.random() * -14 - 4,
-      rotation: Math.random() * 360,
-      rotationSpeed: (Math.random() - 0.5) * 10,
-      shape: Math.random() > 0.4 ? 'rect' : 'circle',
-    }))
-    let frame, start = null
-    const duration = 2600
-    function draw(ts) {
-      if (!start) start = ts
-      const elapsed = ts - start
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
-      pieces.forEach(p => {
-        p.x += p.vx; p.vy += 0.45; p.y += p.vy; p.rotation += p.rotationSpeed
-        ctx.save()
-        ctx.translate(p.x, p.y)
-        ctx.rotate((p.rotation * Math.PI) / 180)
-        ctx.fillStyle = p.color
-        ctx.globalAlpha = Math.max(0, 1 - elapsed / duration)
-        if (p.shape === 'rect') { ctx.fillRect(-p.r, -p.r / 2, p.r * 2, p.r) }
-        else { ctx.beginPath(); ctx.arc(0, 0, p.r, 0, Math.PI * 2); ctx.fill() }
-        ctx.restore()
-      })
-      if (elapsed < duration) { frame = requestAnimationFrame(draw) } else { onDone() }
-    }
-    frame = requestAnimationFrame(draw)
-    return () => cancelAnimationFrame(frame)
-  }, [onDone])
-  return <canvas ref={canvasRef} style={{ position: 'fixed', inset: 0, zIndex: 9999, pointerEvents: 'none' }} />
-}
-
 function TrialUpsellModal({ subscription, user, onClose, onActivated }) {
   const [activating, setActivating] = useState(false)
   const [error, setError] = useState(null)
-  const [showConfetti, setShowConfetti] = useState(false)
 
   const trialEnd = subscription?.trial_end ? new Date(subscription.trial_end) : null
   const daysLeft = trialEnd ? Math.max(0, Math.ceil((trialEnd - Date.now()) / 86400000)) : null
@@ -1026,8 +980,7 @@ function TrialUpsellModal({ subscription, user, onClose, onActivated }) {
       })
       const data = await res.json()
       if (data.success) {
-        setShowConfetti(true)
-        // onActivated() fires when confetti finishes (~2.6s)
+        onActivated()
       } else {
         setError(data.error || 'Failed to activate. Please try again.')
       }
@@ -1036,23 +989,6 @@ function TrialUpsellModal({ subscription, user, onClose, onActivated }) {
     } finally {
       setActivating(false)
     }
-  }
-
-  if (showConfetti) {
-    return (
-      <>
-        <ConfettiBlast onDone={onActivated} />
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-9998 p-4">
-          <div className="bg-[#FFFFFF] rounded-xl shadow-2xl w-full max-w-sm p-8 text-center">
-            <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-4">
-              <i className="fas fa-check-circle text-emerald-500 text-3xl"></i>
-            </div>
-            <h2 className="text-xl font-bold text-[#131210] mb-1">You&apos;re live! 🎉</h2>
-            <p className="text-sm text-[#5C5A55]">Your plan is now active. Start sending campaigns to your contacts.</p>
-          </div>
-        </div>
-      </>
-    )
   }
 
   return (
