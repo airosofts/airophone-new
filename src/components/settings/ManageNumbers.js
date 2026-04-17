@@ -191,11 +191,11 @@ export default function ManageNumbers() {
   }
 
   const handlePurchase = async (number) => {
-    // Block trial accounts from buying additional numbers
-    if (subscription?.status === 'trialing' && myNumbers.length >= 1) {
+    // Block trial accounts from purchasing numbers
+    if (subscription?.status === 'trialing') {
       setShowError({
         title: 'Trial Limitation',
-        message: 'Trial accounts are limited to 1 phone number. Activate your paid plan to add more numbers.',
+        message: 'Phone number purchases are not available on a free trial. Activate your paid plan to add numbers.',
         action: 'upgrade'
       })
       return
