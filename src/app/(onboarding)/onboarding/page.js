@@ -1117,14 +1117,7 @@ export default function OnboardingPage() {
                           <span style={{ fontSize: 13, fontWeight: 600, color: C.red, fontFamily: C.mono }}>{fmt}</span>
                           <span style={{ fontSize: 12, color: C.text2 }}>selected</span>
                         </div>
-                        <button
-                          onClick={() => setStep(6)}
-                          style={{ ...btnPrimary, width: 'auto', height: 36, padding: '0 20px', fontSize: 13 }}
-                          onMouseEnter={e => { e.currentTarget.style.opacity = '0.88' }}
-                          onMouseLeave={e => { e.currentTarget.style.opacity = '1' }}
-                        >
-                          Continue to billing <ArrowRight />
-                        </button>
+                        <span style={{ fontSize: 12, color: C.red, fontWeight: 500 }}>✓ Ready to continue</span>
                       </div>
                     )
                   })()}
