@@ -245,55 +245,47 @@ export default function CallInterface({
   // Incoming call — compact bottom-left toast (OpenPhone-style)
   if (callStatus === 'incoming') {
     return (
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-80 animate-slideUp">
-        <div className="bg-[#FFFFFF] rounded-2xl shadow-[0_20px_56px_rgba(19,18,16,0.16)] border border-[#E3E1DB] overflow-hidden">
-          {/* Header with caller info */}
-          <div className="px-5 pt-4 pb-3 flex items-center gap-3.5">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="bg-[#FFFFFF] rounded-[14px] shadow-[0_20px_56px_rgba(19,18,16,0.12)] border border-[#E3E1DB] overflow-hidden w-[340px]">
+          {/* Caller info */}
+          <div className="px-6 pt-6 pb-5 flex flex-col items-center gap-4">
             {/* Pulsing avatar */}
-            <div className="relative flex-shrink-0">
-              <span className="absolute inset-0 w-12 h-12 rounded-full bg-[#D63B1F]/15 animate-ping" style={{ animationDuration: '1.8s' }} />
-              <div className="relative w-12 h-12 rounded-full bg-[#D63B1F] flex items-center justify-center text-white text-sm font-semibold">
+            <div className="relative flex items-center justify-center">
+              <span className="absolute w-[72px] h-[72px] rounded-full bg-[#D63B1F]/10 animate-ping" style={{ animationDuration: '1.8s' }} />
+              <span className="absolute w-[64px] h-[64px] rounded-full bg-[#D63B1F]/10" />
+              <div className="relative w-14 h-14 rounded-full bg-[#D63B1F] flex items-center justify-center text-white text-lg font-semibold">
                 {getInitials()}
               </div>
             </div>
 
-            {/* Caller details */}
-            <div className="flex-1 min-w-0">
-              <p className="text-[15px] font-semibold text-[#131210] tracking-tight leading-tight truncate">
+            {/* Number + label */}
+            <div className="text-center">
+              <p className="text-[18px] font-semibold text-[#131210] tracking-tight leading-tight">
                 {formatPhoneNumber ? formatPhoneNumber(incomingCall?.from) : incomingCall?.from}
               </p>
-              <p className="text-[12px] text-[#9B9890] mt-0.5 font-medium">
-                Incoming call
-                {incomingCall?.to && <span className="text-[#D4D1C9] mx-1">&middot;</span>}
+              <p className="text-[13px] text-[#9B9890] mt-1 font-light">
+                is calling you
                 {incomingCall?.to && (
-                  <span>{formatPhoneNumber ? formatPhoneNumber(incomingCall.to) : incomingCall.to}</span>
+                  <span> on {formatPhoneNumber ? formatPhoneNumber(incomingCall.to) : incomingCall.to}</span>
                 )}
               </p>
             </div>
-
-            {/* Close/dismiss */}
-            <button
-              onClick={onRejectCall}
-              className="w-6 h-6 rounded-full flex items-center justify-center text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] transition-colors flex-shrink-0"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
           </div>
 
           {/* Action buttons */}
-          <div className="px-5 pb-4 flex gap-2.5">
+          <div className="px-6 pb-5 flex gap-3">
             <button
               onClick={onRejectCall}
-              className="flex-1 h-10 bg-[rgba(214,59,31,0.07)] hover:bg-[rgba(214,59,31,0.12)] text-[#D63B1F] rounded-lg flex items-center justify-center gap-2 text-[13px] font-medium transition-colors active:scale-[0.98]"
+              className="flex-1 h-11 bg-[rgba(214,59,31,0.07)] hover:bg-[rgba(214,59,31,0.12)] text-[#D63B1F] rounded-[9px] flex items-center justify-center gap-2 text-[13px] font-medium transition-all active:scale-[0.97]"
             >
-              <PhoneOff className="w-3.5 h-3.5" />
+              <PhoneOff className="w-4 h-4" />
               Reject
             </button>
             <button
               onClick={onAcceptCall}
-              className="flex-1 h-10 bg-[#22c55e] hover:bg-[#16a34a] text-white rounded-lg flex items-center justify-center gap-2 text-[13px] font-medium transition-colors active:scale-[0.98]"
+              className="flex-1 h-11 bg-[#22c55e] hover:bg-[#16a34a] text-white rounded-[9px] flex items-center justify-center gap-2 text-[13px] font-medium transition-all active:scale-[0.97]"
             >
-              <Phone className="w-3.5 h-3.5" />
+              <Phone className="w-4 h-4" />
               Accept
             </button>
           </div>
@@ -484,7 +476,7 @@ export default function CallInterface({
                 <button
                   key={digit}
                   onClick={() => handleDTMF(digit)}
-                  className="h-12 bg-[#F7F6F3] hover:bg-[#F7F6F3] active:bg-[#EFEDE8] rounded-xl flex flex-col items-center justify-center transition-all active:scale-95"
+                  className="h-12 bg-[#F7F6F3] hover:bg-[#EFEDE8] active:bg-[#D4D1C9] rounded-xl flex flex-col items-center justify-center transition-all active:scale-95"
                 >
                   <span className="text-lg font-semibold text-[#131210] leading-none">{digit}</span>
                   {dialpadLetters[digit] && <span className="text-[8px] text-[#9B9890] leading-none mt-0.5">{dialpadLetters[digit]}</span>}
