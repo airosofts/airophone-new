@@ -68,7 +68,7 @@ export default function CallInterface({
     return (
       <div className="fixed bottom-6 right-6 z-50 w-72">
         <div className="bg-[#FFFFFF] rounded-2xl shadow-xl border border-[#E3E1DB] overflow-hidden">
-          <div className="bg-red-500 px-4 py-3 flex items-center justify-between">
+          <div className="bg-[#D63B1F] px-4 py-3 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-full bg-[#FFFFFF]/20 flex items-center justify-center">
                 <Phone className="w-4 h-4 text-white" />
@@ -224,7 +224,7 @@ export default function CallInterface({
               {getInitials()}
             </div>
             <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white ${
-              isActive ? 'bg-emerald-400 animate-pulse' : 'bg-yellow-400 animate-pulse'
+              isActive ? 'bg-[#22c55e] animate-pulse' : 'bg-[#f59e0b] animate-pulse'
             }`} />
           </div>
           <div className="text-left">
@@ -232,7 +232,7 @@ export default function CallInterface({
             <p className="text-[10px] text-[#9B9890] leading-tight">{getCallStatusText()}</p>
           </div>
           <div
-            className="w-7 h-7 rounded-full bg-red-50 hover:bg-red-100 flex items-center justify-center ml-1 transition-colors"
+            className="w-7 h-7 rounded-full bg-[rgba(214,59,31,0.07)] hover:bg-[rgba(214,59,31,0.15)] flex items-center justify-center ml-1 transition-colors"
             onClick={(e) => { e.stopPropagation(); handleEndClick() }}
           >
             <PhoneOff className="w-3.5 h-3.5 text-[#D63B1F]" />
@@ -242,72 +242,63 @@ export default function CallInterface({
     )
   }
 
-  // Incoming call gets a prominent centered modal — impossible to miss
+  // Incoming call — compact bottom-left toast (OpenPhone-style)
   if (callStatus === 'incoming') {
     return (
-      <>
-        {/* Backdrop */}
-        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50" />
-        {/* Centered incoming card */}
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="bg-[#FFFFFF] rounded-3xl shadow-2xl w-80 overflow-hidden animate-bounce-in border border-[#E3E1DB]">
-            {/* Top accent bar */}
-            <div className="h-1 w-full bg-[#D63B1F]" />
-
-            {/* Header */}
-            <div className="px-6 pt-7 pb-6 flex flex-col items-center gap-5">
-              {/* Ripple + avatar stack */}
-              <div className="relative flex items-center justify-center">
-                {/* Outer ripple */}
-                <span className="absolute w-24 h-24 rounded-full bg-[#D63B1F]/10 animate-ping" style={{ animationDuration: '1.6s' }} />
-                <span className="absolute w-20 h-20 rounded-full bg-[#D63B1F]/15" />
-                {/* Avatar */}
-                <div className="relative w-16 h-16 rounded-full bg-[#D63B1F] flex items-center justify-center text-white text-xl font-bold shadow-md">
-                  {getInitials()}
-                </div>
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-80 animate-slideUp">
+        <div className="bg-[#FFFFFF] rounded-2xl shadow-[0_20px_56px_rgba(19,18,16,0.16)] border border-[#E3E1DB] overflow-hidden">
+          {/* Header with caller info */}
+          <div className="px-5 pt-4 pb-3 flex items-center gap-3.5">
+            {/* Pulsing avatar */}
+            <div className="relative flex-shrink-0">
+              <span className="absolute inset-0 w-12 h-12 rounded-full bg-[#D63B1F]/15 animate-ping" style={{ animationDuration: '1.8s' }} />
+              <div className="relative w-12 h-12 rounded-full bg-[#D63B1F] flex items-center justify-center text-white text-sm font-semibold">
+                {getInitials()}
               </div>
+            </div>
 
-              {/* Label + number */}
-              <div className="text-center">
-                <p className="text-[11px] font-semibold tracking-widest uppercase text-[#D63B1F] mb-1.5">Incoming Call</p>
-                <p className="text-[#131210] text-2xl font-semibold tracking-tight leading-none">
-                  {formatPhoneNumber ? formatPhoneNumber(incomingCall?.from) : incomingCall?.from}
-                </p>
+            {/* Caller details */}
+            <div className="flex-1 min-w-0">
+              <p className="text-[15px] font-semibold text-[#131210] tracking-tight leading-tight truncate">
+                {formatPhoneNumber ? formatPhoneNumber(incomingCall?.from) : incomingCall?.from}
+              </p>
+              <p className="text-[12px] text-[#9B9890] mt-0.5 font-medium">
+                Incoming call
+                {incomingCall?.to && <span className="text-[#D4D1C9] mx-1">&middot;</span>}
                 {incomingCall?.to && (
-                  <p className="text-[#9B9890] text-xs mt-1.5">
-                    to {formatPhoneNumber ? formatPhoneNumber(incomingCall.to) : incomingCall.to}
-                  </p>
+                  <span>{formatPhoneNumber ? formatPhoneNumber(incomingCall.to) : incomingCall.to}</span>
                 )}
-              </div>
+              </p>
             </div>
 
-            {/* Divider */}
-            <div className="border-t border-[#E3E1DB] mx-6" />
+            {/* Close/dismiss */}
+            <button
+              onClick={onRejectCall}
+              className="w-6 h-6 rounded-full flex items-center justify-center text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] transition-colors flex-shrink-0"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
 
-            {/* Action buttons */}
-            <div className="px-6 py-5 flex justify-center gap-10">
-              <div className="flex flex-col items-center gap-2">
-                <button
-                  onClick={onRejectCall}
-                  className="w-14 h-14 bg-[#D63B1F] hover:bg-[#c23119] active:scale-95 rounded-full flex items-center justify-center text-white shadow-md transition-all"
-                >
-                  <PhoneOff className="w-5 h-5" />
-                </button>
-                <span className="text-xs text-[#9B9890] font-medium">Decline</span>
-              </div>
-              <div className="flex flex-col items-center gap-2">
-                <button
-                  onClick={onAcceptCall}
-                  className="w-14 h-14 bg-emerald-500 hover:bg-emerald-600 active:scale-95 rounded-full flex items-center justify-center text-white shadow-md transition-all"
-                >
-                  <Phone className="w-5 h-5" />
-                </button>
-                <span className="text-xs text-[#9B9890] font-medium">Accept</span>
-              </div>
-            </div>
+          {/* Action buttons */}
+          <div className="px-5 pb-4 flex gap-2.5">
+            <button
+              onClick={onRejectCall}
+              className="flex-1 h-10 bg-[rgba(214,59,31,0.07)] hover:bg-[rgba(214,59,31,0.12)] text-[#D63B1F] rounded-lg flex items-center justify-center gap-2 text-[13px] font-medium transition-colors active:scale-[0.98]"
+            >
+              <PhoneOff className="w-3.5 h-3.5" />
+              Reject
+            </button>
+            <button
+              onClick={onAcceptCall}
+              className="flex-1 h-10 bg-[#22c55e] hover:bg-[#16a34a] text-white rounded-lg flex items-center justify-center gap-2 text-[13px] font-medium transition-colors active:scale-[0.98]"
+            >
+              <Phone className="w-3.5 h-3.5" />
+              Accept
+            </button>
           </div>
         </div>
-      </>
+      </div>
     )
   }
 
@@ -321,7 +312,7 @@ export default function CallInterface({
           <div className="bg-[#D63B1F] px-4 py-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-full bg-[#FFFFFF]/20 flex items-center justify-center text-white text-xs font-bold">
+                <div className="w-9 h-9 rounded-full bg-[#FFFFFF]/20 flex items-center justify-center text-white text-xs font-semibold">
                   {getInitials()}
                 </div>
                 <div>
@@ -331,8 +322,8 @@ export default function CallInterface({
               </div>
               <div className="flex items-center gap-1.5">
                 <span className={`w-2 h-2 rounded-full ${
-                  isActive ? 'bg-emerald-300 animate-pulse' :
-                  isConnecting ? 'bg-yellow-300 animate-pulse' :
+                  isActive ? 'bg-[#22c55e]/60 animate-pulse' :
+                  isConnecting ? 'bg-[#f59e0b]/60 animate-pulse' :
                   'bg-[#FFFFFF]/40'
                 }`} />
                 <button
@@ -358,25 +349,25 @@ export default function CallInterface({
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#22c55e]" />
                       <span className="text-xs text-[#5C5A55] font-medium">You</span>
                     </div>
-                    <span className="text-[10px] text-emerald-600 font-medium">Host</span>
+                    <span className="text-[10px] text-[#16a34a] font-medium">Host</span>
                   </div>
                   {participantCalls.map((p) => (
                     <div key={p.id} className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
                         <span className={`w-1.5 h-1.5 rounded-full ${
-                          getParticipantStatus(p) === 'Connected' ? 'bg-emerald-400' :
-                          getParticipantStatus(p) === 'Disconnected' ? 'bg-red-400' :
-                          'bg-yellow-400 animate-pulse'
+                          getParticipantStatus(p) === 'Connected' ? 'bg-[#22c55e]' :
+                          getParticipantStatus(p) === 'Disconnected' ? 'bg-[#D63B1F]' :
+                          'bg-[#f59e0b] animate-pulse'
                         }`} />
                         <span className="text-xs text-[#5C5A55]">{formatPhoneNumber(p.phoneNumber)}</span>
                       </div>
                       <span className={`text-[10px] font-medium ${
-                        getParticipantStatus(p) === 'Connected' ? 'text-emerald-600' :
-                        getParticipantStatus(p) === 'Disconnected' ? 'text-red-500' :
-                        'text-yellow-600'
+                        getParticipantStatus(p) === 'Connected' ? 'text-[#16a34a]' :
+                        getParticipantStatus(p) === 'Disconnected' ? 'text-[#D63B1F]' :
+                        'text-[#d97706]'
                       }`}>{getParticipantStatus(p)}</span>
                     </div>
                   ))}
@@ -386,9 +377,9 @@ export default function CallInterface({
 
             {/* Status Message */}
             {conferenceStatus && (
-              <div className="mb-3 px-2.5 py-2 bg-blue-50 rounded-lg flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse shrink-0" />
-                <p className="text-xs text-blue-700 font-medium">{conferenceStatus}</p>
+              <div className="mb-3 px-2.5 py-2 bg-[rgba(214,59,31,0.07)] rounded-lg flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#D63B1F] animate-pulse shrink-0" />
+                <p className="text-xs text-[#D63B1F] font-medium">{conferenceStatus}</p>
               </div>
             )}
 
@@ -414,7 +405,7 @@ export default function CallInterface({
                     onClick={handleHoldClick}
                     className={`w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-95 ${
                       isOnHold
-                        ? 'bg-yellow-50 text-yellow-600 ring-1 ring-yellow-300'
+                        ? 'bg-[rgba(245,158,11,0.07)] text-[#d97706] ring-1 ring-[#f59e0b]/60'
                         : 'bg-[#EFEDE8] text-[#5C5A55] hover:bg-[#EFEDE8]'
                     }`}
                     title={isOnHold ? 'Resume' : 'Hold'}
@@ -529,7 +520,7 @@ export default function CallInterface({
             contacts={filteredContacts}
             loading={loadingContacts}
             formatPhoneNumber={formatPhoneNumber}
-            actionColor="emerald-500"
+            actionColor="[#22c55e]"
             isTransfer
           />
         )}
@@ -569,7 +560,7 @@ function ContactSearchPanel({ title, onClose, onSelect, searchQuery, setSearchQu
           contacts.map((c) => (
             <button key={c.id} onClick={() => onSelect(c.phone_number)} className="w-full flex items-center gap-2.5 px-2 py-2 hover:bg-[#F7F6F3] rounded-lg text-left transition-colors">
               <div className={`w-7 h-7 rounded-full flex items-center justify-center ${
-                isTransfer ? 'bg-emerald-50 text-emerald-600' : 'bg-[#D63B1F]/10 text-[#D63B1F]'
+                isTransfer ? 'bg-[rgba(34,197,94,0.07)] text-[#16a34a]' : 'bg-[#D63B1F]/10 text-[#D63B1F]'
               }`}>
                 {isTransfer ? <ArrowRightLeft className="w-3 h-3" /> : <User className="w-3 h-3" />}
               </div>
@@ -584,7 +575,7 @@ function ContactSearchPanel({ title, onClose, onSelect, searchQuery, setSearchQu
             <button
               onClick={() => onSelect(searchQuery)}
               className={`px-4 py-2 text-white text-xs font-medium rounded-lg transition-colors ${
-                isTransfer ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-[#D63B1F] hover:bg-[#c23119]'
+                isTransfer ? 'bg-[#22c55e] hover:bg-[#16a34a]' : 'bg-[#D63B1F] hover:bg-[#c23119]'
               }`}
             >
               {isTransfer ? 'Transfer to' : 'Call'} {searchQuery}

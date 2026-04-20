@@ -737,13 +737,13 @@ function ImportCsvModal({ onClose, contactListId, onImportComplete, onError }) {
         </div>
         <div className="px-5 py-4 space-y-4">
           {result ? (
-            <div className={`p-4 rounded-md border ${result.error ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
+            <div className={`p-4 rounded-md border ${result.error ? 'bg-[rgba(214,59,31,0.07)] border-[rgba(214,59,31,0.14)]' : 'bg-[rgba(34,197,94,0.07)] border-[rgba(34,197,94,0.15)]'}`}>
               {result.error ? (
-                <p className="text-sm text-red-700"><i className="fas fa-exclamation-circle mr-2"></i>{result.error}</p>
+                <p className="text-sm text-[#D63B1F]"><i className="fas fa-exclamation-circle mr-2"></i>{result.error}</p>
               ) : (
                 <div>
-                  <p className="text-sm font-medium text-green-800"><i className="fas fa-check-circle mr-2"></i>Import complete!</p>
-                  <p className="text-xs text-green-700 mt-1">{result.message}</p>
+                  <p className="text-sm font-medium text-[#16a34a]"><i className="fas fa-check-circle mr-2"></i>Import complete!</p>
+                  <p className="text-xs text-[#16a34a] mt-1">{result.message}</p>
                 </div>
               )}
             </div>

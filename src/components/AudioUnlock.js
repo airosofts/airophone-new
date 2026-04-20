@@ -179,12 +179,8 @@ export default function AudioUnlock() {
       if (!window.__airoRingBuffer) {
         load()
       }
-      // Request notification permission on first gesture if not yet decided
-      if ('Notification' in window && Notification.permission === 'default') {
-        Notification.requestPermission().then(p => {
-          console.log('[AudioUnlock] Notification permission:', p)
-        }).catch(() => {})
-      }
+      // NOTE: Do NOT request notification permission here — it fires on login/signup pages too.
+      // Notification permission is handled by the inbox page banner instead.
     }
     events.forEach(e => document.addEventListener(e, handler, { capture: true, passive: true }))
 

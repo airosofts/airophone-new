@@ -1,10 +1,11 @@
 // src/app/layout.js
-import { Inter } from 'next/font/google'
+import { Plus_Jakarta_Sans, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
 import AudioUnlock from '@/components/AudioUnlock'
 import PushSetup from '@/components/PushSetup'
 
-const inter = Inter({ subsets: ['latin'] })
+const jakarta = Plus_Jakarta_Sans({ subsets: ['latin'], weight: ['300', '400', '500', '600'], variable: '--font-sans' })
+const jetbrains = JetBrains_Mono({ subsets: ['latin'], weight: ['400', '500'], variable: '--font-mono' })
 
 export const metadata = {
   title: 'AiroPhone — Business Calls & Messaging, Automated',
@@ -32,7 +33,7 @@ export default function RootLayout({ children }) {
           referrerPolicy="no-referrer"
         />
       </head>
-      <body className={inter.className}>
+      <body className={`${jakarta.variable} ${jetbrains.variable} ${jakarta.className}`}>
         <AudioUnlock />
         <PushSetup />
         {children}

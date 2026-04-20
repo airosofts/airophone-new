@@ -280,13 +280,13 @@ export default function ChatWindow({
                     <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.01 2.18 2 2 0 012 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 14.92v2z" />
                   </svg>
                   {callHook?.isInitializing && (
-                    <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 border border-white rounded-full bg-yellow-400 animate-pulse" />
+                    <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 border border-white rounded-full bg-[#f59e0b] animate-pulse" />
                   )}
                   {isWebRTCReady && (
-                    <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 border border-white rounded-full bg-emerald-400" />
+                    <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 border border-white rounded-full bg-[#22c55e]" />
                   )}
                   {!callHook?.isInitializing && !isWebRTCReady && (
-                    <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 border border-white rounded-full bg-red-400" />
+                    <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 border border-white rounded-full bg-[#D63B1F]" />
                   )}
                 </button>
 
@@ -368,7 +368,7 @@ export default function ChatWindow({
                       <div className="my-1 border-t border-[#E3E1DB]" />
                       <button
                         onClick={() => { onDeleteConversation?.(conversation.id); setShowMoreMenu(false) }}
-                        className="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-3"
+                        className="w-full px-4 py-2.5 text-left text-sm text-[#D63B1F] hover:bg-[rgba(214,59,31,0.07)] flex items-center gap-3"
                       >
                         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
                           <polyline points="3 6 5 6 21 6" />
@@ -493,12 +493,12 @@ export default function ChatWindow({
         }
 
         .scrollbar-thin::-webkit-scrollbar-thumb {
-          background: #d1d5db;
+          background: #D4D1C9;
           border-radius: 3px;
         }
 
         .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-          background: #9ca3af;
+          background: #9B9890;
         }
 
         /* Input focus ring animation */

@@ -8,22 +8,25 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        primary: {
-          50: '#eff6ff',
-          100: '#dbeafe',
-          200: '#bfdbfe',
-          300: '#93c5fd',
-          400: '#60a5fa',
-          500: '#3b82f6',
-          600: '#2563eb',
-          700: '#1d4ed8',
-          800: '#1e40af',
-          900: '#1e3a8a',
-        }
+        bg: '#F7F6F3',
+        bg2: '#EFEDE8',
+        surface: '#FFFFFF',
+        border: '#E3E1DB',
+        border2: '#D4D1C9',
+        text: '#131210',
+        text2: '#5C5A55',
+        text3: '#9B9890',
+        red: '#D63B1F',
+        'red-bg': 'rgba(214,59,31,0.07)',
+        'red-dim': 'rgba(214,59,31,0.15)',
+      },
+      fontFamily: {
+        sans: ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
       },
       animation: {
         'pulse-slow': 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-      }
+      },
     },
   },
   plugins: [],

@@ -185,7 +185,7 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user, on
       {/* ── Header ── */}
       <div className="flex flex-col items-center px-6 pt-7 pb-5 border-b border-[#E3E1DB]">
         <div
-          className="w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-xl mb-3 select-none"
+          className="w-16 h-16 rounded-full flex items-center justify-center text-white font-semibold text-xl mb-3 select-none"
           style={{ backgroundColor: getAvatarColor(conversation.phone_number) }}
         >
           {initials}
@@ -232,27 +232,29 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user, on
         )}
       </div>
 
-      {/* ── AI Scenario ── */}
-      <div className="px-5 py-3 border-b border-[#E3E1DB] flex items-center justify-between">
-        <div className="flex items-center gap-2 min-w-0">
-          <Icon type="ai" className="w-4 h-4 text-[#9B9890] flex-shrink-0" />
-          <span className="text-sm text-[#9B9890] truncate">
-            {assignedScenario ? assignedScenario.name : 'Default matching'}
-          </span>
+      {/* ── AI Scenario (only show if a scenario is assigned) ── */}
+      {assignedScenario && (
+        <div className="px-5 py-3 border-b border-[#E3E1DB] flex items-center justify-between">
+          <div className="flex items-center gap-2 min-w-0">
+            <Icon type="ai" className="w-4 h-4 text-[#9B9890] flex-shrink-0" />
+            <span className="text-sm text-[#9B9890] truncate">
+              {assignedScenario.name}
+            </span>
+          </div>
+          <button
+            onClick={handleToggleAi}
+            disabled={togglingAi}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 ml-2 transition-colors ${
+              aiPaused
+                ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                : 'bg-green-100 text-green-700 hover:bg-green-200'
+            } ${togglingAi ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            <span className={`w-1.5 h-1.5 rounded-full ${aiPaused ? 'bg-amber-500' : 'bg-green-500'}`} />
+            {aiPaused ? 'Paused' : 'Active'}
+          </button>
         </div>
-        <button
-          onClick={handleToggleAi}
-          disabled={togglingAi}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 ml-2 transition-colors ${
-            aiPaused
-              ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
-              : 'bg-green-100 text-green-700 hover:bg-green-200'
-          } ${togglingAi ? 'opacity-50 cursor-not-allowed' : ''}`}
-        >
-          <span className={`w-1.5 h-1.5 rounded-full ${aiPaused ? 'bg-amber-500' : 'bg-green-500'}`} />
-          {aiPaused ? 'Paused' : 'Active'}
-        </button>
-      </div>
+      )}
 
       {/* ── Contact Fields ── */}
       <div className="px-5 py-3">
@@ -447,7 +449,7 @@ function ContactField({ icon, label, value, placeholder, editing, editValue, onE
             onKeyDown={(e) => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel() }}
             onBlur={onSave}
             autoFocus
-            className="w-full text-sm text-[#131210] bg-transparent border-0 border-b border-blue-400 focus:outline-none py-0.5"
+            className="w-full text-sm text-[#131210] bg-transparent border-0 border-b border-[#D63B1F] focus:outline-none py-0.5"
           />
         ) : (
           <button
@@ -490,7 +492,7 @@ function CustomField({ field, editing, editValue, onEditValueChange, onStartEdit
             onBlur={onSave}
             autoFocus
             placeholder={`Add ${field.label.toLowerCase()}`}
-            className="w-full text-sm text-[#131210] bg-transparent border-0 border-b border-blue-400 focus:outline-none py-0.5"
+            className="w-full text-sm text-[#131210] bg-transparent border-0 border-b border-[#D63B1F] focus:outline-none py-0.5"
           />
         ) : (
           <button

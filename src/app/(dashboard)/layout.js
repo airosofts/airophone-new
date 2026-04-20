@@ -86,7 +86,9 @@ export default function DashboardLayout({ children }) {
         })
         if (checkRes.ok) {
           const data = await checkRes.json()
-          if (data.onboarding_completed === false) {
+          // Members are invited into existing workspaces — never send them to onboarding
+          const isMember = currentUser.role === 'member' || currentUser.workspaceRole === 'member'
+          if (data.onboarding_completed === false && !isMember) {
             router.push('/onboarding')
             return
           }

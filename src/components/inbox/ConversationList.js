@@ -130,6 +130,29 @@ export default function ConversationList({
     return text.length > maxLength ? text.slice(0, maxLength) + '...' : text
   }
 
+  // Returns the most recent activity timestamp (message or call)
+  const getLastActivityTime = (conv) => {
+    const mt = conv.lastMessage?.created_at
+    const ct = conv.lastCall?.created_at
+    if (!mt && !ct) return null
+    if (!mt) return ct
+    if (!ct) return mt
+    return mt > ct ? mt : ct
+  }
+
+  // Returns call snippet label + color when call is the most recent event
+  const getCallSnippet = (conv) => {
+    const { lastMessage, lastCall } = conv
+    if (!lastCall) return null
+    if (lastMessage && lastMessage.created_at >= lastCall.created_at) return null
+    const { direction, status } = lastCall
+    const isMissed = status === 'missed' || status === 'no-answer' || status === 'busy'
+    if (direction === 'inbound' && isMissed) return { label: 'Missed call', arrow: '↙', color: '#D63B1F' }
+    if (direction === 'outbound' && isMissed) return { label: 'Missed your call', arrow: '↗', color: '#9B9890' }
+    if (direction === 'inbound') return { label: 'Incoming call', arrow: '↙', color: '#9B9890' }
+    return { label: 'Outgoing call', arrow: '↗', color: '#9B9890' }
+  }
+
   // ── Skeleton loader ──
   if (loading) {
     return (
@@ -222,6 +245,9 @@ export default function ConversationList({
           const initials = getInitials(displayName, conversation.phone_number)
           const isPinned = conversation.pinned
 
+          const callSnippet = getCallSnippet(conversation)
+          const activityTime = getLastActivityTime(conversation)
+
           return (
             <div
               key={conversation.id}
@@ -295,18 +321,29 @@ export default function ConversationList({
                     fontSize: '9.5px', color: '#9B9890',
                     flexShrink: 0, marginLeft: 8,
                   }}>
-                    {formatTime(conversation.lastMessage?.created_at)}
+                    {formatTime(activityTime)}
                   </span>
                 </div>
-                <p style={{
-                  fontSize: '11.5px', color: '#9B9890',
-                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                  fontWeight: hasUnread ? 500 : 400,
-                  ...(hasUnread && { color: '#5C5A55' }),
-                }}>
-                  {conversation.lastMessage?.direction === 'outbound' && 'You: '}
-                  {truncateMessage(conversation.lastMessage?.body)}
-                </p>
+                {callSnippet ? (
+                  <p style={{
+                    fontSize: '11.5px', color: callSnippet.color,
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    fontWeight: 500, display: 'flex', alignItems: 'center', gap: 4,
+                  }}>
+                    <span style={{ fontSize: 13 }}>{callSnippet.arrow}</span>
+                    {callSnippet.label}
+                  </p>
+                ) : (
+                  <p style={{
+                    fontSize: '11.5px', color: '#9B9890',
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    fontWeight: hasUnread ? 500 : 400,
+                    ...(hasUnread && { color: '#5C5A55' }),
+                  }}>
+                    {conversation.lastMessage?.direction === 'outbound' && 'You: '}
+                    {truncateMessage(conversation.lastMessage?.body)}
+                  </p>
+                )}
               </div>
             </div>
           )

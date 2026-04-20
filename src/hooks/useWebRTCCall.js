@@ -60,6 +60,21 @@ export function useWebRTCCall() {
       clearInterval(callTimer.current)
     }
     callTimer.current = setInterval(() => {
+      // Watchdog: check if the Telnyx call object is still alive.
+      // If the remote party hung up but the SDK didn't fire hangup/destroy,
+      // detect it here and force cleanup.
+      const call = currentCallRef.current
+      if (call && (call.state === 'hangup' || call.state === 'destroy' || call.state === 'purge')) {
+        console.warn('[CallTimer] Watchdog detected dead call state:', call.state, '— forcing cleanup')
+        performCompleteCleanup()
+        return
+      }
+      // Also detect if call object was GC'd or peer connection closed
+      if (isCallActiveRef.current && !call) {
+        console.warn('[CallTimer] Watchdog: call ref is null but isCallActive — forcing cleanup')
+        performCompleteCleanup()
+        return
+      }
       setCallDuration(prev => prev + 1)
     }, 1000)
   }
@@ -601,19 +616,9 @@ const setupAudioRouting = (call, isParticipant = false) => {
           return
         }
 
-        // Request microphone permissions first
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            audio: { echoCancellation: true, noiseSuppression: true },
-            video: false
-          })
-          stream.getTracks().forEach(track => track.stop())
-        } catch (mediaError) {
-          console.error('Microphone permission denied:', mediaError)
-          setInitError('Microphone permission required for calling')
-          setIsInitializing(false)
-          return
-        }
+        // NOTE: Microphone is NOT requested here on init — only when user
+        // makes or answers a call. This avoids the creepy mic prompt on login.
+        // TelnyxRTC can register and receive incoming call notifications without mic access.
 
         const { TelnyxRTC } = await import('@telnyx/webrtc')
 
@@ -627,14 +632,7 @@ const setupAudioRouting = (call, isParticipant = false) => {
           console.log('Telnyx WebRTC ready')
           setIsRegistered(true)
           setInitError(null)
-          // Request notification permission proactively
-          if ('Notification' in window) {
-            if (Notification.permission === 'default') {
-              Notification.requestPermission().then(p => console.log('[Notification] Permission:', p))
-            } else {
-              console.log('[Notification] Permission:', Notification.permission)
-            }
-          }
+          // Notification permission is handled by the inbox banner, not here
         })
 
         telnyxClient.on('telnyx.socket.error', (error) => {
@@ -777,6 +775,18 @@ const setupAudioRouting = (call, isParticipant = false) => {
     try {
       setCallStatus('initiating')
 
+      // Request microphone only when actually making a call
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true },
+          video: false
+        })
+        stream.getTracks().forEach(track => track.stop())
+      } catch (micErr) {
+        setCallStatus('idle')
+        throw new Error('Microphone access is required to make calls. Please allow microphone access and try again.')
+      }
+
       const cleanDestination = phoneNumber.replace(/\D/g, '')
       const cleanCaller = callerNumber.replace(/\D/g, '')
 
@@ -822,6 +832,19 @@ const setupAudioRouting = (call, isParticipant = false) => {
       stopRingtone()
       clearBrowserNotification()
       setMissedCallNotice(null)
+
+      // Request microphone when answering a call
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true },
+          video: false
+        })
+        stream.getTracks().forEach(track => track.stop())
+      } catch (micErr) {
+        console.error('Microphone permission denied when answering:', micErr)
+        throw new Error('Microphone access is required to answer calls.')
+      }
+
       await currentCall.answer()
       setCallStatus('active')
       setIncomingCall(null)
@@ -1027,292 +1050,150 @@ const toggleHold = async () => {
     }
   }
 
-// FIXED: Conference function that stores actual call objects for proper status tracking
+// Conference: uses Telnyx server-side Conference API via /api/calls/conference
+// Creates a conference from the current call's call_control_id, then dials participant.
+// No more client-side newCall() hackery — everything goes through Telnyx REST API.
 const addParticipantToCall = async (phoneNumber) => {
-  if (!client || !isRegistered || !currentCall) {
+  const call = currentCallRef.current
+  if (!call) {
     throw new Error('Cannot add participant: No active call')
   }
 
-  try {
-    console.log('Adding participant to conference:', phoneNumber)
-    setConferenceStatus('Setting up conference...')
-    
-    const cleanNumber = phoneNumber.replace(/\D/g, '')
-    const callerNumber = selectedCallerNumber?.replace(/\D/g, '')
-    
-    if (!callerNumber) {
-      throw new Error('No caller number selected')
-    }
-    
-    // Don't put main call on hold - keep it active for audio
-    setConferenceStatus('Dialing participant...')
-    
-    // Create participant call using WebRTC
-    const formattedNumber = cleanNumber.startsWith('1') ? cleanNumber : `1${cleanNumber}`
-    const formattedCaller = callerNumber.startsWith('1') ? callerNumber : `1${callerNumber}`
-    
-    console.log('Creating participant call:', { formattedNumber, formattedCaller })
+  const callControlId = call.telnyxIDs?.telnyxCallControlId
+  if (!callControlId) {
+    throw new Error('Cannot add participant: No call control ID available')
+  }
 
-    isInitiatingOutboundRef.current = true
-    const participantCall = client.newCall({
-      destinationNumber: formattedNumber,
-      callerNumber: formattedCaller,
-      callerName: 'Conference Call'
-    })
-    isInitiatingOutboundRef.current = false
-    
-    setConferenceStatus('Calling participant...')
-    
-    // FIXED: Store the actual call object immediately for status tracking
-    const participantData = {
-      id: participantCall.id,
+  try {
+    const cleanNumber = phoneNumber.replace(/\D/g, '')
+    setConferenceStatus('Setting up conference...')
+    setCallStatus('conference')
+
+    // Add placeholder participant to UI immediately
+    const participantId = `participant_${Date.now()}`
+    setParticipantCalls(prev => [...prev, {
+      id: participantId,
       phoneNumber: cleanNumber,
-      call: participantCall, // Store the actual call object
-      status: 'dialing'
-    }
-    
-    // Add to participant calls list immediately
-    setParticipantCalls(prev => [...prev, participantData])
-    
-    return new Promise((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
-        setConferenceStatus('Participant timeout')
-        
-        // Remove from participants list
-        setParticipantCalls(prev => prev.filter(p => p.id !== participantCall.id))
-        
-        setTimeout(() => setConferenceStatus(''), 3000)
-        reject(new Error('Participant did not answer within 45 seconds'))
-      }, 45000)
-      
-      pendingParticipantRef.current = {
-        callId: participantCall.id,
-        phoneNumber: cleanNumber,
-        timeoutId,
-        participantCall: participantCall,
-        onAnswer: async (call) => {
-          try {
-            clearTimeout(timeoutId)
-            setConferenceStatus('Participant answered! Setting up audio...')
-            
-            // Update participant status to connected
-            setParticipantCalls(prev => 
-              prev.map(p => 
-                p.id === call.id 
-                  ? { ...p, call: call, status: 'connected' }
-                  : p
-              )
-            )
-            
-            // Setup audio routing for participant
-            setupAudioRouting(call, true)
-            
-            // Set conference status
-            setCallStatus('conference')
-            setConferenceStatus('3-way conference active!')
-            
-            setTimeout(() => setConferenceStatus(''), 5000)
-            resolve({ success: true })
-            
-          } catch (error) {
-            clearTimeout(timeoutId)
-            console.error('Error setting up conference:', error)
-            setConferenceStatus('Conference setup failed')
-            
-            // Remove failed participant
-            setParticipantCalls(prev => prev.filter(p => p.id !== call.id))
-            
-            setTimeout(() => setConferenceStatus(''), 3000)
-            reject(error)
-          }
-        },
-        onHangup: () => {
-          clearTimeout(timeoutId)
-          setConferenceStatus('Participant declined')
-          
-          // Remove participant from list
-          setParticipantCalls(prev => prev.filter(p => p.id !== participantCall.id))
-          
-          setTimeout(() => setConferenceStatus(''), 3000)
-          reject(new Error('Participant did not answer'))
-        }
-      }
+      call: null,
+      status: 'dialing',
+    }])
+
+    // Call server-side API to create conference + dial participant
+    const res = await fetch('/api/calls/conference', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        callControlId,
+        participantNumber: cleanNumber,
+        from: selectedCallerNumber,
+      }),
     })
-    
+
+    const data = await res.json()
+
+    if (!res.ok || !data.success) {
+      // Remove placeholder
+      setParticipantCalls(prev => prev.filter(p => p.id !== participantId))
+      setCallStatus('active')
+      setConferenceStatus('')
+      throw new Error(data.error || 'Failed to set up conference')
+    }
+
+    // Update participant with server data
+    setParticipantCalls(prev => prev.map(p =>
+      p.id === participantId
+        ? { ...p, conferenceId: data.conferenceId, serverCallId: data.participantCallControlId, status: 'ringing' }
+        : p
+    ))
+
+    if (data.participantError) {
+      setConferenceStatus(`Conference created but participant dial failed: ${data.participantError}`)
+      setTimeout(() => setConferenceStatus(''), 5000)
+    } else {
+      setConferenceStatus('Calling participant...')
+    }
+
+    // The participant joining is handled by webhooks (call.answered → conference.participant.joined)
+    // We poll or wait for status updates via the existing webhook → realtime pipeline.
+    // For now, set a timeout to check status.
+    setTimeout(() => {
+      // If still ringing after 35s, mark as timed out
+      setParticipantCalls(prev => {
+        const p = prev.find(p => p.id === participantId)
+        if (p && p.status === 'ringing') {
+          setConferenceStatus('Participant did not answer')
+          setTimeout(() => setConferenceStatus(''), 3000)
+          return prev.filter(p => p.id !== participantId)
+        }
+        return prev
+      })
+    }, 35000)
+
+    return { success: true, conferenceId: data.conferenceId }
   } catch (error) {
     console.error('Conference setup error:', error)
-    setConferenceStatus('Conference setup failed')
+    setConferenceStatus(error.message || 'Conference setup failed')
+    setCallStatus('active')
     setTimeout(() => setConferenceStatus(''), 3000)
     throw error
   }
 }
 
 
- // FIXED: Transfer function using WebRTC-only approach
-const transferCallTo = async (phoneNumber, transferType = 'blind') => {
-  if (!currentCall) {
+// Transfer: uses Telnyx server-side Transfer API via /api/calls/transfer
+// POST /calls/{call_control_id}/actions/transfer — proper blind transfer.
+// No more client-side hold + newCall + bridge hackery.
+// No event listener replacement, no stale closures, no promise races.
+const transferCallTo = async (phoneNumber) => {
+  const call = currentCallRef.current
+  if (!call) {
     throw new Error('No active call to transfer')
   }
 
+  const callControlId = call.telnyxIDs?.telnyxCallControlId
+  if (!callControlId) {
+    throw new Error('No call control ID available for transfer')
+  }
+
   try {
-    console.log('Transferring call to:', phoneNumber)
-    
     const cleanNumber = phoneNumber.replace(/\D/g, '')
-    const fromNumber = selectedCallerNumber?.replace(/\D/g, '')
-    
-    if (!fromNumber) {
-      throw new Error('No caller number available for transfer')
-    }
-    
     setCallStatus('transferring')
     setConferenceStatus('Transferring call...')
-    
-    // Step 1: Put current call on hold
-    await currentCall.hold()
-    setIsOnHold(true)
-    
-    // Step 2: Create new call to transfer destination
-    const formattedNumber = cleanNumber.startsWith('1') ? cleanNumber : `1${cleanNumber}`
-    const formattedFromNumber = fromNumber.startsWith('1') ? fromNumber : `1${fromNumber}`
-    
-    console.log('Creating transfer call:', { formattedNumber, formattedFromNumber })
-    
-    const transferCall = client.newCall({
-      destinationNumber: formattedNumber,
-      callerNumber: formattedFromNumber,
-      callerName: 'Transfer Call'
+
+    const res = await fetch('/api/calls/transfer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        callControlId,
+        to: cleanNumber,
+        from: selectedCallerNumber,
+        timeoutSecs: 30,
+      }),
     })
-    
-    setConferenceStatus('Calling transfer destination...')
-    
-    // Step 3: Wait for transfer destination to answer
-    return new Promise((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
-        setConferenceStatus('Transfer timeout - resuming original call')
-        // Resume original call
-        currentCall.unhold().catch(console.error)
-        setIsOnHold(false)
-        setCallStatus('active')
-        setConferenceStatus('')
-        reject(new Error('Transfer destination did not answer within 30 seconds'))
-      }, 30000)
-      
-      const cleanup = () => {
-        clearTimeout(timeoutId)
-        setConferenceStatus('')
-      }
-      
-      // Track the transfer call
-      const handleTransferUpdate = (call) => {
-        if (call.id === transferCall.id) {
-          console.log('Transfer call state:', call.state)
-          
-          switch (call.state) {
-            case 'trying':
-              setConferenceStatus('Calling transfer destination...')
-              break
-            case 'ringing':
-              setConferenceStatus('Transfer destination ringing...')
-              break
-            case 'active':
-              console.log('Transfer destination answered')
-              cleanup()
-              
-              if (transferType === 'blind') {
-                // For blind transfer: hang up original call, keep transfer call
-                setConferenceStatus('Transfer completed - hanging up original call')
-                currentCall.hangup().then(() => {
-                  setConferenceStatus('Call transferred successfully')
-                  // The transfer call becomes the new current call
-                  setCurrentCall(call)
-                  setIsOnHold(false)
-                  setCallStatus('active')
-                  setTimeout(() => setConferenceStatus(''), 3000)
-                  resolve({ success: true, type: 'blind' })
-                }).catch(error => {
-                  console.error('Error hanging up original call:', error)
-                  resolve({ success: true, type: 'blind' }) // Still consider it successful
-                })
-              } else {
-                // For attended transfer: bridge both calls together
-                setConferenceStatus('Transfer destination answered - bridging calls')
-                setCurrentCall(call) // Switch to transfer call as primary
-                setIsOnHold(false)
-                setCallStatus('active')
-                
-                // Optionally hang up after bridging (this simulates the transfer)
-                setTimeout(() => {
-                  setConferenceStatus('Transfer completed')
-                  setTimeout(() => setConferenceStatus(''), 3000)
-                }, 1000)
-                
-                resolve({ success: true, type: 'attended' })
-              }
-              break
-              
-            case 'hangup':
-            case 'destroy':
-              console.log('Transfer call failed or rejected')
-              cleanup()
-              
-              // Resume original call
-              currentCall.unhold().then(() => {
-                setIsOnHold(false)
-                setCallStatus('active')
-                setConferenceStatus('Transfer failed - resuming original call')
-                setTimeout(() => setConferenceStatus(''), 3000)
-              }).catch(console.error)
-              
-              reject(new Error('Transfer destination did not answer or rejected the call'))
-              break
-          }
-        }
-      }
-      
-      // Listen for transfer call updates
-      const originalHandler = handleCallUpdate
-      window.tempTransferHandler = (notification) => {
-        if (notification.type === 'callUpdate') {
-          handleTransferUpdate(notification.call)
-          originalHandler(notification.call) // Also call original handler
-        }
-      }
-      
-      // Replace handler temporarily
-      if (client) {
-        client.off('telnyx.notification')
-        client.on('telnyx.notification', window.tempTransferHandler)
-        
-        // Restore original handler after transfer completes or fails
-        setTimeout(() => {
-          if (client && window.tempTransferHandler) {
-            client.off('telnyx.notification', window.tempTransferHandler)
-            client.on('telnyx.notification', (notification) => {
-              if (notification.type === 'callUpdate') {
-                originalHandler(notification.call)
-              }
-            })
-            delete window.tempTransferHandler
-          }
-        }, 35000) // Clean up after timeout + buffer
-      }
-    })
-    
+
+    const data = await res.json()
+
+    if (!res.ok || !data.success) {
+      setCallStatus('active')
+      setConferenceStatus('')
+      throw new Error(data.error || 'Transfer failed')
+    }
+
+    // Transfer initiated server-side — Telnyx handles the rest.
+    // The original call leg will receive a call.hangup webhook when transfer completes.
+    // The WebRTC SDK will fire a hangup/destroy event which our existing handler catches.
+    setConferenceStatus('Call transferred successfully')
+    setTimeout(() => {
+      setConferenceStatus('')
+      // Cleanup happens automatically when Telnyx fires hangup event
+    }, 3000)
+
+    return { success: true }
   } catch (error) {
     console.error('Transfer error:', error)
     setCallStatus('active')
-    setConferenceStatus('')
-    
-    // Try to resume original call if on hold
-    if (isOnHold && currentCall) {
-      try {
-        await currentCall.unhold()
-        setIsOnHold(false)
-      } catch (resumeError) {
-        console.error('Error resuming call after transfer failure:', resumeError)
-      }
-    }
-    
+    setConferenceStatus(error.message || 'Transfer failed')
+    setTimeout(() => setConferenceStatus(''), 3000)
     throw error
   }
 }

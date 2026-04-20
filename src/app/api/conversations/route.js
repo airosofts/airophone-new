@@ -165,6 +165,38 @@ export async function GET(request) {
       }
     })
 
+    // Attach lastCall to each conversation — match by phone numbers (not conversation_id
+    // since older calls may not have it set)
+    if (processedConversations.length > 0) {
+      const { data: callRows } = await supabaseAdmin
+        .from('calls')
+        .select('from_number, to_number, direction, status, created_at, duration_seconds')
+        .eq('workspace_id', workspace.workspaceId)
+        .order('created_at', { ascending: false })
+        .limit(2000)
+
+      // Build map keyed by "wsPhone10|contactPhone10" → most recent call
+      const normalizedWsPhones = new Set(workspacePhoneNumbers.map(p => p.replace(/\D/g, '').slice(-10)))
+      const callByPhones = {}
+      for (const call of (callRows || [])) {
+        const fn = call.from_number?.replace(/\D/g, '').slice(-10)
+        const tn = call.to_number?.replace(/\D/g, '').slice(-10)
+        if (!fn || !tn) continue
+        let wsPhone, contactPhone
+        if (normalizedWsPhones.has(fn)) { wsPhone = fn; contactPhone = tn }
+        else if (normalizedWsPhones.has(tn)) { wsPhone = tn; contactPhone = fn }
+        else continue
+        const key = `${wsPhone}|${contactPhone}`
+        if (!callByPhones[key]) callByPhones[key] = call
+      }
+
+      for (const conv of processedConversations) {
+        const wsPhone = conv.from_number?.replace(/\D/g, '').slice(-10)
+        const contactPhone = conv.phone_number?.replace(/\D/g, '').slice(-10)
+        conv.lastCall = callByPhones[`${wsPhone}|${contactPhone}`] || null
+      }
+    }
+
     console.log(`Fetched ${processedConversations.length} conversations for ${fromNumber || 'all numbers'}`)
 
     return NextResponse.json({

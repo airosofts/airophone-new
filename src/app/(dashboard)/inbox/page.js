@@ -18,6 +18,10 @@ import SkeletonLoader from '@/components/ui/skeleton-loader'
 export default function InboxPage() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [inboxTab, setInboxTab] = useState('chats') // 'chats' | 'calls'
+  const [calls, setCalls] = useState([])
+  const [callsLoading, setCallsLoading] = useState(false)
+  const [callFilter, setCallFilter] = useState('all') // 'all' | 'missed' | 'voicemail'
   const [showDialer, setShowDialer] = useState(false)
   const [dialerQuery, setDialerQuery] = useState('')
   const [dialerContacts, setDialerContacts] = useState([])
@@ -26,10 +30,14 @@ export default function InboxPage() {
 
   const [audioUnlocked, setAudioUnlocked] = useState(() => {
     if (typeof window === 'undefined') return false
-    // Already unlocked from a previous session
     if (localStorage.getItem('airo_audio_unlocked') === '1') return true
-    // Context already running (e.g. login click carried over via SPA navigation)
     return window.__airoCtx?.state === 'running'
+  })
+  const [bannerDismissed, setBannerDismissed] = useState(false)
+  const [showBlockedHelp, setShowBlockedHelp] = useState(false)
+  const [notifPermission, setNotifPermission] = useState(() => {
+    if (typeof window === 'undefined') return 'default'
+    return 'Notification' in window ? Notification.permission : 'granted'
   })
 
   // Initialize workspaceId synchronously from localStorage so usePhoneNumbers
@@ -92,6 +100,21 @@ export default function InboxPage() {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [showDialer])
+
+  // Fetch call history when calls tab is active
+  useEffect(() => {
+    if (inboxTab !== 'calls') return
+    const fetchCalls = async () => {
+      setCallsLoading(true)
+      try {
+        const res = await fetch(`/api/call-history?filter=${callFilter}&limit=50`)
+        const data = await res.json()
+        if (data.success) setCalls(data.calls || [])
+      } catch (e) { console.error('Failed to fetch calls:', e) }
+      finally { setCallsLoading(false) }
+    }
+    fetchCalls()
+  }, [inboxTab, callFilter])
 
   const handleDialerCall = (phoneNumber) => {
     setShowDialer(false)
@@ -515,19 +538,113 @@ export default function InboxPage() {
 
   return (
     <div className="flex flex-col h-full" style={{ background: '#FFFFFF' }}>
-      {/* Audio unlock banner — shown until user clicks once, which satisfies browser autoplay policy */}
-      {!audioUnlocked && (
+      {/* Notification + audio unlock banner */}
+      {!bannerDismissed && (!audioUnlocked || notifPermission !== 'granted') && (
         <div
-          onClick={handleAudioUnlock}
           style={{
-            background: '#1a1a2e', color: '#fff', padding: '8px 16px',
+            background: '#F7F6F3', color: '#131210', padding: '12px 20px',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            gap: 10, cursor: 'pointer', flexShrink: 0, fontSize: 13
+            flexShrink: 0, fontSize: 14,
+            borderBottom: '1px solid #E3E1DB',
+            position: 'relative',
           }}
         >
-          <span style={{ fontSize: 16 }}>🔔</span>
-          <span><strong>Click here to enable call ringtone & notifications</strong> — required by your browser</span>
-          <span style={{ marginLeft: 8, background: '#D63B1F', borderRadius: 6, padding: '2px 10px', fontSize: 12, fontWeight: 600 }}>Enable</span>
+          <span
+            onClick={async () => {
+              handleAudioUnlock()
+              if ('Notification' in window) {
+                if (Notification.permission === 'default') {
+                  const result = await Notification.requestPermission()
+                  setNotifPermission(result)
+                  if (result === 'granted') setBannerDismissed(true)
+                  if (result === 'denied') setShowBlockedHelp(true)
+                } else if (Notification.permission === 'denied') {
+                  setShowBlockedHelp(true)
+                }
+              }
+            }}
+            style={{ fontWeight: 500, cursor: 'pointer' }}
+          >
+            Click to enable notifications for calls and messages.
+          </span>
+          <svg
+            onClick={(e) => { e.stopPropagation(); handleAudioUnlock(); setBannerDismissed(true) }}
+            width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9B9890" strokeWidth="2"
+            style={{ position: 'absolute', right: 20, cursor: 'pointer' }}
+          >
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </div>
+      )}
+
+      {/* Enable notifications modal — shown when blocked */}
+      {showBlockedHelp && (
+        <div
+          onClick={() => setShowBlockedHelp(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 500,
+            background: 'rgba(19,18,16,0.3)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 24,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#FFFFFF', border: '1px solid #E3E1DB', borderRadius: 14,
+              width: '100%', maxWidth: 480, overflow: 'hidden',
+              boxShadow: '0 20px 56px rgba(19,18,16,0.12)',
+            }}
+          >
+            {/* Header */}
+            <div style={{
+              padding: '20px 24px', borderBottom: '1px solid #E3E1DB',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            }}>
+              <span style={{ fontSize: 16, fontWeight: 600, letterSpacing: '-0.02em', color: '#131210' }}>
+                Enable notifications
+              </span>
+              <button
+                onClick={() => setShowBlockedHelp(false)}
+                style={{ width: 30, height: 30, borderRadius: 7, border: '1px solid #E3E1DB', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#5C5A55', fontSize: 18, lineHeight: 1 }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: '24px' }}>
+              <p style={{ fontSize: 14, color: '#5C5A55', lineHeight: 1.65, fontWeight: 300, marginBottom: 20 }}>
+                To enable, click on the lock icon in the address bar and in the drop down menu for notifications, choose Allow.
+              </p>
+
+              {/* Guide image */}
+              <img
+                src="/notif.png"
+                alt="How to enable notifications"
+                style={{ width: '100%', borderRadius: 10, border: '1px solid #E3E1DB' }}
+              />
+            </div>
+
+            {/* Footer */}
+            <div style={{
+              padding: '14px 24px', borderTop: '1px solid #E3E1DB', background: '#F7F6F3',
+              display: 'flex', justifyContent: 'flex-end',
+            }}>
+              <button
+                onClick={() => setShowBlockedHelp(false)}
+                style={{
+                  padding: '8px 20px', borderRadius: 8, fontSize: 13, fontWeight: 500,
+                  background: '#D63B1F', color: '#fff', border: 'none', cursor: 'pointer',
+                  fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+                }}
+              >
+                Got it
+              </button>
+            </div>
+          </div>
         </div>
       )}
       {/* Campaign pending/rejected/approved banner */}
@@ -577,16 +694,39 @@ export default function InboxPage() {
       {/* Conversation List - Hidden on mobile when chat is open */}
       <div className={`${mobileView === 'chat' ? 'hidden' : 'flex'} md:flex w-full md:w-96 flex-col`} style={{ borderRight: '1px solid #E3E1DB' }}>
         <div className="sticky top-0 z-10" style={{ background: '#FFFFFF' }}>
-          {/* Row 1: Chats tab + call + compose icons */}
+          {/* Row 1: Chats/Calls tabs + call + compose icons */}
           <div className="flex items-center justify-between" style={{ padding: '12px 16px 8px' }}>
-            <span style={{ fontSize: 14, fontWeight: 600, letterSpacing: '-0.02em', color: '#131210' }}>Chats</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <button
+                onClick={() => setInboxTab('chats')}
+                style={{
+                  fontSize: 14, fontWeight: 600, letterSpacing: '-0.02em',
+                  color: inboxTab === 'chats' ? '#131210' : '#9B9890',
+                  background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px',
+                  borderBottom: inboxTab === 'chats' ? '2px solid #D63B1F' : '2px solid transparent',
+                  fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+                }}>
+                Chats
+              </button>
+              <button
+                onClick={() => setInboxTab('calls')}
+                style={{
+                  fontSize: 14, fontWeight: 600, letterSpacing: '-0.02em',
+                  color: inboxTab === 'calls' ? '#131210' : '#9B9890',
+                  background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px',
+                  borderBottom: inboxTab === 'calls' ? '2px solid #D63B1F' : '2px solid transparent',
+                  fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+                }}>
+                Calls
+              </button>
+            </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, position: 'relative' }}>
               {/* Call button */}
               <button
                 onClick={() => { setShowDialer(v => !v); setDialerQuery(''); setDialerContacts([]) }}
                 style={{
-                  width: 26, height: 26, borderRadius: 6,
-                  border: '1px solid #E3E1DB', background: showDialer ? '#F7F6F3' : 'transparent',
+                  width: 30, height: 30, borderRadius: 7,
+                  border: 'none', background: showDialer ? '#F7F6F3' : 'transparent',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   color: '#5C5A55', cursor: 'pointer', transition: 'all 0.15s',
                 }}
@@ -594,7 +734,7 @@ export default function InboxPage() {
                 onMouseLeave={(e) => { if (!showDialer) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = '#E3E1DB' } }}
                 title="Start a call"
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
                   <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.68A2 2 0 012 .99h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/>
                 </svg>
               </button>
@@ -683,7 +823,7 @@ export default function InboxPage() {
                         onMouseEnter={e => e.currentTarget.style.background = '#F7F6F3'}
                         onMouseLeave={e => e.currentTarget.style.background = 'none'}
                       >
-                        <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#D63B1F', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.68A2 2 0 012 .99h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg>
                         </div>
                         <div>
@@ -711,8 +851,8 @@ export default function InboxPage() {
                   setMobileView('chat')
                 }}
                 style={{
-                  width: 26, height: 26, borderRadius: 6,
-                  border: '1px solid #E3E1DB', background: 'transparent',
+                  width: 30, height: 30, borderRadius: 7,
+                  border: 'none', background: 'transparent',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   color: '#5C5A55', cursor: 'pointer', transition: 'all 0.15s',
                 }}
@@ -720,98 +860,243 @@ export default function InboxPage() {
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = '#E3E1DB' }}
                 title="New conversation"
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
                   <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
                 </svg>
               </button>
             </div>
           </div>
 
-          {/* Row 2: Filter tabs */}
-          <div style={{ padding: '8px 12px', borderBottom: '1px solid #E3E1DB' }}>
-            <FilterTabs currentFilter={filter} onFilterChange={setFilter} conversations={filteredConversations} />
-          </div>
+          {/* Chats: Filter tabs + Search */}
+          {inboxTab === 'chats' && (
+            <>
+              <div style={{ padding: '8px 12px', borderBottom: '1px solid #E3E1DB' }}>
+                <FilterTabs currentFilter={filter} onFilterChange={setFilter} conversations={filteredConversations} />
+              </div>
+              <div style={{ padding: '8px 12px', borderBottom: '1px solid #E3E1DB' }}>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search conversations..."
+                  style={{
+                    width: '100%', height: 32,
+                    border: '1px solid #E3E1DB', borderRadius: 7,
+                    background: '#F7F6F3',
+                    fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+                    fontSize: 12, color: '#131210',
+                    padding: '0 10px 0 30px', outline: 'none',
+                    backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239B9890' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='M21 21l-4.35-4.35'/%3E%3C/svg%3E\")",
+                    backgroundRepeat: 'no-repeat', backgroundPosition: '10px center',
+                    transition: 'border-color 0.15s',
+                  }}
+                  onFocus={(e) => { e.target.style.borderColor = '#D4D1C9' }}
+                  onBlur={(e) => { e.target.style.borderColor = '#E3E1DB' }}
+                />
+              </div>
+            </>
+          )}
 
-          {/* Row 3: Search */}
-          <div style={{ padding: '8px 12px', borderBottom: '1px solid #E3E1DB' }}>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search conversations..."
-              style={{
-                width: '100%', height: 32,
-                border: '1px solid #E3E1DB', borderRadius: 7,
-                background: '#F7F6F3',
-                fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
-                fontSize: 12, color: '#131210',
-                padding: '0 10px 0 30px',
-                outline: 'none',
-                backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239B9890' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='M21 21l-4.35-4.35'/%3E%3C/svg%3E\")",
-                backgroundRepeat: 'no-repeat',
-                backgroundPosition: '10px center',
-                transition: 'border-color 0.15s',
-              }}
-              onFocus={(e) => { e.target.style.borderColor = '#D4D1C9' }}
-              onBlur={(e) => { e.target.style.borderColor = '#E3E1DB' }}
-            />
-          </div>
+          {/* Calls: Filter tabs */}
+          {inboxTab === 'calls' && (
+            <div style={{ padding: '8px 12px', borderBottom: '1px solid #E3E1DB', display: 'flex', gap: 4 }}>
+              {[
+                { id: 'all', label: 'All' },
+                { id: 'missed', label: 'Missed' },
+                { id: 'forwarded', label: 'Forwarded' },
+              ].map(f => (
+                <button key={f.id} onClick={() => setCallFilter(f.id)}
+                  style={{
+                    fontSize: 12, padding: '4px 10px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                    fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+                    background: callFilter === f.id ? 'rgba(214,59,31,0.07)' : 'transparent',
+                    color: callFilter === f.id ? '#D63B1F' : '#9B9890',
+                    fontWeight: callFilter === f.id ? 500 : 400,
+                    transition: 'all 0.15s',
+                  }}>
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto scrollbar-thin">
-          {phoneNumbers.length === 0 ? (
-            <div className="p-8 text-center">
-              <div className="mx-auto mb-4 flex items-center justify-center" style={{ width: 48, height: 48, borderRadius: 13, background: '#EFEDE8', border: '1px solid #E3E1DB' }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9B9890" strokeWidth="1.5">
-                  <path d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <p style={{ fontSize: 14, fontWeight: 600, letterSpacing: '-0.02em', color: '#131210', marginBottom: 4 }}>No phone numbers available</p>
-              <p style={{ fontSize: '12.5px', color: '#9B9890', marginBottom: 16 }}>Purchase phone numbers to start messaging</p>
-              <button
-                onClick={() => router.push('/settings?tab=numbers')}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 7,
-                  background: '#D63B1F', color: '#fff', padding: '9px 18px',
-                  borderRadius: 8, fontSize: '12.5px', fontWeight: 500,
-                  border: 'none', cursor: 'pointer', transition: 'opacity 0.15s',
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.88' }}
-                onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
-              >
-                Buy Phone Number
-              </button>
-            </div>
-          ) : !selectedPhoneNumber ? (
-            <div className="p-8 text-center">
-              <div className="mx-auto mb-4 flex items-center justify-center" style={{ width: 48, height: 48, borderRadius: 13, background: '#EFEDE8', border: '1px solid #E3E1DB' }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9B9890" strokeWidth="1.5">
-                  <path d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <p style={{ fontSize: 14, fontWeight: 600, letterSpacing: '-0.02em', color: '#131210', marginBottom: 4 }}>No phone number selected</p>
-              <p style={{ fontSize: '12.5px', color: '#9B9890' }}>Choose a phone number from the sidebar</p>
-            </div>
-          ) : conversationsLoading ? (
-            <SkeletonLoader type="conversations" />
-          ) : (
-            <ConversationList
-              conversations={filteredConversations}
-              loading={conversationsLoading}
-              selectedConversation={selectedConversation}
-              onConversationSelect={handleConversationSelect}
-              formatPhoneNumber={formatPhoneNumber}
-              onDeleteConversation={handleDeleteConversation}
-              onMarkAsRead={handleMarkAsRead}
-              onMarkAsUnread={handleMarkAsUnread}
-              onMarkAsDone={handleMarkAsDone}
-              onMarkAsOpen={handleMarkAsOpen}
-              onPinConversation={handlePinConversation}
-              onBlockContact={handleBlockContact}
-              onAssignScenario={handleAssignScenario}
-              callHook={callHook}
-              isCreatingNew={isCreatingNewConversation}
-            />
+          {/* ── CHATS TAB ── */}
+          {inboxTab === 'chats' && (
+            <>
+              {phoneNumbers.length === 0 ? (
+                <div className="p-8 text-center">
+                  <div className="mx-auto mb-4 flex items-center justify-center" style={{ width: 48, height: 48, borderRadius: 13, background: '#EFEDE8', border: '1px solid #E3E1DB' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9B9890" strokeWidth="1.5">
+                      <path d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <p style={{ fontSize: 14, fontWeight: 600, letterSpacing: '-0.02em', color: '#131210', marginBottom: 4 }}>No phone numbers available</p>
+                  <p style={{ fontSize: '12.5px', color: '#9B9890', marginBottom: 16 }}>Purchase phone numbers to start messaging</p>
+                  <button
+                    onClick={() => router.push('/settings?tab=numbers')}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 7,
+                      background: '#D63B1F', color: '#fff', padding: '9px 18px',
+                      borderRadius: 8, fontSize: '12.5px', fontWeight: 500,
+                      border: 'none', cursor: 'pointer', transition: 'opacity 0.15s',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.88' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
+                  >
+                    Buy Phone Number
+                  </button>
+                </div>
+              ) : !selectedPhoneNumber ? (
+                <div className="p-8 text-center">
+                  <div className="mx-auto mb-4 flex items-center justify-center" style={{ width: 48, height: 48, borderRadius: 13, background: '#EFEDE8', border: '1px solid #E3E1DB' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9B9890" strokeWidth="1.5">
+                      <path d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <p style={{ fontSize: 14, fontWeight: 600, letterSpacing: '-0.02em', color: '#131210', marginBottom: 4 }}>No phone number selected</p>
+                  <p style={{ fontSize: '12.5px', color: '#9B9890' }}>Choose a phone number from the sidebar</p>
+                </div>
+              ) : conversationsLoading ? (
+                <SkeletonLoader type="conversations" />
+              ) : (
+                <ConversationList
+                  conversations={filteredConversations}
+                  loading={conversationsLoading}
+                  selectedConversation={selectedConversation}
+                  onConversationSelect={handleConversationSelect}
+                  formatPhoneNumber={formatPhoneNumber}
+                  onDeleteConversation={handleDeleteConversation}
+                  onMarkAsRead={handleMarkAsRead}
+                  onMarkAsUnread={handleMarkAsUnread}
+                  onMarkAsDone={handleMarkAsDone}
+                  onMarkAsOpen={handleMarkAsOpen}
+                  onPinConversation={handlePinConversation}
+                  onBlockContact={handleBlockContact}
+                  onAssignScenario={handleAssignScenario}
+                  callHook={callHook}
+                  isCreatingNew={isCreatingNewConversation}
+                />
+              )}
+            </>
+          )}
+
+          {/* ── CALLS TAB ── */}
+          {inboxTab === 'calls' && (
+            <>
+              {callsLoading ? (
+                <SkeletonLoader type="conversations" />
+              ) : calls.length === 0 ? (
+                <div className="p-8 text-center">
+                  <div className="mx-auto mb-4 flex items-center justify-center" style={{ width: 48, height: 48, borderRadius: 13, background: '#EFEDE8', border: '1px solid #E3E1DB' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9B9890" strokeWidth="1.5">
+                      <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.66A2 2 0 012 3H5a2 2 0 012 1.72c.12.96.36 1.9.7 2.81a2 2 0 01-.45 2.11L6.09 10.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.91.34 1.85.58 2.81.7A2 2 0 0122 17v-.08z"/>
+                    </svg>
+                  </div>
+                  <p style={{ fontSize: 14, fontWeight: 600, letterSpacing: '-0.02em', color: '#131210', marginBottom: 4 }}>No calls yet</p>
+                  <p style={{ fontSize: '12.5px', color: '#9B9890' }}>Your call history will appear here</p>
+                </div>
+              ) : (
+                calls.filter(c => {
+                  if (callFilter === 'missed') return c.status === 'missed'
+                  if (callFilter === 'forwarded') return c.status === 'forwarded' || c.forwarded_to
+                  return true
+                }).map((call) => {
+                  const isIncoming = call.direction === 'inbound' || call.direction === 'incoming'
+                  const isMissed = call.status === 'missed'
+                  const isForwarded = call.status === 'forwarded' || call.forwarded_to
+                  const contactNumber = isIncoming ? call.from_number : call.to_number
+                  const duration = call.duration_seconds
+                    ? `${Math.floor(call.duration_seconds / 60)}:${String(call.duration_seconds % 60).padStart(2, '0')}`
+                    : null
+                  const time = new Date(call.created_at)
+                  const now = new Date()
+                  const diffDays = Math.floor((now - time) / (1000 * 60 * 60 * 24))
+                  const timeStr = diffDays === 0
+                    ? time.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+                    : diffDays < 7
+                      ? time.toLocaleDateString('en-US', { weekday: 'short' })
+                      : time.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+
+                  return (
+                    <div
+                      key={call.id}
+                      onClick={() => {
+                        // Navigate to the conversation for this phone number
+                        const conv = filteredConversations?.find(c =>
+                          c.phone_number?.replace(/\D/g, '').slice(-10) === contactNumber?.replace(/\D/g, '').slice(-10)
+                        )
+                        if (conv) {
+                          handleConversationSelect(conv)
+                          setInboxTab('chats')
+                        }
+                      }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 11,
+                        padding: '11px 14px', borderBottom: '1px solid #E3E1DB',
+                        cursor: 'pointer', transition: 'background 0.12s',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = '#F7F6F3' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                    >
+                      {/* Direction icon */}
+                      <div style={{
+                        width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+                        background: isMissed ? 'rgba(214,59,31,0.07)' : isForwarded ? 'rgba(214,59,31,0.07)' : '#EFEDE8',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        {isMissed ? (
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D63B1F" strokeWidth="2" strokeLinecap="round">
+                            <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.66A2 2 0 012 3H5"/>
+                            <line x1="1" y1="1" x2="23" y2="23"/>
+                          </svg>
+                        ) : isIncoming ? (
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5C5A55" strokeWidth="2" strokeLinecap="round">
+                            <polyline points="7 17 17 7"/>
+                            <polyline points="7 7 7 17 17 17"/>
+                          </svg>
+                        ) : (
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5C5A55" strokeWidth="2" strokeLinecap="round">
+                            <polyline points="17 7 7 17"/>
+                            <polyline points="17 17 17 7 7 7"/>
+                          </svg>
+                        )}
+                      </div>
+
+                      {/* Call info */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 2 }}>
+                          <span style={{
+                            fontSize: '12.5px', fontWeight: 500,
+                            color: isMissed ? '#D63B1F' : '#131210',
+                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                          }}>
+                            {formatPhoneNumber ? formatPhoneNumber(contactNumber) : contactNumber}
+                          </span>
+                          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '9.5px', color: '#9B9890', flexShrink: 0, marginLeft: 8 }}>
+                            {timeStr}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: '11.5px', color: '#9B9890', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {isMissed ? 'Missed call' : isForwarded ? `Forwarded to ${call.forwarded_to}` : isIncoming ? 'Incoming call' : 'Outgoing call'}
+                            {duration && ` · ${duration}`}
+                          </span>
+                          {isMissed && (
+                            <span style={{
+                              fontSize: 9, fontWeight: 600, padding: '1px 5px', borderRadius: 4,
+                              fontFamily: "'JetBrains Mono', monospace", textTransform: 'uppercase',
+                              background: 'rgba(214,59,31,0.07)', color: '#D63B1F', letterSpacing: '0.05em',
+                            }}>Missed</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </>
           )}
         </div>
       </div>

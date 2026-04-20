@@ -28,13 +28,10 @@ async function registerAndSubscribe() {
     // Wait until SW is active (handles the case where it's still installing)
     await navigator.serviceWorker.ready
 
-    // Request notification permission — must be inside a user gesture (called from AudioUnlock handler)
-    let permission = Notification.permission
-    if (permission === 'default') {
-      permission = await Notification.requestPermission()
-    }
-    if (permission !== 'granted') {
-      console.warn('[PushSetup] Notification permission not granted:', permission)
+    // Don't request permission here — let the inbox banner handle it.
+    // Only proceed if already granted.
+    if (Notification.permission !== 'granted') {
+      console.log('[PushSetup] Notification permission not yet granted, skipping push setup')
       return
     }
 
@@ -84,13 +81,18 @@ export default function PushSetup() {
   useEffect(() => {
     if (typeof window === 'undefined') return
 
-    // Register SW and subscribe on first user gesture (same pattern as AudioUnlock)
-    // We piggyback on AudioUnlock's gesture events so we don't double-prompt
+    // Only set up push on dashboard pages (not login/signup/onboarding)
+    const path = window.location.pathname
+    if (path.startsWith('/login') || path.startsWith('/signup') || path.startsWith('/onboarding') || path.startsWith('/auth')) {
+      return
+    }
+
+    // Register SW and subscribe on first user gesture
     const handleGesture = () => { registerAndSubscribe() }
     const events = ['click', 'touchstart', 'keydown']
     events.forEach(e => document.addEventListener(e, handleGesture, { capture: true, passive: true, once: true }))
 
-    // Also try immediately if already logged in and SW might already be registered
+    // Also try immediately if already granted
     if (Notification?.permission === 'granted') {
       registerAndSubscribe()
     }
