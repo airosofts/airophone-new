@@ -7,12 +7,14 @@ import ApiKeys from '@/components/settings/ApiKeys'
 import Blocklist from '@/components/settings/Blocklist'
 import AiSettings from '@/components/settings/AiSettings'
 import CallForwarding from '@/components/settings/CallForwarding'
+import WorkspaceMembers from '@/components/settings/WorkspaceMembers'
 
 const sections = [
   {
     label: 'Workspace',
     items: [
       { id: 'numbers',    name: 'Phone Numbers',     icon: 'fa-sim-card' },
+      { id: 'members',    name: 'Team Members',      icon: 'fa-users' },
       { id: 'templates',  name: 'Message Templates', icon: 'fa-layer-group' },
       { id: 'apikeys',    name: 'API Keys',           icon: 'fa-plug' },
       { id: 'blocklist',  name: 'Blocklist',          icon: 'fa-ban' },
@@ -83,11 +85,12 @@ export default function SettingsPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-auto p-7">
-        {activeTab === 'numbers'   && <ManageNumbers />}
-        {activeTab === 'templates' && <MessageTemplates />}
-        {activeTab === 'apikeys'   && <ApiKeys />}
-        {activeTab === 'blocklist' && <Blocklist />}
-        {activeTab === 'ai'        && <AiSettings />}
+        {activeTab === 'numbers'    && <ManageNumbers />}
+        {activeTab === 'members'    && <WorkspaceMembers />}
+        {activeTab === 'templates'  && <MessageTemplates />}
+        {activeTab === 'apikeys'    && <ApiKeys />}
+        {activeTab === 'blocklist'  && <Blocklist />}
+        {activeTab === 'ai'         && <AiSettings />}
         {activeTab === 'forwarding' && <CallForwarding />}
 
         {['profile', 'notifications', 'security'].includes(activeTab) && (

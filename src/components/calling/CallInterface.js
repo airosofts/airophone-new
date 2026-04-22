@@ -24,6 +24,7 @@ export default function CallInterface({
   callHook
 }) {
   const [isMinimized, setIsMinimized] = useState(false)
+  const [incomingDismissed, setIncomingDismissed] = useState(false)
   const [showDialpad, setShowDialpad] = useState(false)
   const [showAddParticipant, setShowAddParticipant] = useState(false)
   const [showTransfer, setShowTransfer] = useState(false)
@@ -41,6 +42,7 @@ export default function CallInterface({
   useEffect(() => {
     if (callStatus === 'incoming' || callStatus === 'ringing' || callStatus === 'connecting') {
       setIsMinimized(false)
+      setIncomingDismissed(false)
       setShowDialpad(false)
       setShowAddParticipant(false)
       setShowTransfer(false)
@@ -243,8 +245,8 @@ export default function CallInterface({
     )
   }
 
-  // Incoming call — OpenPhone-style toast
-  if (callStatus === 'incoming') {
+  // Incoming call — centered modal
+  if (callStatus === 'incoming' && !incomingDismissed) {
     // Find the line name from phoneNumbers list
     const toNumber = incomingCall?.to
     const matchedLine = phoneNumbers.find(p =>
@@ -253,9 +255,9 @@ export default function CallInterface({
     const lineName = matchedLine?.custom_name || (formatPhoneNumber ? formatPhoneNumber(toNumber) : toNumber)
 
     return (
-      <div className="fixed bottom-6 right-6 z-50">
+      <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
         <div style={{
-          width: 320, background: '#FFFFFF',
+          width: 320, background: '#FFFFFF', pointerEvents: 'auto',
           border: '1px solid #E3E1DB', borderRadius: 16,
           boxShadow: '0 20px 56px rgba(19,18,16,0.14)',
           overflow: 'hidden',
@@ -275,8 +277,8 @@ export default function CallInterface({
               </span>
             </div>
             <button
-              onClick={onRejectCall}
-              title="Dismiss (silent reject)"
+              onClick={() => setIncomingDismissed(true)}
+              title="Dismiss for me (call still rings for others)"
               style={{
                 width: 22, height: 22, borderRadius: '50%', border: 'none',
                 background: 'transparent', cursor: 'pointer', display: 'flex',
