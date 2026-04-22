@@ -20,6 +20,7 @@ export default function CallInterface({
   onToggleHold,
   onSendDTMF,
   formatPhoneNumber,
+  phoneNumbers = [],
   callHook
 }) {
   const [isMinimized, setIsMinimized] = useState(false)
@@ -242,50 +243,113 @@ export default function CallInterface({
     )
   }
 
-  // Incoming call — compact bottom-left toast (OpenPhone-style)
+  // Incoming call — OpenPhone-style toast
   if (callStatus === 'incoming') {
+    // Find the line name from phoneNumbers list
+    const toNumber = incomingCall?.to
+    const matchedLine = phoneNumbers.find(p =>
+      p.phoneNumber?.replace(/\D/g, '').slice(-10) === toNumber?.replace(/\D/g, '').slice(-10)
+    )
+    const lineName = matchedLine?.custom_name || (formatPhoneNumber ? formatPhoneNumber(toNumber) : toNumber)
+
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="bg-[#FFFFFF] rounded-[14px] shadow-[0_20px_56px_rgba(19,18,16,0.12)] border border-[#E3E1DB] overflow-hidden w-[340px]">
+      <div className="fixed bottom-6 right-6 z-50">
+        <div style={{
+          width: 320, background: '#FFFFFF',
+          border: '1px solid #E3E1DB', borderRadius: 16,
+          boxShadow: '0 20px 56px rgba(19,18,16,0.14)',
+          overflow: 'hidden',
+          fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+        }}>
+          {/* Top bar: line name + dismiss */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '10px 14px 10px 16px',
+            borderBottom: '1px solid #F0EEE9',
+            background: '#F7F6F3',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#D63B1F', flexShrink: 0, animation: 'pulse 1.5s infinite' }} />
+              <span style={{ fontSize: 12, fontWeight: 500, color: '#5C5A55', letterSpacing: '-0.01em' }}>
+                {lineName || 'Incoming call'}
+              </span>
+            </div>
+            <button
+              onClick={onRejectCall}
+              title="Dismiss (silent reject)"
+              style={{
+                width: 22, height: 22, borderRadius: '50%', border: 'none',
+                background: 'transparent', cursor: 'pointer', display: 'flex',
+                alignItems: 'center', justifyContent: 'center', color: '#9B9890',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = '#EFEDE8'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+            >
+              <X size={13} strokeWidth={2.5} />
+            </button>
+          </div>
+
           {/* Caller info */}
-          <div className="px-6 pt-6 pb-5 flex flex-col items-center gap-4">
+          <div style={{ padding: '22px 20px 18px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
             {/* Pulsing avatar */}
-            <div className="relative flex items-center justify-center">
-              <span className="absolute w-[72px] h-[72px] rounded-full bg-[#D63B1F]/10 animate-ping" style={{ animationDuration: '1.8s' }} />
-              <span className="absolute w-[64px] h-[64px] rounded-full bg-[#D63B1F]/10" />
-              <div className="relative w-14 h-14 rounded-full bg-[#D63B1F] flex items-center justify-center text-white text-lg font-semibold">
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span className="animate-ping" style={{
+                position: 'absolute', width: 72, height: 72, borderRadius: '50%',
+                background: 'rgba(214,59,31,0.08)', animationDuration: '1.8s',
+              }} />
+              <span style={{
+                position: 'absolute', width: 62, height: 62, borderRadius: '50%',
+                background: 'rgba(214,59,31,0.06)',
+              }} />
+              <div style={{
+                position: 'relative', width: 52, height: 52, borderRadius: '50%',
+                background: '#D63B1F', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#fff', fontSize: 17, fontWeight: 600, letterSpacing: '0.02em',
+              }}>
                 {getInitials()}
               </div>
             </div>
 
-            {/* Number + label */}
-            <div className="text-center">
-              <p className="text-[18px] font-semibold text-[#131210] tracking-tight leading-tight">
+            <div style={{ textAlign: 'center' }}>
+              <p style={{ fontSize: 17, fontWeight: 600, color: '#131210', letterSpacing: '-0.03em', lineHeight: 1.2, margin: 0 }}>
                 {formatPhoneNumber ? formatPhoneNumber(incomingCall?.from) : incomingCall?.from}
               </p>
-              <p className="text-[13px] text-[#9B9890] mt-1 font-light">
+              <p style={{ fontSize: 12.5, color: '#9B9890', marginTop: 4, fontWeight: 300 }}>
                 is calling you
-                {incomingCall?.to && (
-                  <span> on {formatPhoneNumber ? formatPhoneNumber(incomingCall.to) : incomingCall.to}</span>
-                )}
               </p>
             </div>
           </div>
 
           {/* Action buttons */}
-          <div className="px-6 pb-5 flex gap-3">
+          <div style={{ padding: '0 16px 16px', display: 'flex', gap: 10 }}>
             <button
               onClick={onRejectCall}
-              className="flex-1 h-11 bg-[rgba(214,59,31,0.07)] hover:bg-[rgba(214,59,31,0.12)] text-[#D63B1F] rounded-[9px] flex items-center justify-center gap-2 text-[13px] font-medium transition-all active:scale-[0.97]"
+              style={{
+                flex: 1, height: 42, borderRadius: 10, border: 'none', cursor: 'pointer',
+                background: 'rgba(214,59,31,0.07)', color: '#D63B1F',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+                fontSize: 13, fontWeight: 500, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+                transition: 'background 0.15s',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(214,59,31,0.13)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'rgba(214,59,31,0.07)'}
             >
-              <PhoneOff className="w-4 h-4" />
+              <PhoneOff size={15} />
               Reject
             </button>
             <button
               onClick={onAcceptCall}
-              className="flex-1 h-11 bg-[#22c55e] hover:bg-[#16a34a] text-white rounded-[9px] flex items-center justify-center gap-2 text-[13px] font-medium transition-all active:scale-[0.97]"
+              style={{
+                flex: 1, height: 42, borderRadius: 10, border: 'none', cursor: 'pointer',
+                background: '#16a34a', color: '#fff',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+                fontSize: 13, fontWeight: 500, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+                transition: 'background 0.15s',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = '#15803d'}
+              onMouseLeave={e => e.currentTarget.style.background = '#16a34a'}
             >
-              <Phone className="w-4 h-4" />
+              <Phone size={15} />
               Accept
             </button>
           </div>

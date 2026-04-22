@@ -1220,6 +1220,7 @@ export default function InboxPage() {
           onSendDTMF={callHook.sendDTMF}
           formatPhoneNumber={formatPhoneNumber}
           availablePhoneNumbers={callHook.availablePhoneNumbers}
+          phoneNumbers={phoneNumbers}
           callHook={callHook}
         />
       )}
