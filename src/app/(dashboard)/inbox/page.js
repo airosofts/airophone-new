@@ -654,11 +654,11 @@ export default function InboxPage() {
       {campaignStatus === 'pending' && (
         <div style={{
           background: '#FFFBF0', borderBottom: '1px solid #E3E1DB',
-          padding: '9px 20px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
+          padding: '9px 20px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, flexShrink: 0,
           fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
         }}>
           <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#d97706', flexShrink: 0 }} />
-          <span style={{ fontSize: 12.5, color: '#5C5A55', flex: 1, lineHeight: 1.5 }}>
+          <span style={{ fontSize: 12.5, color: '#5C5A55', lineHeight: 1.5 }}>
             Your number is being set up — SMS usually activates within 10 minutes. You can still make and receive calls right away.
           </span>
         </div>
@@ -666,11 +666,11 @@ export default function InboxPage() {
       {campaignStatus === 'rejected' && (
         <div style={{
           background: 'rgba(214,59,31,0.04)', borderBottom: '1px solid #E3E1DB',
-          padding: '9px 20px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
+          padding: '9px 20px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, flexShrink: 0,
           fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
         }}>
           <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#D63B1F', flexShrink: 0 }} />
-          <span style={{ fontSize: 12.5, color: '#5C5A55', flex: 1, lineHeight: 1.5 }}>
+          <span style={{ fontSize: 12.5, color: '#5C5A55', lineHeight: 1.5 }}>
             We ran into an issue activating SMS for this number. Please reach out to our support team and we&apos;ll get it sorted quickly.
           </span>
         </div>
@@ -678,11 +678,11 @@ export default function InboxPage() {
       {campaignStatus === 'approved' && !approvalDismissed && (
         <div style={{
           background: 'rgba(22,163,74,0.04)', borderBottom: '1px solid #E3E1DB',
-          padding: '9px 20px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
+          padding: '9px 20px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, flexShrink: 0,
           fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
         }}>
           <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a', flexShrink: 0 }} />
-          <span style={{ fontSize: 12.5, color: '#5C5A55', flex: 1, lineHeight: 1.5 }}>
+          <span style={{ fontSize: 12.5, color: '#5C5A55', lineHeight: 1.5 }}>
             Your number is all set — SMS is now active and ready to go.
           </span>
           <button onClick={dismissApproval} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9B9890', padding: '0 2px', flexShrink: 0, display: 'flex', alignItems: 'center' }}>
