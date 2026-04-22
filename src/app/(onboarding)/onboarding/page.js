@@ -290,9 +290,26 @@ function OtpInput({ value, onChange, length = 6 }) {
   const digits = value.split('').concat(Array(length).fill('')).slice(0, length)
 
   const handleKeyDown = (e, idx) => {
-    if (e.key === 'Backspace' && !digits[idx] && idx > 0) {
-      const prev = e.target.parentNode.children[idx - 1]
-      if (prev) prev.focus()
+    if (e.key === 'Backspace') {
+      e.preventDefault()
+      const arr = value.split('').concat(Array(length).fill('')).slice(0, length)
+      if (arr[idx]) {
+        // Clear current box and stay
+        arr[idx] = ''
+        onChange(arr.join('').trimEnd())
+      } else if (idx > 0) {
+        // Box already empty — move to previous and clear it
+        arr[idx - 1] = ''
+        onChange(arr.join('').trimEnd())
+        const prev = e.target.parentNode.children[idx - 1]
+        if (prev) prev.focus()
+      }
+    } else if (e.key === 'ArrowLeft' && idx > 0) {
+      e.preventDefault()
+      e.target.parentNode.children[idx - 1].focus()
+    } else if (e.key === 'ArrowRight' && idx < length - 1) {
+      e.preventDefault()
+      e.target.parentNode.children[idx + 1].focus()
     }
   }
 
@@ -300,8 +317,9 @@ function OtpInput({ value, onChange, length = 6 }) {
     const val = e.target.value.replace(/\D/g, '')
     if (!val) return
     const chars = val.split('')
-    const arr = value.split('')
+    const arr = value.split('').concat(Array(length).fill('')).slice(0, length)
     if (chars.length > 1) {
+      // paste via typing multiple chars
       const pasted = val.slice(0, length)
       onChange(pasted)
       const lastIdx = Math.min(pasted.length, length) - 1
@@ -310,7 +328,7 @@ function OtpInput({ value, onChange, length = 6 }) {
       return
     }
     arr[idx] = chars[0]
-    onChange(arr.join(''))
+    onChange(arr.join('').trimEnd())
     if (idx < length - 1) {
       const next = e.target.parentNode.children[idx + 1]
       if (next) next.focus()
@@ -351,7 +369,8 @@ function OtpInput({ value, onChange, length = 6 }) {
             onInput={e => handleInput(e, i)}
             onKeyDown={e => handleKeyDown(e, i)}
             onPaste={handlePaste}
-            onFocus={e => { e.target.style.borderColor = C.red; e.target.style.boxShadow = `0 0 0 3px ${C.redDim}` }}
+            onClick={e => e.target.select()}
+            onFocus={e => { e.target.select(); e.target.style.borderColor = C.red; e.target.style.boxShadow = `0 0 0 3px ${C.redDim}` }}
             onBlur={e => { e.target.style.borderColor = C.border2; e.target.style.boxShadow = 'none' }}
             style={{ ...boxStyle, borderColor: d ? C.red : C.border2 }}
           />

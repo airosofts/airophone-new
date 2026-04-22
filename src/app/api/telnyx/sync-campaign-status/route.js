@@ -47,10 +47,10 @@ async function sendNumberApprovedEmail(email, name, phoneNumber) {
       </div>
 
       <h1 style="margin:0 0 10px;font-size:22px;font-weight:600;color:#131210;letter-spacing:-0.03em;line-height:1.2;font-family:'Plus Jakarta Sans','Helvetica Neue',Arial,sans-serif;">
-        Your number is all set, ${firstName}
+        Your number is ready, ${firstName}
       </h1>
       <p style="margin:0 0 24px;font-size:14px;font-weight:300;color:#5C5A55;line-height:1.65;font-family:'Plus Jakarta Sans','Helvetica Neue',Arial,sans-serif;">
-        Great news — your phone number has been approved by the carriers and is now fully active for both SMS and calls.
+        Your phone number is now fully active — SMS and calls are both ready to go.
       </p>
 
       <!-- Number box -->

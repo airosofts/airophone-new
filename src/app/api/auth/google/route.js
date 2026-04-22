@@ -1,6 +1,54 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
 import { signToken, buildSessionCookie } from '@/lib/jwt'
+import { Resend } from 'resend'
+
+const resend = new Resend(process.env.RESEND_API_KEY)
+const logoUrl = 'https://sebaeihdyfhbkqmmrjbh.supabase.co/storage/v1/object/public/assets/brand/logo.png'
+
+async function sendWelcomeEmail(email, name) {
+  const firstName = name?.split(' ')[0] || name || 'there'
+  await resend.emails.send({
+    from: 'AiroPhone <noreply@airophone.com>',
+    to: email,
+    subject: `Welcome to AiroPhone, ${firstName}`,
+    html: `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body style="margin:0;padding:0;background:#F7F6F3;font-family:'Plus Jakarta Sans','Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased;">
+  <div style="max-width:480px;margin:40px auto;background:#FFFFFF;border:1px solid #E3E1DB;border-radius:14px;overflow:hidden;box-shadow:0 2px 12px rgba(19,18,16,0.04);">
+    <div style="padding:24px 32px;border-bottom:1px solid #E3E1DB;">
+      <table cellpadding="0" cellspacing="0" border="0"><tr>
+        <td style="padding-right:10px;vertical-align:middle;"><img src="${logoUrl}" width="30" height="30" alt="AiroPhone" style="display:block;border-radius:7px;" /></td>
+        <td style="vertical-align:middle;"><span style="font-size:15px;font-weight:600;color:#131210;letter-spacing:-0.02em;font-family:'Plus Jakarta Sans','Helvetica Neue',Arial,sans-serif;">AiroPhone</span></td>
+      </tr></table>
+    </div>
+    <div style="padding:36px 32px 32px;">
+      <div style="font-family:'JetBrains Mono','Courier New',monospace;font-size:10px;font-weight:500;color:#D63B1F;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:14px;">Welcome aboard</div>
+      <h1 style="margin:0 0 10px;font-size:22px;font-weight:600;color:#131210;letter-spacing:-0.03em;line-height:1.2;font-family:'Plus Jakarta Sans','Helvetica Neue',Arial,sans-serif;">Hey ${firstName}, you&rsquo;re all set!</h1>
+      <p style="margin:0 0 24px;font-size:14px;font-weight:300;color:#5C5A55;line-height:1.65;font-family:'Plus Jakarta Sans','Helvetica Neue',Arial,sans-serif;">Welcome to AiroPhone. Your account is ready and your workspace has been created. We&rsquo;re excited to have you here.</p>
+      <div style="background:#F7F6F3;border:1px solid #E3E1DB;border-radius:10px;padding:18px 20px;margin-bottom:28px;">
+        <p style="margin:0 0 10px;font-size:13px;font-weight:500;color:#131210;font-family:'Plus Jakarta Sans','Helvetica Neue',Arial,sans-serif;">A quick heads up on your number</p>
+        <p style="margin:0;font-size:13px;font-weight:300;color:#5C5A55;line-height:1.6;font-family:'Plus Jakarta Sans','Helvetica Neue',Arial,sans-serif;">Once you pick a phone number, it usually takes around 10 minutes for SMS to become fully active. Calls work immediately, and we&rsquo;ll send you an email as soon as SMS is ready.</p>
+      </div>
+      <a href="https://app.airophone.com/inbox" style="display:block;background:#D63B1F;color:#FFFFFF;text-align:center;padding:13px 24px;border-radius:9px;font-size:14px;font-weight:600;text-decoration:none;letter-spacing:-0.01em;font-family:'Plus Jakarta Sans','Helvetica Neue',Arial,sans-serif;">Go to your inbox</a>
+    </div>
+    <div style="padding:20px 32px;border-top:1px solid #E3E1DB;background:#F7F6F3;">
+      <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>
+        <td style="font-family:'JetBrains Mono','Courier New',monospace;font-size:11px;color:#9B9890;letter-spacing:0.04em;">&copy; 2025 AIROSOFTS LLC</td>
+        <td style="text-align:right;"><a href="https://airophone.com" style="font-family:'JetBrains Mono','Courier New',monospace;font-size:11px;color:#9B9890;text-decoration:none;letter-spacing:0.04em;">airophone.com</a></td>
+      </tr></table>
+    </div>
+  </div>
+</body>
+</html>`,
+  }).catch(err => console.warn('[google-auth] Welcome email failed (non-critical):', err.message))
+}
 
 function generateSlug(name) {
   const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
@@ -164,6 +212,9 @@ export async function POST(request) {
     await supabaseAdmin
       .from('wallets')
       .insert({ user_id: newUser.id, workspace_id: newWorkspace.id, credits: 0, balance: 0, currency: 'USD' })
+
+    // Send welcome email (non-blocking)
+    sendWelcomeEmail(newUser.email, newUser.name)
 
     const session = {
       userId: newUser.id,
