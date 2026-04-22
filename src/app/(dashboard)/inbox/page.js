@@ -518,7 +518,10 @@ export default function InboxPage() {
     )
   }
 
-  const campaignStatus = selectedPhoneNumber?.campaign_status
+  // Show pending banner for null (not yet assigned) OR pending status on US numbers
+  const rawCampaignStatus = selectedPhoneNumber?.campaign_status
+  const isUsNumber = selectedPhoneNumber?.phoneNumber?.startsWith('+1')
+  const campaignStatus = (rawCampaignStatus === null && isUsNumber) ? 'pending' : rawCampaignStatus
   const approvalDismissed = !!selectedPhoneNumber?.approval_notified_at
 
   const dismissApproval = () => {
@@ -650,43 +653,43 @@ export default function InboxPage() {
       {/* Campaign pending/rejected/approved banner */}
       {campaignStatus === 'pending' && (
         <div style={{
-          background: '#FFF8E6', borderBottom: '1px solid #F5D87A',
-          padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexShrink: 0
+          background: '#FFFBF0', borderBottom: '1px solid #E3E1DB',
+          padding: '9px 20px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
+          fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
         }}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#B45309" strokeWidth="2" style={{ flexShrink: 0 }}>
-            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
-            <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-          </svg>
-          <span style={{ fontSize: 12.5, color: '#92400E' }}>
-            <strong>Your number is pending 10DLC campaign approval.</strong> SMS delivery may be limited until carriers approve it — usually within a few hours.
+          <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#d97706', flexShrink: 0 }} />
+          <span style={{ fontSize: 12.5, color: '#5C5A55', flex: 1, lineHeight: 1.5 }}>
+            Your number is being set up — SMS usually activates within 10 minutes. You can still make and receive calls right away.
           </span>
         </div>
       )}
       {campaignStatus === 'rejected' && (
         <div style={{
-          background: '#FEF2F2', borderBottom: '1px solid #FCA5A5',
-          padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexShrink: 0
+          background: 'rgba(214,59,31,0.04)', borderBottom: '1px solid #E3E1DB',
+          padding: '9px 20px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
+          fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
         }}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#991B1B" strokeWidth="2" style={{ flexShrink: 0 }}>
-            <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
-          </svg>
-          <span style={{ fontSize: 12.5, color: '#991B1B' }}>
-            <strong>10DLC campaign registration was rejected for this number.</strong> Please contact support to resolve this before sending SMS.
+          <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#D63B1F', flexShrink: 0 }} />
+          <span style={{ fontSize: 12.5, color: '#5C5A55', flex: 1, lineHeight: 1.5 }}>
+            We ran into an issue activating SMS for this number. Please reach out to our support team and we&apos;ll get it sorted quickly.
           </span>
         </div>
       )}
       {campaignStatus === 'approved' && !approvalDismissed && (
         <div style={{
-          background: '#F0FDF4', borderBottom: '1px solid #86EFAC',
-          padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexShrink: 0
+          background: 'rgba(22,163,74,0.04)', borderBottom: '1px solid #E3E1DB',
+          padding: '9px 20px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
+          fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
         }}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#15803D" strokeWidth="2" style={{ flexShrink: 0 }}>
-            <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
-          </svg>
-          <span style={{ fontSize: 12.5, color: '#15803D', flex: 1, textAlign: 'center' }}>
-            <strong>Your number is approved!</strong> All carriers have verified your 10DLC registration — you&apos;re ready to send SMS.
+          <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a', flexShrink: 0 }} />
+          <span style={{ fontSize: 12.5, color: '#5C5A55', flex: 1, lineHeight: 1.5 }}>
+            Your number is all set — SMS is now active and ready to go.
           </span>
-          <button onClick={dismissApproval} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#15803D', opacity: 0.6, padding: '0 4px', flexShrink: 0, fontSize: 16, lineHeight: 1 }}>×</button>
+          <button onClick={dismissApproval} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9B9890', padding: '0 2px', flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
         </div>
       )}
 

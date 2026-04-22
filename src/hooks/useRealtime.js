@@ -319,6 +319,29 @@ export function usePhoneNumbers(workspaceId) {
   const [loading, setLoading] = useState(true)
   const channelRef = useRef(null)
   const syncedRef = useRef(false)
+  const pollIntervalRef = useRef(null)
+
+  const syncCampaignStatus = useCallback((currentNumbers, wid) => {
+    // Sync if any US number is pending or null (not yet assigned)
+    const needsSync = currentNumbers.some(
+      p => p.phoneNumber?.startsWith('+1') && (p.campaign_status === 'pending' || p.campaign_status === null)
+    )
+    if (!needsSync || !wid) return
+    fetch('/api/telnyx/sync-campaign-status', {
+      method: 'POST',
+      headers: { 'x-workspace-id': wid },
+    })
+      .then(r => r.json())
+      .then(result => {
+        if (result.synced > 0) {
+          apiGet('/api/phone-numbers')
+            .then(r => r.json())
+            .then(d => { if (d.success) setPhoneNumbers(d.phoneNumbers || []) })
+            .catch(() => {})
+        }
+      })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     const fetchAndSubscribe = async () => {
@@ -329,26 +352,32 @@ export function usePhoneNumbers(workspaceId) {
           const numbers = data.phoneNumbers || []
           setPhoneNumbers(numbers)
 
-          // If any numbers are still pending and we haven't synced yet this session,
-          // query Telnyx for the real status and update the DB
-          const hasPending = numbers.some(p => p.campaign_status === 'pending')
-          if (hasPending && workspaceId && !syncedRef.current) {
+          // Initial sync
+          if (!syncedRef.current) {
             syncedRef.current = true
-            fetch('/api/telnyx/sync-campaign-status', {
-              method: 'POST',
-              headers: { 'x-workspace-id': workspaceId },
-            })
-              .then(r => r.json())
-              .then(result => {
-                if (result.synced > 0) {
-                  // Re-fetch phone numbers to pick up the updated statuses
-                  apiGet('/api/phone-numbers')
-                    .then(r => r.json())
-                    .then(d => { if (d.success) setPhoneNumbers(d.phoneNumbers || []) })
-                    .catch(() => {})
+            syncCampaignStatus(numbers, workspaceId)
+          }
+
+          // Poll every 30s while any number is pending or unassigned
+          const hasPendingOrNull = numbers.some(
+            p => p.phoneNumber?.startsWith('+1') && (p.campaign_status === 'pending' || p.campaign_status === null)
+          )
+          if (hasPendingOrNull && workspaceId) {
+            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
+            pollIntervalRef.current = setInterval(() => {
+              setPhoneNumbers(current => {
+                const stillPending = current.some(
+                  p => p.phoneNumber?.startsWith('+1') && (p.campaign_status === 'pending' || p.campaign_status === null)
+                )
+                if (!stillPending) {
+                  clearInterval(pollIntervalRef.current)
+                  pollIntervalRef.current = null
+                  return current
                 }
+                syncCampaignStatus(current, workspaceId)
+                return current
               })
-              .catch(() => {})
+            }, 30000)
           }
         }
       } catch (e) {
@@ -360,6 +389,15 @@ export function usePhoneNumbers(workspaceId) {
 
     fetchAndSubscribe()
 
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current)
+        pollIntervalRef.current = null
+      }
+    }
+  }, [workspaceId, syncCampaignStatus])
+
+  useEffect(() => {
     if (!workspaceId) return
 
     if (channelRef.current) supabase.removeChannel(channelRef.current)
@@ -389,6 +427,7 @@ export function usePhoneNumbers(workspaceId) {
 
   return { phoneNumbers, setPhoneNumbers, loading }
 }
+
 
 export function useRealtimeConversations(fromNumber) {
   const [conversations, setConversations] = useState([])
