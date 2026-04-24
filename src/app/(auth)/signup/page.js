@@ -75,6 +75,11 @@ function SignupForm() {
   }, [inviteEmail])
 
   const handleGoogleSignup = () => {
+    // Preserve invite params through Google OAuth round-trip
+    if (inviteWid) {
+      sessionStorage.setItem('invite_wid', inviteWid)
+      sessionStorage.setItem('invite_role', inviteRoleParam)
+    }
     const clientId = '167172022831-j9bjjeq43m4o2urp1ec3ovks5jvlaguk.apps.googleusercontent.com'
     const redirectUri = `${window.location.origin}/auth/callback`
     const scope = 'openid email profile'

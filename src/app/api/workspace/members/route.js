@@ -115,8 +115,8 @@ export async function POST(request) {
         })
       }
 
-      // Send notification email
-      await sendInviteEmail(normalizedEmail, existingUser.name, inviter?.name, ws?.name, APP_URL)
+      // Send notification email (existing user — link to login with workspace context)
+      await sendInviteEmail(normalizedEmail, existingUser.name, inviter?.name, ws?.name, APP_URL, false, workspace.workspaceId)
 
       return NextResponse.json({ success: true, message: 'Member added and notified by email' })
     }
@@ -163,6 +163,8 @@ async function sendInviteEmail(toEmail, toName, inviterName, workspaceName, appU
     ? `${appUrl}/signup?invite=${encodeURIComponent(toEmail)}&wid=${workspaceId}&role=${role}`
     : isNewUser
     ? `${appUrl}/signup?invite=${encodeURIComponent(toEmail)}`
+    : workspaceId
+    ? `${appUrl}/login?wid=${workspaceId}`
     : `${appUrl}/login`
   const ctaText = isNewUser ? 'Create account &amp; join' : 'Accept invitation'
   const bodyText = isNewUser

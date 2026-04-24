@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
 const C = {
@@ -38,7 +38,10 @@ function CheckIcon() {
   )
 }
 
-export default function LoginPage() {
+function LoginForm() {
+  const searchParams = useSearchParams()
+  const widParam = searchParams.get('wid') || ''
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -47,6 +50,11 @@ export default function LoginPage() {
   const router = useRouter()
 
   const handleGoogleLogin = () => {
+    // Store invite workspace param so we can use it after OAuth redirect
+    if (widParam) {
+      sessionStorage.setItem('invite_wid', widParam)
+      sessionStorage.setItem('invite_role', 'member')
+    }
     const clientId = '167172022831-j9bjjeq43m4o2urp1ec3ovks5jvlaguk.apps.googleusercontent.com'
     const redirectUri = `${window.location.origin}/auth/callback`
     const scope = 'openid email profile'
@@ -66,6 +74,18 @@ export default function LoginPage() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Invalid credentials')
+
+      // If coming from an invite link, switch to the invited workspace
+      if (widParam && data.session) {
+        const targetWs = data.session.availableWorkspaces?.find(w => w.id === widParam)
+        if (targetWs) {
+          data.session.workspaceId = targetWs.id
+          data.session.workspaceName = targetWs.name
+          data.session.workspaceSlug = targetWs.slug
+          data.session.workspaceRole = targetWs.role
+        }
+      }
+
       localStorage.setItem('user_session', JSON.stringify(data.session))
       router.push('/inbox')
     } catch (err) {
@@ -271,5 +291,13 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   )
 }

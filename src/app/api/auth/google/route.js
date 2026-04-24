@@ -58,7 +58,7 @@ function generateSlug(name) {
 
 export async function POST(request) {
   try {
-    const { code, redirect_uri } = await request.json()
+    const { code, redirect_uri, inviteWorkspaceId, inviteRole } = await request.json()
 
     if (!code || !redirect_uri) {
       return NextResponse.json({ error: 'Authorization code and redirect_uri are required' }, { status: 400 })
@@ -131,9 +131,50 @@ export async function POST(request) {
         return NextResponse.json({ error: 'No active workspace found for this account' }, { status: 403 })
       }
 
+      // If coming from an invite link, switch to the invited workspace
+      if (inviteWorkspaceId) {
+        const alreadyMember = memberships.find(m => m.workspace_id === inviteWorkspaceId)
+        if (!alreadyMember) {
+          // Add to invited workspace
+          const { data: invitedWs } = await supabaseAdmin
+            .from('workspaces')
+            .select('id, name, slug, messaging_profile_id, billing_group_id')
+            .eq('id', inviteWorkspaceId)
+            .single()
+          if (invitedWs) {
+            await supabaseAdmin.from('workspace_members').insert({
+              workspace_id: invitedWs.id,
+              user_id: existingUser.id,
+              role: inviteRole || 'member',
+              is_active: true,
+            })
+            // Best-effort mark invite accepted
+            await supabaseAdmin
+              .from('workspace_invites')
+              .update({ status: 'accepted', updated_at: new Date().toISOString() })
+              .eq('workspace_id', invitedWs.id)
+              .eq('email', email)
+              .eq('status', 'pending')
+            // Switch default workspace
+            await supabaseAdmin.from('users').update({ default_workspace_id: invitedWs.id }).eq('id', existingUser.id)
+            // Add to memberships list for session
+            memberships.push({
+              workspace_id: invitedWs.id, role: inviteRole || 'member', permissions: {},
+              workspaces: invitedWs,
+            })
+          }
+        }
+        // Switch active workspace to invited one
+        const invitedMembership = memberships.find(m => m.workspace_id === inviteWorkspaceId)
+        if (invitedMembership) {
+          await supabaseAdmin.from('users').update({ default_workspace_id: inviteWorkspaceId }).eq('id', existingUser.id)
+        }
+      }
+
       let defaultWs = memberships[0]
-      if (existingUser.default_workspace_id) {
-        const found = memberships.find(m => m.workspace_id === existingUser.default_workspace_id)
+      const targetWsId = inviteWorkspaceId || existingUser.default_workspace_id
+      if (targetWsId) {
+        const found = memberships.find(m => m.workspace_id === targetWsId)
         if (found) defaultWs = found
       }
 
@@ -166,7 +207,7 @@ export async function POST(request) {
       return res
     }
 
-    // ── NEW USER: create user + workspace + membership + wallet ──
+    // ── NEW USER: create user ──
     const { data: newUser, error: userError } = await supabaseAdmin
       .from('users')
       .insert({
@@ -185,33 +226,118 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Failed to create account' }, { status: 500 })
     }
 
-    const workspaceName = `${googleName}'s Workspace`
-    const slug = generateSlug(workspaceName)
+    let workspaceId, workspaceName, workspaceSlug, workspaceRole, messagingProfileId, billingGroupId
+    let isInvited = false
 
-    const { data: newWorkspace, error: wsError } = await supabaseAdmin
-      .from('workspaces')
-      .insert({ name: workspaceName, slug, is_active: true, created_by: newUser.id })
-      .select()
-      .single()
+    // If invite params provided, join that workspace instead of creating one
+    if (inviteWorkspaceId) {
+      const { data: invitedWs } = await supabaseAdmin
+        .from('workspaces')
+        .select('id, name, slug, messaging_profile_id, billing_group_id')
+        .eq('id', inviteWorkspaceId)
+        .single()
 
-    if (wsError) {
-      console.error('Error creating workspace:', wsError)
-      await supabaseAdmin.from('users').delete().eq('id', newUser.id)
-      return NextResponse.json({ error: 'Failed to create workspace' }, { status: 500 })
+      if (invitedWs) {
+        await supabaseAdmin.from('workspace_members').insert({
+          workspace_id: invitedWs.id,
+          user_id: newUser.id,
+          role: inviteRole || 'member',
+          is_active: true,
+        })
+        // Best-effort mark invite accepted
+        await supabaseAdmin
+          .from('workspace_invites')
+          .update({ status: 'accepted', updated_at: new Date().toISOString() })
+          .eq('workspace_id', invitedWs.id)
+          .eq('email', email)
+          .eq('status', 'pending')
+        await supabaseAdmin.from('users').update({ default_workspace_id: invitedWs.id }).eq('id', newUser.id)
+
+        workspaceId = invitedWs.id
+        workspaceName = invitedWs.name
+        workspaceSlug = invitedWs.slug
+        workspaceRole = inviteRole || 'member'
+        messagingProfileId = invitedWs.messaging_profile_id || null
+        billingGroupId = invitedWs.billing_group_id || null
+        isInvited = true
+      }
     }
 
-    await supabaseAdmin
-      .from('workspace_members')
-      .insert({ workspace_id: newWorkspace.id, user_id: newUser.id, role: 'owner', is_active: true })
+    // Fallback: check workspace_invites table for this email
+    if (!isInvited) {
+      try {
+        const { data: pendingInvite } = await supabaseAdmin
+          .from('workspace_invites')
+          .select('id, workspace_id, role')
+          .eq('email', email)
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single()
 
-    await supabaseAdmin
-      .from('users')
-      .update({ default_workspace_id: newWorkspace.id })
-      .eq('id', newUser.id)
+        if (pendingInvite) {
+          const { data: invitedWs } = await supabaseAdmin
+            .from('workspaces')
+            .select('id, name, slug, messaging_profile_id, billing_group_id')
+            .eq('id', pendingInvite.workspace_id)
+            .single()
+          if (invitedWs) {
+            await supabaseAdmin.from('workspace_members').insert({
+              workspace_id: invitedWs.id,
+              user_id: newUser.id,
+              role: pendingInvite.role || 'member',
+              is_active: true,
+            })
+            await supabaseAdmin
+              .from('workspace_invites')
+              .update({ status: 'accepted', updated_at: new Date().toISOString() })
+              .eq('id', pendingInvite.id)
+            await supabaseAdmin.from('users').update({ default_workspace_id: invitedWs.id }).eq('id', newUser.id)
 
-    await supabaseAdmin
-      .from('wallets')
-      .insert({ user_id: newUser.id, workspace_id: newWorkspace.id, credits: 0, balance: 0, currency: 'USD' })
+            workspaceId = invitedWs.id
+            workspaceName = invitedWs.name
+            workspaceSlug = invitedWs.slug
+            workspaceRole = pendingInvite.role || 'member'
+            messagingProfileId = invitedWs.messaging_profile_id || null
+            billingGroupId = invitedWs.billing_group_id || null
+            isInvited = true
+          }
+        }
+      } catch { /* workspace_invites table may not exist */ }
+    }
+
+    if (!isInvited) {
+      // No invite — create their own workspace
+      const wsName = `${googleName}'s Workspace`
+      const slug = generateSlug(wsName)
+
+      const { data: newWorkspace, error: wsError } = await supabaseAdmin
+        .from('workspaces')
+        .insert({ name: wsName, slug, is_active: true, created_by: newUser.id })
+        .select()
+        .single()
+
+      if (wsError) {
+        await supabaseAdmin.from('users').delete().eq('id', newUser.id)
+        return NextResponse.json({ error: 'Failed to create workspace' }, { status: 500 })
+      }
+
+      await supabaseAdmin
+        .from('workspace_members')
+        .insert({ workspace_id: newWorkspace.id, user_id: newUser.id, role: 'owner', is_active: true })
+
+      await supabaseAdmin.from('users').update({ default_workspace_id: newWorkspace.id }).eq('id', newUser.id)
+      await supabaseAdmin.from('wallets').insert({
+        user_id: newUser.id, workspace_id: newWorkspace.id, credits: 0, balance: 0, currency: 'USD',
+      })
+
+      workspaceId = newWorkspace.id
+      workspaceName = newWorkspace.name
+      workspaceSlug = newWorkspace.slug
+      workspaceRole = 'owner'
+      messagingProfileId = null
+      billingGroupId = null
+    }
 
     // Send welcome email (non-blocking)
     sendWelcomeEmail(newUser.email, newUser.name)
@@ -222,16 +348,15 @@ export async function POST(request) {
       name: newUser.name,
       role: newUser.role,
       profile_photo_url: avatarUrl,
-      workspaceId: newWorkspace.id,
-      workspaceName: newWorkspace.name,
-      workspaceSlug: newWorkspace.slug,
-      workspaceRole: 'owner',
+      workspaceId,
+      workspaceName,
+      workspaceSlug,
+      workspaceRole,
       workspacePermissions: {},
-      messagingProfileId: null,
-      billingGroupId: null,
-      availableWorkspaces: [{
-        id: newWorkspace.id, name: newWorkspace.name, slug: newWorkspace.slug, role: 'owner',
-      }],
+      messagingProfileId,
+      billingGroupId,
+      isInvited,
+      availableWorkspaces: [{ id: workspaceId, name: workspaceName, slug: workspaceSlug, role: workspaceRole }],
       loginTime: new Date().toISOString(),
     }
 
@@ -240,7 +365,7 @@ export async function POST(request) {
       workspaceId: session.workspaceId, workspaceRole: session.workspaceRole,
       messagingProfileId: session.messagingProfileId,
     })
-    const res = NextResponse.json({ success: true, session, isNewUser: true })
+    const res = NextResponse.json({ success: true, session, isNewUser: !isInvited })
     res.headers.set('Set-Cookie', buildSessionCookie(token))
     return res
   } catch (error) {

@@ -36,10 +36,20 @@ function AuthCallbackInner() {
     try {
       setStatus('Setting up your account...')
 
+      // Read any pending invite params stored before Google OAuth redirect
+      const inviteWorkspaceId = sessionStorage.getItem('invite_wid') || null
+      const inviteRole = sessionStorage.getItem('invite_role') || null
+      sessionStorage.removeItem('invite_wid')
+      sessionStorage.removeItem('invite_role')
+
       const res = await fetch('/api/auth/google', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, redirect_uri: `${window.location.origin}/auth/callback` }),
+        body: JSON.stringify({
+          code,
+          redirect_uri: `${window.location.origin}/auth/callback`,
+          ...(inviteWorkspaceId && { inviteWorkspaceId, inviteRole }),
+        }),
       })
 
       const data = await res.json()
@@ -51,7 +61,7 @@ function AuthCallbackInner() {
 
       localStorage.setItem('user_session', JSON.stringify(data.session))
       setStatus('Redirecting...')
-      // New users go to onboarding, existing users go to inbox
+      // Invited users go to inbox; brand-new users (no invite) go to onboarding
       router.push(data.isNewUser ? '/onboarding' : '/inbox')
     } catch (err) {
       console.error('Callback error:', err)
