@@ -94,7 +94,7 @@ function generateSlug(name) {
 
 export async function POST(request) {
   try {
-    const { email, password, name } = await request.json()
+    const { email, password, name, inviteWorkspaceId, inviteRole } = await request.json()
 
     if (!email || !password || !name) {
       return NextResponse.json({ error: 'Email, password, and name are required' }, { status: 400 })
@@ -134,43 +134,33 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Failed to create account' }, { status: 500 })
     }
 
-    // Check for a pending workspace invite for this email
-    const { data: pendingInvite } = await supabaseAdmin
-      .from('workspace_invites')
-      .select('id, workspace_id, role')
-      .eq('email', normalizedEmail)
-      .eq('status', 'pending')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single()
-
     let workspaceId, workspaceName, workspaceSlug, workspaceRole, messagingProfileId, billingGroupId
     let isInvited = false
 
-    if (pendingInvite) {
-      // Join the invited workspace instead of creating a new one
+    // If invite params are in the request, join that workspace directly (primary path)
+    if (inviteWorkspaceId) {
       const { data: invitedWs } = await supabaseAdmin
         .from('workspaces')
         .select('id, name, slug, messaging_profile_id, billing_group_id')
-        .eq('id', pendingInvite.workspace_id)
+        .eq('id', inviteWorkspaceId)
         .single()
 
       if (invitedWs) {
-        // Add user as member of invited workspace
         await supabaseAdmin.from('workspace_members').insert({
           workspace_id: invitedWs.id,
           user_id: newUser.id,
-          role: pendingInvite.role || 'member',
+          role: inviteRole || 'member',
           is_active: true,
         })
 
-        // Mark invite as accepted
+        // Best-effort: mark any pending invite as accepted
         await supabaseAdmin
           .from('workspace_invites')
           .update({ status: 'accepted', updated_at: new Date().toISOString() })
-          .eq('id', pendingInvite.id)
+          .eq('workspace_id', invitedWs.id)
+          .eq('email', normalizedEmail)
+          .eq('status', 'pending')
 
-        // Set default workspace
         await supabaseAdmin
           .from('users')
           .update({ default_workspace_id: invitedWs.id })
@@ -179,10 +169,61 @@ export async function POST(request) {
         workspaceId = invitedWs.id
         workspaceName = invitedWs.name
         workspaceSlug = invitedWs.slug
-        workspaceRole = pendingInvite.role || 'member'
+        workspaceRole = inviteRole || 'member'
         messagingProfileId = invitedWs.messaging_profile_id || null
         billingGroupId = invitedWs.billing_group_id || null
         isInvited = true
+      }
+    }
+
+    // Fallback: check workspace_invites table (handles old invite links without wid param)
+    if (!isInvited) {
+      try {
+        const { data: pendingInvite } = await supabaseAdmin
+          .from('workspace_invites')
+          .select('id, workspace_id, role')
+          .eq('email', normalizedEmail)
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single()
+
+        if (pendingInvite) {
+          const { data: invitedWs } = await supabaseAdmin
+            .from('workspaces')
+            .select('id, name, slug, messaging_profile_id, billing_group_id')
+            .eq('id', pendingInvite.workspace_id)
+            .single()
+
+          if (invitedWs) {
+            await supabaseAdmin.from('workspace_members').insert({
+              workspace_id: invitedWs.id,
+              user_id: newUser.id,
+              role: pendingInvite.role || 'member',
+              is_active: true,
+            })
+
+            await supabaseAdmin
+              .from('workspace_invites')
+              .update({ status: 'accepted', updated_at: new Date().toISOString() })
+              .eq('id', pendingInvite.id)
+
+            await supabaseAdmin
+              .from('users')
+              .update({ default_workspace_id: invitedWs.id })
+              .eq('id', newUser.id)
+
+            workspaceId = invitedWs.id
+            workspaceName = invitedWs.name
+            workspaceSlug = invitedWs.slug
+            workspaceRole = pendingInvite.role || 'member'
+            messagingProfileId = invitedWs.messaging_profile_id || null
+            billingGroupId = invitedWs.billing_group_id || null
+            isInvited = true
+          }
+        }
+      } catch {
+        // workspace_invites table may not exist — that's fine, wid param is the primary path
       }
     }
 

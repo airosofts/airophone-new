@@ -7,7 +7,7 @@ const resend = new Resend(process.env.RESEND_API_KEY)
 const logoUrl = 'https://sebaeihdyfhbkqmmrjbh.supabase.co/storage/v1/object/public/assets/brand/logo.png'
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://app.airophone.com'
 
-// GET — list all members of this workspace
+// GET — list all members + pending invites for this workspace
 export async function GET(request) {
   try {
     const user = getUserFromRequest(request)
@@ -33,7 +33,19 @@ export async function GET(request) {
       joinedAt: m.created_at,
     }))
 
-    return NextResponse.json({ success: true, members })
+    // Fetch pending invites (graceful fail if table doesn't exist yet)
+    let pendingInvites = []
+    try {
+      const { data: invites } = await supabaseAdmin
+        .from('workspace_invites')
+        .select('id, email, role, created_at')
+        .eq('workspace_id', workspace.workspaceId)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+      pendingInvites = invites || []
+    } catch {}
+
+    return NextResponse.json({ success: true, members, pendingInvites })
   } catch (error) {
     console.error('[workspace/members GET]', error)
     return NextResponse.json({ error: 'Failed to fetch members' }, { status: 500 })
@@ -136,7 +148,7 @@ export async function POST(request) {
       console.warn('[workspace/members] workspace_invites insert failed (table may not exist):', inviteError.message)
     }
 
-    await sendInviteEmail(normalizedEmail, null, inviter?.name, ws?.name, APP_URL, true)
+    await sendInviteEmail(normalizedEmail, null, inviter?.name, ws?.name, APP_URL, true, workspace.workspaceId, role)
 
     return NextResponse.json({ success: true, message: 'Invite sent' })
   } catch (error) {
@@ -145,9 +157,11 @@ export async function POST(request) {
   }
 }
 
-async function sendInviteEmail(toEmail, toName, inviterName, workspaceName, appUrl, isNewUser = false) {
+async function sendInviteEmail(toEmail, toName, inviterName, workspaceName, appUrl, isNewUser = false, workspaceId = null, role = 'member') {
   const greeting = toName ? toName.split(' ')[0] : 'there'
-  const ctaUrl = isNewUser
+  const ctaUrl = isNewUser && workspaceId
+    ? `${appUrl}/signup?invite=${encodeURIComponent(toEmail)}&wid=${workspaceId}&role=${role}`
+    : isNewUser
     ? `${appUrl}/signup?invite=${encodeURIComponent(toEmail)}`
     : `${appUrl}/login`
   const ctaText = isNewUser ? 'Create account &amp; join' : 'Accept invitation'

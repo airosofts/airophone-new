@@ -32,6 +32,7 @@ function Avatar({ name, avatar, size = 32 }) {
 export default function WorkspaceMembers() {
   const [user, setUser] = useState(null)
   const [members, setMembers] = useState([])
+  const [pendingInvites, setPendingInvites] = useState([])
   const [loading, setLoading] = useState(true)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState('member')
@@ -39,6 +40,7 @@ export default function WorkspaceMembers() {
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
   const [removingId, setRemovingId] = useState(null)
+  const [revokingId, setRevokingId] = useState(null)
 
   useEffect(() => {
     const u = getCurrentUser()
@@ -51,7 +53,10 @@ export default function WorkspaceMembers() {
     try {
       const res = await apiGet('/api/workspace/members')
       const data = await res.json()
-      if (data.success) setMembers(data.members)
+      if (data.success) {
+        setMembers(data.members)
+        setPendingInvites(data.pendingInvites || [])
+      }
     } catch (e) {
       console.error('Failed to fetch members:', e)
     } finally {
@@ -118,6 +123,32 @@ export default function WorkspaceMembers() {
     }
   }
 
+  const handleRevoke = async (inviteId, email) => {
+    if (!confirm(`Revoke invite for ${email}?`)) return
+    setRevokingId(inviteId)
+    try {
+      const session = localStorage.getItem('user_session')
+      const s = session ? JSON.parse(session) : {}
+      const res = await fetch(`/api/workspace/invites/${inviteId}`, {
+        method: 'DELETE',
+        headers: {
+          'x-user-id': s.userId || '',
+          'x-workspace-id': s.workspaceId || '',
+        },
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || 'Failed to revoke invite')
+      } else {
+        setPendingInvites(prev => prev.filter(i => i.id !== inviteId))
+      }
+    } catch {
+      setError('Something went wrong.')
+    } finally {
+      setRevokingId(null)
+    }
+  }
+
   const currentMember = members.find(m => m.userId === user?.userId)
   const isOwnerOrAdmin = ['owner', 'admin'].includes(currentMember?.role)
 
@@ -156,7 +187,7 @@ export default function WorkspaceMembers() {
                 value={inviteEmail}
                 onChange={e => { setInviteEmail(e.target.value); setError(null); setSuccess(null) }}
                 required
-                className="flex-1 min-w-[200px] h-9 rounded-md border border-[#E3E1DB] bg-[#F7F6F3] px-3 text-sm text-[#131210] outline-none transition-colors focus:border-[#D63B1F] focus:ring-2 focus:ring-[rgba(214,59,31,0.1)]"
+                className="flex-1 min-w-50 h-9 rounded-md border border-[#E3E1DB] bg-[#F7F6F3] px-3 text-sm text-[#131210] outline-none transition-colors focus:border-[#D63B1F] focus:ring-2 focus:ring-[rgba(214,59,31,0.1)]"
               />
               <select
                 value={inviteRole}
@@ -251,6 +282,58 @@ export default function WorkspaceMembers() {
           </div>
         )}
       </div>
+
+      {/* Pending invites */}
+      {isOwnerOrAdmin && pendingInvites.length > 0 && (
+        <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg overflow-hidden">
+          <div className="px-5 py-4 border-b border-[#E3E1DB]">
+            <h3 className="text-sm font-semibold text-[#131210]">
+              Pending invites
+              <span className="ml-2 px-1.5 py-0.5 text-[10.5px] font-mono bg-[#EFEDE8] text-[#9B9890] rounded">
+                {pendingInvites.length}
+              </span>
+            </h3>
+            <p className="text-xs text-[#9B9890] mt-0.5">Awaiting signup — invite link sent by email.</p>
+          </div>
+          <div className="divide-y divide-[#E3E1DB]">
+            {pendingInvites.map((invite) => (
+              <div key={invite.id} className="flex items-center gap-3.5 px-5 py-3.5">
+                <div style={{
+                  width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+                  background: '#F7F6F3', border: '1px dashed #D4D1C9',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9B9890" strokeWidth="1.5">
+                    <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/>
+                    <circle cx="12" cy="7" r="4"/>
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-mono text-[#5C5A55]">{invite.email}</span>
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10.5px] font-semibold uppercase tracking-wide font-mono bg-[#EFEDE8] text-[#9B9890]">
+                      {invite.role}
+                    </span>
+                    <span className="text-[10.5px] font-mono bg-[#FEF9C3] text-[#854D0E] px-1.5 py-0.5 rounded">
+                      invite pending
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#9B9890] mt-0.5">
+                    Invited {new Date(invite.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleRevoke(invite.id, invite.email)}
+                  disabled={revokingId === invite.id}
+                  className="px-3 py-1.5 text-sm text-[#9B9890] border border-[#E3E1DB] rounded-md hover:border-[#D63B1F] hover:text-[#D63B1F] transition-colors disabled:opacity-50"
+                >
+                  {revokingId === invite.id ? 'Revoking...' : 'Revoke'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -53,6 +53,8 @@ const inputBaseStyle = {
 function SignupForm() {
   const searchParams = useSearchParams()
   const inviteEmail = searchParams.get('invite') || ''
+  const inviteWid = searchParams.get('wid') || ''
+  const inviteRoleParam = searchParams.get('role') || 'member'
 
   const [mode, setMode] = useState(inviteEmail ? 'email' : 'choose')
   const [email, setEmail] = useState(inviteEmail)
@@ -93,7 +95,12 @@ function SignupForm() {
       const res = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, name: email.split('@')[0] }),
+        body: JSON.stringify({
+          email,
+          password,
+          name: email.split('@')[0],
+          ...(inviteWid && { inviteWorkspaceId: inviteWid, inviteRole: inviteRoleParam }),
+        }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Signup failed'); return }
