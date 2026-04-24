@@ -56,7 +56,7 @@ function SignupForm() {
   const inviteWid = searchParams.get('wid') || ''
   const inviteRoleParam = searchParams.get('role') || 'member'
 
-  const [mode, setMode] = useState(inviteEmail ? 'email' : 'choose')
+  const [mode, setMode] = useState('choose')
   const [email, setEmail] = useState(inviteEmail)
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -66,12 +66,8 @@ function SignupForm() {
   const [success, setSuccess] = useState('')
   const router = useRouter()
 
-  // Keep email in sync if query param changes (edge case)
   useEffect(() => {
-    if (inviteEmail) {
-      setEmail(inviteEmail)
-      setMode('email')
-    }
+    if (inviteEmail) setEmail(inviteEmail)
   }, [inviteEmail])
 
   const handleGoogleSignup = () => {
@@ -193,14 +189,37 @@ function SignupForm() {
           {/* ── CHOOSE MODE ── */}
           {mode === 'choose' && (
             <>
-              <div className="text-center mb-8">
-                <div style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.03em', color: C.text, marginBottom: 6 }}>
-                  Welcome to AiroPhone!
+              {inviteEmail ? (
+                <div className="mb-8">
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20,
+                    padding: '10px 14px', borderRadius: 9,
+                    background: C.redBg, border: `1px solid rgba(214,59,31,0.15)`,
+                    fontSize: 13, color: C.red,
+                  }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
+                      <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                      <path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
+                    </svg>
+                    You were invited — create an account to join.
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.03em', color: C.text, marginBottom: 6 }}>
+                    Accept your invitation
+                  </div>
+                  <div style={{ fontSize: '13.5px', color: C.text3 }}>
+                    Choose how you&apos;d like to create your account
+                  </div>
                 </div>
-                <div style={{ fontSize: '13.5px', color: C.text3 }}>
-                  Create an account to start your free trial
+              ) : (
+                <div className="text-center mb-8">
+                  <div style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.03em', color: C.text, marginBottom: 6 }}>
+                    Welcome to AiroPhone!
+                  </div>
+                  <div style={{ fontSize: '13.5px', color: C.text3 }}>
+                    Create an account to start your free trial
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Google */}
               <button onClick={handleGoogleSignup} className="w-full flex items-center justify-center gap-2.5 transition-colors"
@@ -218,7 +237,7 @@ function SignupForm() {
               </button>
 
               {/* Email */}
-              <button onClick={() => setMode('email')} className="w-full flex items-center justify-center gap-2.5 mt-3 transition-colors"
+              <button onClick={() => { setMode('email'); if (inviteEmail) setEmail(inviteEmail) }} className="w-full flex items-center justify-center gap-2.5 mt-3 transition-colors"
                 style={{ height: 46, border: `1px solid ${C.border2}`, borderRadius: 9, background: C.surface, cursor: 'pointer', fontSize: 14, fontWeight: 500, color: C.text, fontFamily: C.sans }}
                 onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.text3; e.currentTarget.style.background = C.bg }}
                 onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.border2; e.currentTarget.style.background = C.surface }}
@@ -254,30 +273,14 @@ function SignupForm() {
           {mode === 'email' && (
             <>
               <div className="mb-7">
-                {!inviteEmail && (
-                  <button onClick={() => { setMode('choose'); setError(''); setSuccess('') }}
-                    className="flex items-center gap-1.5 mb-5 p-0 bg-transparent border-none cursor-pointer"
-                    style={{ color: C.text3, fontSize: 13 }}>
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M10 4l-4 4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                    Back
-                  </button>
-                )}
-                {inviteEmail && (
-                  <div style={{
-                    display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20,
-                    padding: '10px 14px', borderRadius: 9,
-                    background: C.redBg, border: `1px solid rgba(214,59,31,0.15)`,
-                    fontSize: 13, color: C.red,
-                  }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
-                      <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/>
-                      <path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
-                    </svg>
-                    You were invited — create an account to join.
-                  </div>
-                )}
+                <button onClick={() => { setMode('choose'); setError(''); setSuccess('') }}
+                  className="flex items-center gap-1.5 mb-5 p-0 bg-transparent border-none cursor-pointer"
+                  style={{ color: C.text3, fontSize: 13 }}>
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M10 4l-4 4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  Back
+                </button>
                 <div style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.03em', color: C.text, marginBottom: 6 }}>
-                  {inviteEmail ? 'Accept your invitation' : 'Create your account'}
+                  {inviteEmail ? 'Create with email' : 'Create your account'}
                 </div>
                 <div style={{ fontSize: '13.5px', color: C.text3 }}>
                   {inviteEmail ? 'Set a password to finish joining your team.' : 'Sign up with your email address'}

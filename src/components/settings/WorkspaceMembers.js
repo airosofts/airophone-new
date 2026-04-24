@@ -4,6 +4,37 @@ import { useState, useEffect } from 'react'
 import { getCurrentUser } from '@/lib/auth'
 import { apiGet } from '@/lib/api-client'
 
+function ConfirmModal({ isOpen, title, message, confirmLabel = 'Confirm', danger = true, onConfirm, onCancel }) {
+  if (!isOpen) return null
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(19,18,16,0.45)', backdropFilter: 'blur(4px)' }}>
+      <div className="bg-[#FFFFFF] rounded-xl shadow-2xl max-w-sm w-full mx-4 overflow-hidden border border-[#E3E1DB]">
+        <div className="px-5 py-4 border-b border-[#E3E1DB]">
+          <h3 className="text-sm font-semibold text-[#131210]">{title}</h3>
+        </div>
+        <div className="px-5 py-4">
+          <p className="text-sm text-[#5C5A55] leading-relaxed">{message}</p>
+        </div>
+        <div className="px-5 py-3 border-t border-[#E3E1DB] flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="px-4 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3] transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="px-4 py-1.5 text-sm font-medium rounded-md transition-colors"
+            style={{ background: danger ? '#D63B1F' : '#131210', color: '#fff', border: 'none' }}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function Avatar({ name, avatar, size = 32 }) {
   if (avatar) {
     return (
@@ -41,6 +72,7 @@ export default function WorkspaceMembers() {
   const [success, setSuccess] = useState(null)
   const [removingId, setRemovingId] = useState(null)
   const [revokingId, setRevokingId] = useState(null)
+  const [confirmModal, setConfirmModal] = useState(null) // { type: 'remove'|'revoke', id, name, email }
 
   useEffect(() => {
     const u = getCurrentUser()
@@ -97,9 +129,9 @@ export default function WorkspaceMembers() {
     }
   }
 
-  const handleRemove = async (memberId, memberName) => {
-    if (!confirm(`Remove ${memberName} from this workspace?`)) return
+  const handleRemove = async (memberId) => {
     setRemovingId(memberId)
+    setConfirmModal(null)
     try {
       const session = localStorage.getItem('user_session')
       const s = session ? JSON.parse(session) : {}
@@ -123,9 +155,9 @@ export default function WorkspaceMembers() {
     }
   }
 
-  const handleRevoke = async (inviteId, email) => {
-    if (!confirm(`Revoke invite for ${email}?`)) return
+  const handleRevoke = async (inviteId) => {
     setRevokingId(inviteId)
+    setConfirmModal(null)
     try {
       const session = localStorage.getItem('user_session')
       const s = session ? JSON.parse(session) : {}
@@ -165,6 +197,19 @@ export default function WorkspaceMembers() {
 
   return (
     <div className="space-y-4 max-w-2xl">
+
+      <ConfirmModal
+        isOpen={!!confirmModal}
+        title={confirmModal?.type === 'remove' ? 'Remove team member' : 'Revoke invite'}
+        message={
+          confirmModal?.type === 'remove'
+            ? `Remove ${confirmModal?.name} from this workspace? They'll lose access immediately.`
+            : `Revoke the invite sent to ${confirmModal?.email}? They won't be able to use this invite link.`
+        }
+        confirmLabel={confirmModal?.type === 'remove' ? 'Remove' : 'Revoke'}
+        onConfirm={() => confirmModal?.type === 'remove' ? handleRemove(confirmModal.id) : handleRevoke(confirmModal.id)}
+        onCancel={() => setConfirmModal(null)}
+      />
 
       {/* Header */}
       <div>
@@ -269,7 +314,7 @@ export default function WorkspaceMembers() {
                   </div>
                   {canRemove && (
                     <button
-                      onClick={() => handleRemove(member.id, member.name)}
+                      onClick={() => setConfirmModal({ type: 'remove', id: member.id, name: member.name })}
                       disabled={removingId === member.id}
                       className="px-3 py-1.5 text-sm text-[#9B9890] border border-[#E3E1DB] rounded-md hover:border-[#D63B1F] hover:text-[#D63B1F] transition-colors disabled:opacity-50"
                     >
@@ -323,7 +368,7 @@ export default function WorkspaceMembers() {
                   </p>
                 </div>
                 <button
-                  onClick={() => handleRevoke(invite.id, invite.email)}
+                  onClick={() => setConfirmModal({ type: 'revoke', id: invite.id, email: invite.email })}
                   disabled={revokingId === invite.id}
                   className="px-3 py-1.5 text-sm text-[#9B9890] border border-[#E3E1DB] rounded-md hover:border-[#D63B1F] hover:text-[#D63B1F] transition-colors disabled:opacity-50"
                 >

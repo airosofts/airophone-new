@@ -98,6 +98,28 @@ export default function DashboardLayout({ children }) {
         console.warn('Onboarding check failed:', e)
       }
 
+      // Verify the user is still an active member of this workspace
+      try {
+        const memberRes = await fetch('/api/workspace/members', {
+          headers: {
+            'x-user-id': currentUser.userId,
+            'x-workspace-id': currentUser.workspaceId,
+          },
+        })
+        if (memberRes.ok) {
+          const memberData = await memberRes.json()
+          const stillMember = memberData.members?.some(m => m.userId === currentUser.userId)
+          if (memberData.success && !stillMember) {
+            // User has been removed from this workspace — clear session and redirect
+            localStorage.removeItem('user_session')
+            router.push('/login')
+            return
+          }
+        }
+      } catch (e) {
+        // Non-critical — allow through if check fails
+      }
+
       // Check subscription status — block access for canceled/past_due
       try {
         const subRes = await fetch('/api/subscription', {
