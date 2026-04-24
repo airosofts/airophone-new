@@ -4,43 +4,28 @@ import { useState, useEffect } from 'react'
 import { getCurrentUser } from '@/lib/auth'
 import { apiGet } from '@/lib/api-client'
 
-const C = {
-  bg: '#F7F6F3', surface: '#FFFFFF', border: '#E3E1DB',
-  text: '#131210', text2: '#5C5A55', text3: '#9B9890',
-  red: '#D63B1F', redBg: 'rgba(214,59,31,0.07)', redDim: 'rgba(214,59,31,0.14)',
-  sans: "'Plus Jakarta Sans', system-ui, sans-serif",
-  mono: "'JetBrains Mono', monospace",
-}
-
 function Avatar({ name, avatar, size = 32 }) {
   if (avatar) {
-    return <img src={avatar} alt={name} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+    return (
+      <img
+        src={avatar}
+        alt={name}
+        style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+      />
+    )
   }
   return (
-    <div style={{
-      width: size, height: size, borderRadius: '50%',
-      background: C.redBg, flexShrink: 0,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: size * 0.34, fontWeight: 600, color: C.red,
-    }}>
+    <div
+      style={{
+        width: size, height: size, borderRadius: '50%', flexShrink: 0,
+        background: 'rgba(214,59,31,0.07)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: size * 0.38, fontWeight: 600, color: '#D63B1F',
+        fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+      }}
+    >
       {name?.charAt(0)?.toUpperCase() || '?'}
     </div>
-  )
-}
-
-function RoleBadge({ role }) {
-  const isOwner = role === 'owner'
-  const isAdmin = role === 'admin'
-  return (
-    <span style={{
-      fontSize: 10.5, fontWeight: 600, letterSpacing: '0.04em',
-      textTransform: 'uppercase', fontFamily: C.mono,
-      padding: '2px 7px', borderRadius: 4,
-      background: isOwner ? C.redDim : '#EFEDE8',
-      color: isOwner ? C.red : C.text3,
-    }}>
-      {role}
-    </span>
   )
 }
 
@@ -133,156 +118,137 @@ export default function WorkspaceMembers() {
     }
   }
 
-  const isOwnerOrAdmin = ['owner', 'admin'].includes(
-    members.find(m => m.userId === user?.userId)?.role
-  )
+  const currentMember = members.find(m => m.userId === user?.userId)
+  const isOwnerOrAdmin = ['owner', 'admin'].includes(currentMember?.role)
+
+  const roleBadge = (role) => {
+    const isOwner = role === 'owner'
+    return (
+      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10.5px] font-semibold uppercase tracking-wide font-mono ${
+        isOwner ? 'bg-[rgba(214,59,31,0.12)] text-[#D63B1F]' : 'bg-[#EFEDE8] text-[#9B9890]'
+      }`}>
+        {role}
+      </span>
+    )
+  }
 
   return (
-    <div style={{ maxWidth: 640, fontFamily: C.sans }}>
+    <div className="space-y-4 max-w-2xl">
+
       {/* Header */}
-      <div style={{ marginBottom: 24 }}>
-        <h2 style={{ fontSize: 17, fontWeight: 600, color: C.text, letterSpacing: '-0.03em', margin: 0 }}>
-          Team Members
-        </h2>
-        <p style={{ fontSize: 13, color: C.text3, marginTop: 4, fontWeight: 300 }}>
-          Manage who has access to your workspace.
-        </p>
+      <div>
+        <h2 className="text-[17px] font-semibold text-[#131210] tracking-tight">Team Members</h2>
+        <p className="text-sm text-[#9B9890] mt-1 font-light">Manage who has access to your workspace.</p>
       </div>
 
       {/* Invite form */}
       {isOwnerOrAdmin && (
-        <div style={{
-          background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10,
-          padding: '18px 20px', marginBottom: 20,
-        }}>
-          <p style={{ fontSize: 13, fontWeight: 500, color: C.text, marginBottom: 14 }}>
-            Invite a team member
-          </p>
-          <form onSubmit={handleInvite} style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <input
-              type="email"
-              placeholder="colleague@example.com"
-              value={inviteEmail}
-              onChange={e => { setInviteEmail(e.target.value); setError(null); setSuccess(null) }}
-              required
-              style={{
-                flex: 1, minWidth: 200, height: 38, borderRadius: 8,
-                border: `1px solid ${C.border}`, padding: '0 12px',
-                fontSize: 13, color: C.text, outline: 'none',
-                fontFamily: C.sans, background: C.bg,
-              }}
-              onFocus={e => e.target.style.borderColor = C.red}
-              onBlur={e => e.target.style.borderColor = C.border}
-            />
-            <select
-              value={inviteRole}
-              onChange={e => setInviteRole(e.target.value)}
-              style={{
-                height: 38, borderRadius: 8, border: `1px solid ${C.border}`,
-                padding: '0 10px', fontSize: 13, color: C.text2, outline: 'none',
-                fontFamily: C.sans, background: C.surface, cursor: 'pointer',
-              }}
-            >
-              <option value="member">Member</option>
-              <option value="admin">Admin</option>
-            </select>
-            <button
-              type="submit"
-              disabled={inviting || !inviteEmail.trim()}
-              style={{
-                height: 38, padding: '0 18px', borderRadius: 8, border: 'none',
-                background: inviting || !inviteEmail.trim() ? '#EFEDE8' : C.red,
-                color: inviting || !inviteEmail.trim() ? C.text3 : '#fff',
-                fontSize: 13, fontWeight: 500, cursor: inviting ? 'not-allowed' : 'pointer',
-                fontFamily: C.sans, transition: 'background 0.15s', whiteSpace: 'nowrap',
-              }}
-            >
-              {inviting ? 'Sending...' : 'Send invite'}
-            </button>
-          </form>
+        <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg">
+          <div className="px-5 py-4 border-b border-[#E3E1DB]">
+            <h3 className="text-sm font-semibold text-[#131210]">Invite a team member</h3>
+            <p className="text-xs text-[#9B9890] mt-0.5">They'll receive an email to join your workspace.</p>
+          </div>
+          <div className="px-5 py-4">
+            <form onSubmit={handleInvite} className="flex gap-2.5 flex-wrap">
+              <input
+                type="email"
+                placeholder="colleague@example.com"
+                value={inviteEmail}
+                onChange={e => { setInviteEmail(e.target.value); setError(null); setSuccess(null) }}
+                required
+                className="flex-1 min-w-[200px] h-9 rounded-md border border-[#E3E1DB] bg-[#F7F6F3] px-3 text-sm text-[#131210] outline-none transition-colors focus:border-[#D63B1F] focus:ring-2 focus:ring-[rgba(214,59,31,0.1)]"
+              />
+              <select
+                value={inviteRole}
+                onChange={e => setInviteRole(e.target.value)}
+                className="h-9 rounded-md border border-[#E3E1DB] bg-[#FFFFFF] px-3 text-sm text-[#5C5A55] outline-none cursor-pointer"
+              >
+                <option value="member">Member</option>
+                <option value="admin">Admin</option>
+              </select>
+              <button
+                type="submit"
+                disabled={inviting || !inviteEmail.trim()}
+                className="h-9 px-4 rounded-md text-sm font-medium transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  background: inviting || !inviteEmail.trim() ? '#EFEDE8' : '#D63B1F',
+                  color: inviting || !inviteEmail.trim() ? '#9B9890' : '#fff',
+                  border: 'none',
+                }}
+              >
+                {inviting ? 'Sending...' : 'Send invite'}
+              </button>
+            </form>
 
-          {error && (
-            <p style={{ marginTop: 10, fontSize: 12.5, color: C.red }}>{error}</p>
-          )}
-          {success && (
-            <p style={{ marginTop: 10, fontSize: 12.5, color: '#16a34a' }}>{success}</p>
-          )}
+            {error && (
+              <p className="mt-2.5 text-xs text-[#D63B1F] flex items-center gap-1.5">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+                </svg>
+                {error}
+              </p>
+            )}
+            {success && (
+              <p className="mt-2.5 text-xs text-[#16a34a] flex items-center gap-1.5">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10"/><polyline points="16 8 10 14 8 12"/>
+                </svg>
+                {success}
+              </p>
+            )}
+          </div>
         </div>
       )}
 
       {/* Members list */}
-      <div style={{
-        background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10,
-        overflow: 'hidden',
-      }}>
-        <div style={{
-          padding: '12px 20px', borderBottom: `1px solid ${C.border}`,
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        }}>
-          <span style={{ fontSize: 13, fontWeight: 500, color: C.text }}>
-            {loading ? 'Loading...' : `${members.length} member${members.length !== 1 ? 's' : ''}`}
-          </span>
+      <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg overflow-hidden">
+        <div className="px-5 py-4 border-b border-[#E3E1DB] flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-[#131210]">
+            {loading ? 'Members' : `${members.length} member${members.length !== 1 ? 's' : ''}`}
+          </h3>
         </div>
 
         {loading ? (
-          <div style={{ padding: '32px 20px', textAlign: 'center' }}>
-            <p style={{ fontSize: 13, color: C.text3 }}>Loading members...</p>
+          <div className="px-5 py-10 text-center">
+            <p className="text-sm text-[#9B9890]">Loading members...</p>
           </div>
         ) : members.length === 0 ? (
-          <div style={{ padding: '32px 20px', textAlign: 'center' }}>
-            <p style={{ fontSize: 13, color: C.text3 }}>No members yet.</p>
+          <div className="px-5 py-10 text-center">
+            <p className="text-sm text-[#9B9890]">No members yet.</p>
           </div>
         ) : (
-          members.map((member, idx) => {
-            const isYou = member.userId === user?.userId
-            const canRemove = isOwnerOrAdmin && !isYou && member.role !== 'owner'
-            return (
-              <div
-                key={member.id}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '12px 20px',
-                  borderBottom: idx < members.length - 1 ? `1px solid ${C.border}` : 'none',
-                }}
-              >
-                <Avatar name={member.name} avatar={member.avatar} size={36} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 13, fontWeight: 500, color: C.text }}>
-                      {member.name}
-                    </span>
-                    {isYou && (
-                      <span style={{
-                        fontSize: 10.5, color: C.text3, fontFamily: C.mono,
-                        background: '#F0EEE9', padding: '1px 6px', borderRadius: 4,
-                      }}>you</span>
-                    )}
-                    <RoleBadge role={member.role} />
+          <div className="divide-y divide-[#E3E1DB]">
+            {members.map((member) => {
+              const isYou = member.userId === user?.userId
+              const canRemove = isOwnerOrAdmin && !isYou && member.role !== 'owner'
+              return (
+                <div key={member.id} className="flex items-center gap-3.5 px-5 py-3.5">
+                  <Avatar name={member.name} avatar={member.avatar} size={36} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium text-[#131210]">{member.name}</span>
+                      {isYou && (
+                        <span className="text-[10.5px] text-[#9B9890] font-mono bg-[#F0EEE9] px-1.5 py-0.5 rounded">
+                          you
+                        </span>
+                      )}
+                      {roleBadge(member.role)}
+                    </div>
+                    <p className="text-xs text-[#9B9890] mt-0.5 font-mono">{member.email}</p>
                   </div>
-                  <p style={{ fontSize: 12, color: C.text3, margin: '1px 0 0', fontFamily: C.mono }}>
-                    {member.email}
-                  </p>
+                  {canRemove && (
+                    <button
+                      onClick={() => handleRemove(member.id, member.name)}
+                      disabled={removingId === member.id}
+                      className="px-3 py-1.5 text-sm text-[#9B9890] border border-[#E3E1DB] rounded-md hover:border-[#D63B1F] hover:text-[#D63B1F] transition-colors disabled:opacity-50"
+                    >
+                      {removingId === member.id ? 'Removing...' : 'Remove'}
+                    </button>
+                  )}
                 </div>
-                {canRemove && (
-                  <button
-                    onClick={() => handleRemove(member.id, member.name)}
-                    disabled={removingId === member.id}
-                    title="Remove member"
-                    style={{
-                      padding: '5px 10px', borderRadius: 7, border: `1px solid ${C.border}`,
-                      background: 'transparent', cursor: 'pointer',
-                      fontSize: 12, color: C.text3, fontFamily: C.sans,
-                      transition: 'all 0.15s', opacity: removingId === member.id ? 0.5 : 1,
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = C.red; e.currentTarget.style.color = C.red }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.text3 }}
-                  >
-                    {removingId === member.id ? 'Removing...' : 'Remove'}
-                  </button>
-                )}
-              </div>
-            )
-          })
+              )
+            })}
+          </div>
         )}
       </div>
     </div>

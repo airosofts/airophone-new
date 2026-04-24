@@ -136,7 +136,7 @@ export async function POST(request) {
       console.warn('[workspace/members] workspace_invites insert failed (table may not exist):', inviteError.message)
     }
 
-    await sendInviteEmail(normalizedEmail, null, inviter?.name, ws?.name, APP_URL)
+    await sendInviteEmail(normalizedEmail, null, inviter?.name, ws?.name, APP_URL, true)
 
     return NextResponse.json({ success: true, message: 'Invite sent' })
   } catch (error) {
@@ -145,8 +145,16 @@ export async function POST(request) {
   }
 }
 
-async function sendInviteEmail(toEmail, toName, inviterName, workspaceName, appUrl) {
+async function sendInviteEmail(toEmail, toName, inviterName, workspaceName, appUrl, isNewUser = false) {
   const greeting = toName ? toName.split(' ')[0] : 'there'
+  const ctaUrl = isNewUser
+    ? `${appUrl}/signup?invite=${encodeURIComponent(toEmail)}`
+    : `${appUrl}/login`
+  const ctaText = isNewUser ? 'Create account &amp; join' : 'Accept invitation'
+  const bodyText = isNewUser
+    ? `<strong style="font-weight:500;color:#131210;">${inviterName || 'A teammate'}</strong> has invited you to join the <strong style="font-weight:500;color:#131210;">${workspaceName || 'AiroPhone'}</strong> workspace on AiroPhone. Create a free account to get started.`
+    : `<strong style="font-weight:500;color:#131210;">${inviterName || 'A teammate'}</strong> has added you to the <strong style="font-weight:500;color:#131210;">${workspaceName || 'AiroPhone'}</strong> workspace. Sign in to get started.`
+
   await resend.emails.send({
     from: 'AiroPhone <noreply@airophone.com>',
     to: toEmail,
@@ -171,9 +179,9 @@ async function sendInviteEmail(toEmail, toName, inviterName, workspaceName, appU
       <div style="font-family:'JetBrains Mono','Courier New',monospace;font-size:10px;font-weight:500;color:#D63B1F;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:14px;">Team invite</div>
       <h1 style="margin:0 0 10px;font-size:22px;font-weight:600;color:#131210;letter-spacing:-0.03em;line-height:1.2;font-family:'Plus Jakarta Sans','Helvetica Neue',Arial,sans-serif;">You've been invited, ${greeting}</h1>
       <p style="margin:0 0 24px;font-size:14px;font-weight:300;color:#5C5A55;line-height:1.65;font-family:'Plus Jakarta Sans','Helvetica Neue',Arial,sans-serif;">
-        <strong style="font-weight:500;color:#131210;">${inviterName || 'A teammate'}</strong> has invited you to join the <strong style="font-weight:500;color:#131210;">${workspaceName || 'AiroPhone'}</strong> workspace. Sign in to get started.
+        ${bodyText}
       </p>
-      <a href="${appUrl}/login" style="display:block;background:#D63B1F;color:#FFFFFF;text-align:center;padding:13px 24px;border-radius:9px;font-size:14px;font-weight:600;text-decoration:none;letter-spacing:-0.01em;font-family:'Plus Jakarta Sans','Helvetica Neue',Arial,sans-serif;">Accept invitation</a>
+      <a href="${ctaUrl}" style="display:block;background:#D63B1F;color:#FFFFFF;text-align:center;padding:13px 24px;border-radius:9px;font-size:14px;font-weight:600;text-decoration:none;letter-spacing:-0.01em;font-family:'Plus Jakarta Sans','Helvetica Neue',Arial,sans-serif;">${ctaText}</a>
     </div>
     <div style="padding:20px 32px;border-top:1px solid #E3E1DB;background:#F7F6F3;">
       <table cellpadding="0" cellspacing="0" border="0" width="100%"><tr>

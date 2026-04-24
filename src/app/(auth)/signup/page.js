@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
 const C = {
@@ -50,9 +50,12 @@ const inputBaseStyle = {
   background: C.surface, fontFamily: C.sans, fontSize: 14, color: C.text, padding: '0 14px',
 }
 
-export default function SignupPage() {
-  const [mode, setMode] = useState('choose')
-  const [email, setEmail] = useState('')
+function SignupForm() {
+  const searchParams = useSearchParams()
+  const inviteEmail = searchParams.get('invite') || ''
+
+  const [mode, setMode] = useState(inviteEmail ? 'email' : 'choose')
+  const [email, setEmail] = useState(inviteEmail)
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -60,6 +63,14 @@ export default function SignupPage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const router = useRouter()
+
+  // Keep email in sync if query param changes (edge case)
+  useEffect(() => {
+    if (inviteEmail) {
+      setEmail(inviteEmail)
+      setMode('email')
+    }
+  }, [inviteEmail])
 
   const handleGoogleSignup = () => {
     const clientId = '167172022831-j9bjjeq43m4o2urp1ec3ovks5jvlaguk.apps.googleusercontent.com'
@@ -87,7 +98,7 @@ export default function SignupPage() {
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Signup failed'); return }
       localStorage.setItem('user_session', JSON.stringify(data.session))
-      router.push('/onboarding')
+      router.push(data.session.isInvited ? '/inbox' : '/onboarding')
     } catch {
       setError('An unexpected error occurred')
     } finally {
@@ -231,27 +242,45 @@ export default function SignupPage() {
           {mode === 'email' && (
             <>
               <div className="mb-7">
-                <button onClick={() => { setMode('choose'); setError(''); setSuccess('') }}
-                  className="flex items-center gap-1.5 mb-5 p-0 bg-transparent border-none cursor-pointer"
-                  style={{ color: C.text3, fontSize: 13 }}>
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M10 4l-4 4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  Back
-                </button>
+                {!inviteEmail && (
+                  <button onClick={() => { setMode('choose'); setError(''); setSuccess('') }}
+                    className="flex items-center gap-1.5 mb-5 p-0 bg-transparent border-none cursor-pointer"
+                    style={{ color: C.text3, fontSize: 13 }}>
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M10 4l-4 4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    Back
+                  </button>
+                )}
+                {inviteEmail && (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20,
+                    padding: '10px 14px', borderRadius: 9,
+                    background: C.redBg, border: `1px solid rgba(214,59,31,0.15)`,
+                    fontSize: 13, color: C.red,
+                  }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
+                      <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                      <path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
+                    </svg>
+                    You were invited — create an account to join.
+                  </div>
+                )}
                 <div style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.03em', color: C.text, marginBottom: 6 }}>
-                  Create your account
+                  {inviteEmail ? 'Accept your invitation' : 'Create your account'}
                 </div>
                 <div style={{ fontSize: '13.5px', color: C.text3 }}>
-                  Sign up with your email address
+                  {inviteEmail ? 'Set a password to finish joining your team.' : 'Sign up with your email address'}
                 </div>
               </div>
 
               <form onSubmit={handleEmailSignup}>
                 <div className="mb-4">
                   <label style={labelStyle}>Email</label>
-                  <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                  <input type="email" required value={email} onChange={(e) => !inviteEmail && setEmail(e.target.value)}
                     placeholder="you@company.com"
+                    readOnly={!!inviteEmail}
                     className="w-full outline-none transition-all"
-                    style={inputBaseStyle} onFocus={focusHandler} onBlur={blurHandler} />
+                    style={{ ...inputBaseStyle, background: inviteEmail ? C.bg : C.surface, color: C.text }}
+                    onFocus={inviteEmail ? undefined : focusHandler} onBlur={inviteEmail ? undefined : blurHandler} />
                 </div>
 
                 <div className="mb-4">
@@ -341,5 +370,13 @@ export default function SignupPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={null}>
+      <SignupForm />
+    </Suspense>
   )
 }
