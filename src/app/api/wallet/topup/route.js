@@ -97,16 +97,16 @@ export async function POST(request) {
         if (!updateError) {
           // Create transaction record
           const { data: txData, error: txError } = await supabase
-            .from('wallet_transactions')
+            .from('transactions')
             .insert({
               user_id: userId,
-              amount: creditAmount,
+              credits: creditAmount,
+              amount: dollarAmount,
+              currency: 'USD',
               type: 'topup',
               status: 'completed',
               description: `Credit purchase: ${creditAmount} credits ($${dollarAmount.toFixed(2)})`,
-              payment_method_id: payment_method_id,
               stripe_payment_intent_id: paymentIntent.id,
-              stripe_charge_id: paymentIntent.latest_charge
             })
             .select('id')
             .single()

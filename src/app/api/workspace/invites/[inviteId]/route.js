@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase-server'
 import { getUserFromRequest, getWorkspaceFromRequest } from '@/lib/session-helper'
 
 // DELETE — revoke a pending invite
-export async function DELETE(request, { params }) {
+export async function DELETE(request, { params: paramsPromise }) {
   try {
     const user = getUserFromRequest(request)
     const workspace = getWorkspaceFromRequest(request)
@@ -22,6 +22,7 @@ export async function DELETE(request, { params }) {
       return NextResponse.json({ error: 'Only workspace owners can revoke invites' }, { status: 403 })
     }
 
+    const params = await Promise.resolve(paramsPromise)
     const { inviteId } = params
 
     const { error } = await supabaseAdmin

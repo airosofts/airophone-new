@@ -3,13 +3,13 @@ import { supabaseAdmin } from '@/lib/supabase-server'
 import { getUserFromRequest, getWorkspaceFromRequest } from '@/lib/session-helper'
 
 // DELETE — remove a member from the workspace
-export async function DELETE(request, { params }) {
+export async function DELETE(request, { params: paramsPromise }) {
   try {
     const user = getUserFromRequest(request)
     const workspace = getWorkspaceFromRequest(request)
     if (!user || !workspace) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { memberId } = params
+    const { memberId } = await Promise.resolve(paramsPromise)
 
     // Only owners/admins can remove members
     const { data: requester } = await supabaseAdmin

@@ -457,7 +457,7 @@ export default function OnboardingPage() {
     const u = getCurrentUser()
     if (!u) { router.replace('/login'); return }
     setUser(u)
-    if (u.profile_photo_url?.includes('googleusercontent.com')) {
+    if (u.auth_provider === 'google') {
       setIsGoogleUser(true)
       setEmailVerified(true)
     }
@@ -473,6 +473,11 @@ export default function OnboardingPage() {
   }, [])
 
   useEffect(() => { setError('') }, [step])
+
+  // Google users skip email verification (step 3) — advance automatically
+  useEffect(() => {
+    if (step === 3 && isGoogleUser) setStep(4)
+  }, [step, isGoogleUser])
 
   const userName = user?.name?.split(' ')[0] || 'there'
   const totalSteps = isGoogleUser ? 5 : 6
@@ -835,9 +840,7 @@ export default function OnboardingPage() {
           ════════════════════════════════════ */}
           {step === 3 && (
             <>
-              {isGoogleUser ? (
-                (() => { setTimeout(() => setStep(4), 0); return null })()
-              ) : (
+              {isGoogleUser ? null : (
                 <>
                   <StepHeader
                     kicker="Step 3 of 6"
