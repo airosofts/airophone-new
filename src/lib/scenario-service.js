@@ -157,7 +157,7 @@ export async function executeScenario(scenario, message, conversation) {
 
     // Look up the contact and substitute {{key}} tokens in instructions
     let instructions = scenario.instructions
-    const { data: contactRecord } = await supabaseAdmin
+    const { data: contactRecord, error: contactLookupError } = await supabaseAdmin
       .from('contacts')
       .select('first_name, last_name, business_name, phone_number, email, city, state, country, custom_fields')
       .eq('workspace_id', scenario.workspace_id)
@@ -165,21 +165,31 @@ export async function executeScenario(scenario, message, conversation) {
       .limit(1)
       .single()
 
+    if (contactLookupError && contactLookupError.code !== 'PGRST116') {
+      console.error('Error looking up contact for substitution:', contactLookupError.message)
+    }
+
+    const substitutions = contactRecord ? {
+      first_name: contactRecord.first_name || '',
+      last_name: contactRecord.last_name || '',
+      business_name: contactRecord.business_name || '',
+      phone_number: contactRecord.phone_number || '',
+      email: contactRecord.email || '',
+      city: contactRecord.city || '',
+      state: contactRecord.state || '',
+      country: contactRecord.country || '',
+      ...(contactRecord.custom_fields || {})
+    } : {}
+
+    // Substitute known tags; remove unknown ones so AI doesn't see raw {{placeholders}}
+    instructions = instructions.replace(/\{\{(\w+)\}\}/g, (match, key) =>
+      substitutions[key] !== undefined ? substitutions[key] : ''
+    )
+
     if (contactRecord) {
-      const substitutions = {
-        first_name: contactRecord.first_name || '',
-        last_name: contactRecord.last_name || '',
-        business_name: contactRecord.business_name || '',
-        phone_number: contactRecord.phone_number || '',
-        email: contactRecord.email || '',
-        city: contactRecord.city || '',
-        state: contactRecord.state || '',
-        country: contactRecord.country || '',
-        ...(contactRecord.custom_fields || {})
-      }
-      instructions = instructions.replace(/\{\{(\w+)\}\}/g, (_, key) =>
-        substitutions[key] !== undefined ? substitutions[key] : `{{${key}}}`
-      )
+      console.log(`[scenario] Substituted contact data for ${message.from_number}: ${JSON.stringify(substitutions)}`)
+    } else {
+      console.log(`[scenario] No contact found for ${message.from_number}, placeholders removed`)
     }
 
     // Build AI prompt

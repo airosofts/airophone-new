@@ -498,6 +498,43 @@ function ContactRestrictionPicker({ contactLists, selectedListIds, onListToggle,
   )
 }
 
+const STANDARD_TAGS = [
+  { key: 'first_name', label: 'First Name' },
+  { key: 'last_name', label: 'Last Name' },
+  { key: 'business_name', label: 'Company' },
+  { key: 'phone_number', label: 'Phone' },
+  { key: 'email', label: 'Email' },
+  { key: 'city', label: 'City' },
+  { key: 'state', label: 'State' },
+  { key: 'country', label: 'Country' },
+]
+
+function InstructionTagBar({ taId, value, onChange, listColumns }) {
+  const allTags = [
+    ...STANDARD_TAGS,
+    ...listColumns.map(col => ({ key: col.key, label: col.label, isCustom: true }))
+  ]
+  const insertTag = (key) => {
+    const ta = document.getElementById(taId)
+    const start = ta ? ta.selectionStart : value.length
+    const tag = `{{${key}}}`
+    const next = value.slice(0, start) + tag + value.slice(start)
+    onChange(next)
+    setTimeout(() => { if (ta) { ta.focus(); ta.setSelectionRange(start + tag.length, start + tag.length) } }, 0)
+  }
+  return (
+    <div className="mt-1.5 flex flex-wrap gap-1 items-center">
+      <span className="text-[10px] text-[#9B9890] mr-0.5">Insert:</span>
+      {allTags.map(tag => (
+        <button key={tag.key} type="button" onClick={() => insertTag(tag.key)}
+          className={`px-2 py-0.5 text-[11px] font-mono rounded border transition-colors ${tag.isCustom ? 'bg-[#FFF7F5] border-[#F4C5BB] text-[#D63B1F] hover:bg-[#FFEDE8]' : 'bg-[#F7F6F3] border-[#D4D1C9] text-[#5C5A55] hover:bg-[#EFEDE8]'}`}
+          title={tag.label}
+        >{`{{${tag.key}}}`}</button>
+      ))}
+    </div>
+  )
+}
+
 function CreateScenarioModal({ phoneNumbers, onClose, onSuccess }) {
   const [formData, setFormData] = useState({
     name: '',
@@ -519,8 +556,6 @@ function CreateScenarioModal({ phoneNumbers, onClose, onSuccess }) {
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [created, setCreated] = useState(false)
-  const instructionsRef = useState(null)
-
   useEffect(() => {
     apiGet('/api/contact-lists').then(r => r.json()).then(d => {
       setContactLists(d.contactLists || [])
@@ -646,24 +681,7 @@ function CreateScenarioModal({ phoneNumbers, onClose, onSuccess }) {
                   placeholder="You are a helpful assistant for XYZ company. When a customer messages, respond professionally and…"
                   rows="7"
                   className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F] resize-none" />
-                {listColumns.length > 0 && (
-                  <div className="mt-1.5 flex flex-wrap gap-1">
-                    <span className="text-[10px] text-[#9B9890] self-center mr-0.5">Insert tag:</span>
-                    {listColumns.map(col => (
-                      <button key={col.key} type="button"
-                        onClick={() => {
-                          const ta = document.getElementById('create-instructions')
-                          const start = ta.selectionStart ?? formData.instructions.length
-                          const tag = `{{${col.key}}}`
-                          const next = formData.instructions.slice(0, start) + tag + formData.instructions.slice(start)
-                          toggle('instructions', next)
-                          setTimeout(() => { ta.focus(); ta.setSelectionRange(start + tag.length, start + tag.length) }, 0)
-                        }}
-                        className="px-2 py-0.5 text-[11px] font-mono bg-[#F7F6F3] border border-[#D4D1C9] rounded hover:bg-[#EFEDE8] text-[#D63B1F] transition-colors"
-                      >{`{{${col.key}}}`}</button>
-                    ))}
-                  </div>
-                )}
+                <InstructionTagBar taId="create-instructions" value={formData.instructions} onChange={v => toggle('instructions', v)} listColumns={listColumns} />
                 {errors.instructions && <p className="text-[#D63B1F] text-xs mt-1">{errors.instructions}</p>}
               </div>
 
@@ -890,8 +908,8 @@ function ViewScenarioModal({ scenario, phoneNumbers, onClose, onUpdated, onToggl
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-2xl my-8">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#E3E1DB] sticky top-0 bg-[#FFFFFF] z-10">
+      <div className={`bg-[#FFFFFF] rounded-xl shadow-xl w-full my-8 ${isEditing ? 'max-w-4xl' : 'max-w-2xl'}`}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#E3E1DB] sticky top-0 bg-[#FFFFFF] z-10 rounded-t-xl">
           <h3 className="text-sm font-semibold text-[#131210]">{isEditing ? 'Edit Scenario' : 'Scenario Details'}</h3>
           <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1">
             <i className="fas fa-times text-sm"></i>
@@ -899,170 +917,143 @@ function ViewScenarioModal({ scenario, phoneNumbers, onClose, onUpdated, onToggl
         </div>
 
         {isEditing ? (
-          <form onSubmit={handleEditSubmit} className="px-5 py-4 space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Scenario Name *</label>
-              <input
-                type="text"
-                value={editData.name}
-                onChange={(e) => setEditData({ ...editData, name: e.target.value })}
-                className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
-              />
-              {errors.name && <p className="text-[#D63B1F] text-xs mt-1">{errors.name}</p>}
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Description</label>
-              <input
-                type="text"
-                value={editData.description}
-                onChange={(e) => setEditData({ ...editData, description: e.target.value })}
-                className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">AI Instructions *</label>
-              <textarea
-                id="edit-instructions"
-                value={editData.instructions}
-                onChange={(e) => setEditData({ ...editData, instructions: e.target.value })}
-                rows="5"
-                className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F] resize-none"
-              />
-              {listColumns.length > 0 && (
-                <div className="mt-1.5 flex flex-wrap gap-1">
-                  <span className="text-[10px] text-[#9B9890] self-center mr-0.5">Insert tag:</span>
-                  {listColumns.map(col => (
-                    <button key={col.key} type="button"
-                      onClick={() => {
-                        const ta = document.getElementById('edit-instructions')
-                        const start = ta.selectionStart ?? editData.instructions.length
-                        const tag = `{{${col.key}}}`
-                        const next = editData.instructions.slice(0, start) + tag + editData.instructions.slice(start)
-                        setEditData(p => ({ ...p, instructions: next }))
-                        setTimeout(() => { ta.focus(); ta.setSelectionRange(start + tag.length, start + tag.length) }, 0)
-                      }}
-                      className="px-2 py-0.5 text-[11px] font-mono bg-[#F7F6F3] border border-[#D4D1C9] rounded hover:bg-[#EFEDE8] text-[#D63B1F] transition-colors"
-                    >{`{{${col.key}}}`}</button>
-                  ))}
-                </div>
-              )}
-              {errors.instructions && <p className="text-[#D63B1F] text-xs mt-1">{errors.instructions}</p>}
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Assign Phone Numbers</label>
-              <div className="space-y-1.5 max-h-28 overflow-y-auto border border-[#E3E1DB] rounded-md p-2">
-                {phoneNumbers.map((pn) => (
-                  <label key={pn.id} className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={editData.phoneNumbers.includes(pn.id)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setEditData({ ...editData, phoneNumbers: [...editData.phoneNumbers, pn.id] })
-                        } else {
-                          setEditData({ ...editData, phoneNumbers: editData.phoneNumbers.filter(id => id !== pn.id) })
-                        }
-                      }}
-                      className="text-[#D63B1F]"
-                    />
-                    <span className="text-sm text-[#5C5A55]">{pn.custom_name || pn.phoneNumber}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <ContactRestrictionPicker
-              contactLists={contactLists}
-              selectedListIds={editData.contact_list_ids}
-              onListToggle={(id, checked) => setEditData(p => ({ ...p, contact_list_ids: checked ? [...p.contact_list_ids, id] : p.contact_list_ids.filter(x => x !== id) }))}
-              individualContacts={editIndividualContacts}
-              onAddContact={c => setEditIndividualContacts(p => p.some(x => x.phone === c.phone) ? p : [...p, c])}
-              onRemoveContact={phone => setEditIndividualContacts(p => p.filter(x => x.phone !== phone))}
-            />
-
-            {/* Follow-up Settings */}
-            <div className="border border-[#E3E1DB] rounded-md p-3 space-y-3">
-              <div className="flex items-center justify-between">
+          <form onSubmit={handleEditSubmit} className="px-6 py-5">
+            <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+              {/* ── LEFT COLUMN ── */}
+              <div className="space-y-4">
                 <div>
-                  <p className="text-xs font-semibold text-[#5C5A55]">Automatic Follow-ups</p>
-                  <p className="text-[11px] text-[#9B9890] mt-0.5">Send follow-up messages if no response</p>
+                  <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Scenario Name *</label>
+                  <input type="text" value={editData.name}
+                    onChange={e => setEditData({ ...editData, name: e.target.value })}
+                    className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]" />
+                  {errors.name && <p className="text-[#D63B1F] text-xs mt-1">{errors.name}</p>}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setEditData({ ...editData, enable_followups: !editData.enable_followups })}
-                  className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${editData.enable_followups ? 'bg-[#D63B1F]' : 'bg-[#EFEDE8]'}`}
-                >
-                  <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-[#FFFFFF] shadow ring-0 transition duration-200 ease-in-out ${editData.enable_followups ? 'translate-x-4' : 'translate-x-0'}`} />
-                </button>
-              </div>
-              {editData.enable_followups && (
-                <div className="grid grid-cols-2 gap-3 pt-1">
-                  <div>
-                    <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Max Attempts</label>
-                    <select
-                      value={editData.max_followup_attempts}
-                      onChange={(e) => setEditData({ ...editData, max_followup_attempts: parseInt(e.target.value) })}
-                      className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
-                    >
-                      {[1,2,3,4,5,6,7,8,9,10].map(n => <option key={n} value={n}>{n}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Stop Keywords</label>
-                    <input
-                      type="text"
-                      value={editData.auto_stop_keywords}
-                      onChange={(e) => setEditData({ ...editData, auto_stop_keywords: e.target.value })}
-                      className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
 
-            {/* Business Hours */}
-            <div className="border border-[#E3E1DB] rounded-md p-3 space-y-3">
-              <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-semibold text-[#5C5A55]">Business Hours</p>
+                  <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Description</label>
+                  <input type="text" value={editData.description}
+                    onChange={e => setEditData({ ...editData, description: e.target.value })}
+                    placeholder="Brief description (optional)"
+                    className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]" />
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setEditData({ ...editData, enable_business_hours: !editData.enable_business_hours })}
-                  className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${editData.enable_business_hours ? 'bg-[#D63B1F]' : 'bg-[#EFEDE8]'}`}
-                >
-                  <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-[#FFFFFF] shadow ring-0 transition duration-200 ease-in-out ${editData.enable_business_hours ? 'translate-x-4' : 'translate-x-0'}`} />
-                </button>
+
+                <div>
+                  <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">AI Instructions *</label>
+                  <textarea id="edit-instructions" value={editData.instructions}
+                    onChange={e => setEditData({ ...editData, instructions: e.target.value })}
+                    rows="7"
+                    className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F] resize-none" />
+                  <InstructionTagBar taId="edit-instructions" value={editData.instructions} onChange={v => setEditData(p => ({ ...p, instructions: v }))} listColumns={listColumns} />
+                  {errors.instructions && <p className="text-[#D63B1F] text-xs mt-1">{errors.instructions}</p>}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Assign Phone Numbers</label>
+                  <div className="space-y-1.5 max-h-32 overflow-y-auto border border-[#E3E1DB] rounded-md p-2">
+                    {phoneNumbers.length === 0
+                      ? <p className="text-xs text-[#9B9890] py-1">No phone numbers available</p>
+                      : phoneNumbers.map(pn => (
+                        <label key={pn.id} className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={editData.phoneNumbers.includes(pn.id)}
+                            onChange={e => setEditData({ ...editData, phoneNumbers: e.target.checked ? [...editData.phoneNumbers, pn.id] : editData.phoneNumbers.filter(id => id !== pn.id) })}
+                            className="accent-[#D63B1F]" />
+                          <span className="text-sm text-[#5C5A55]">{pn.custom_name || pn.phoneNumber}</span>
+                        </label>
+                      ))}
+                  </div>
+                </div>
               </div>
-              {editData.enable_business_hours && (
-                <div className="grid grid-cols-3 gap-3 pt-1">
-                  <div>
-                    <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Start</label>
-                    <input type="time" value={editData.business_hours_start} onChange={(e) => setEditData({ ...editData, business_hours_start: e.target.value })} className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]" />
+
+              {/* ── RIGHT COLUMN ── */}
+              <div className="space-y-4">
+                <ContactRestrictionPicker
+                  contactLists={contactLists}
+                  selectedListIds={editData.contact_list_ids}
+                  onListToggle={(id, checked) => setEditData(p => ({ ...p, contact_list_ids: checked ? [...p.contact_list_ids, id] : p.contact_list_ids.filter(x => x !== id) }))}
+                  individualContacts={editIndividualContacts}
+                  onAddContact={c => setEditIndividualContacts(p => p.some(x => x.phone === c.phone) ? p : [...p, c])}
+                  onRemoveContact={phone => setEditIndividualContacts(p => p.filter(x => x.phone !== phone))}
+                />
+
+                {/* Follow-ups */}
+                <div className="border border-[#E3E1DB] rounded-md p-3 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-semibold text-[#5C5A55]">Automatic Follow-ups</p>
+                      <p className="text-[11px] text-[#9B9890] mt-0.5">Send follow-up messages if no response</p>
+                    </div>
+                    <button type="button" onClick={() => setEditData({ ...editData, enable_followups: !editData.enable_followups })}
+                      className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${editData.enable_followups ? 'bg-[#D63B1F]' : 'bg-[#EFEDE8]'}`}>
+                      <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${editData.enable_followups ? 'translate-x-4' : 'translate-x-0'}`} />
+                    </button>
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">End</label>
-                    <input type="time" value={editData.business_hours_end} onChange={(e) => setEditData({ ...editData, business_hours_end: e.target.value })} className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Timezone</label>
-                    <select value={editData.business_hours_timezone} onChange={(e) => setEditData({ ...editData, business_hours_timezone: e.target.value })} className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]">
-                      <option value="America/New_York">Eastern (ET)</option>
-                      <option value="America/Chicago">Central (CT)</option>
-                      <option value="America/Denver">Mountain (MT)</option>
-                      <option value="America/Los_Angeles">Pacific (PT)</option>
-                      <option value="UTC">UTC</option>
-                    </select>
-                  </div>
+                  {editData.enable_followups && (
+                    <div className="grid grid-cols-2 gap-3 pt-1">
+                      <div>
+                        <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Max Attempts</label>
+                        <select value={editData.max_followup_attempts}
+                          onChange={e => setEditData({ ...editData, max_followup_attempts: parseInt(e.target.value) })}
+                          className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F]">
+                          {[1,2,3,4,5,6,7,8,9,10].map(n => <option key={n} value={n}>{n}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Stop Keywords</label>
+                        <input type="text" value={editData.auto_stop_keywords}
+                          onChange={e => setEditData({ ...editData, auto_stop_keywords: e.target.value })}
+                          className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F]" />
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
+
+                {/* Business Hours */}
+                <div className="border border-[#E3E1DB] rounded-md p-3 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-semibold text-[#5C5A55]">Business Hours</p>
+                      <p className="text-[11px] text-[#9B9890] mt-0.5">Restrict AI to specific hours</p>
+                    </div>
+                    <button type="button" onClick={() => setEditData({ ...editData, enable_business_hours: !editData.enable_business_hours })}
+                      className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${editData.enable_business_hours ? 'bg-[#D63B1F]' : 'bg-[#EFEDE8]'}`}>
+                      <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${editData.enable_business_hours ? 'translate-x-4' : 'translate-x-0'}`} />
+                    </button>
+                  </div>
+                  {editData.enable_business_hours && (
+                    <div className="space-y-3 pt-1">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Start</label>
+                          <input type="time" value={editData.business_hours_start} onChange={e => setEditData({ ...editData, business_hours_start: e.target.value })} className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F]" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">End</label>
+                          <input type="time" value={editData.business_hours_end} onChange={e => setEditData({ ...editData, business_hours_end: e.target.value })} className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F]" />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Timezone</label>
+                        <select value={editData.business_hours_timezone} onChange={e => setEditData({ ...editData, business_hours_timezone: e.target.value })} className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F]">
+                          <option value="America/New_York">Eastern (ET)</option>
+                          <option value="America/Chicago">Central (CT)</option>
+                          <option value="America/Denver">Mountain (MT)</option>
+                          <option value="America/Los_Angeles">Pacific (PT)</option>
+                          <option value="America/Phoenix">Arizona (MST)</option>
+                          <option value="America/Anchorage">Alaska (AKT)</option>
+                          <option value="Pacific/Honolulu">Hawaii (HST)</option>
+                          <option value="UTC">UTC</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
 
             {errors.submit && (
-              <div className="bg-[rgba(214,59,31,0.07)] border border-[rgba(214,59,31,0.14)] text-[#D63B1F] px-3 py-2.5 rounded-md text-sm">{errors.submit}</div>
+              <div className="mt-4 bg-[rgba(214,59,31,0.07)] border border-[rgba(214,59,31,0.14)] text-[#D63B1F] px-3 py-2.5 rounded-md text-sm">{errors.submit}</div>
             )}
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2 pt-5 border-t border-[#E3E1DB] mt-5">
               <button type="button" onClick={() => { setIsEditing(false); setErrors({}) }} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
               <button type="submit" disabled={isSubmitting} className="px-4 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md disabled:opacity-50">
                 {isSubmitting ? <><i className="fas fa-spinner fa-spin mr-1.5"></i>Saving…</> : 'Save Changes'}
