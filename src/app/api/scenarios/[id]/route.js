@@ -91,6 +91,7 @@ export async function PATCH(request, { params }) {
       is_active,
       phoneNumbers,
       contacts,
+      contact_list_ids,
       enable_followups,
       max_followup_attempts,
       business_hours_start,
@@ -113,6 +114,7 @@ export async function PATCH(request, { params }) {
     if (business_hours_timezone !== undefined) updateData.business_hours_timezone = business_hours_timezone
     if (auto_stop_keywords !== undefined) updateData.auto_stop_keywords = auto_stop_keywords
     if (enable_business_hours !== undefined) updateData.enable_business_hours = enable_business_hours
+    if (contact_list_ids !== undefined) updateData.restrict_to_contact_lists = contact_list_ids?.length > 0 ? contact_list_ids : null
 
     const { data: scenario, error: updateError } = await supabaseAdmin
       .from('scenarios')

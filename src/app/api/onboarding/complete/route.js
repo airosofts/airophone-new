@@ -12,7 +12,7 @@ export async function POST(request) {
     const workspaceId = request.headers.get('x-workspace-id')
     if (!userId || !workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { plan_name, price_id, payment_method_id, cardholder_name } = await request.json()
+    const { plan_name, price_id, payment_method_id, cardholder_name, coupon_id } = await request.json()
 
     if (!payment_method_id || !cardholder_name) {
       return NextResponse.json({ error: 'Payment method and cardholder name are required' }, { status: 400 })
@@ -80,8 +80,38 @@ export async function POST(request) {
       is_default: isDefault,
     })
 
+    // Resolve coupon if provided
+    let stripeCouponId = null
+    let couponRecord = null
+    if (coupon_id) {
+      const { data: coupon } = await supabaseAdmin
+        .from('coupons')
+        .select('*')
+        .eq('id', coupon_id)
+        .eq('is_active', true)
+        .single()
+
+      if (coupon) {
+        couponRecord = coupon
+        // Create a one-time Stripe coupon from our coupon data
+        const stripeCouponParams = {
+          duration: 'once',
+          name: coupon.description || coupon.code,
+          metadata: { coupon_id: coupon.id, code: coupon.code },
+        }
+        if (coupon.discount_type === 'percent') {
+          stripeCouponParams.percent_off = coupon.discount_value
+        } else {
+          stripeCouponParams.amount_off = Math.round(coupon.discount_value * 100) // cents
+          stripeCouponParams.currency = 'usd'
+        }
+        const stripeCoupon = await stripe.coupons.create(stripeCouponParams)
+        stripeCouponId = stripeCoupon.id
+      }
+    }
+
     // Create Stripe subscription with 7-day trial
-    const subscription = await stripe.subscriptions.create({
+    const subscriptionParams = {
       customer: stripeCustomerId,
       items: [{ price: price_id }],
       trial_period_days: 7,
@@ -91,7 +121,33 @@ export async function POST(request) {
       },
       expand: ['latest_invoice.payment_intent'],
       metadata: { user_id: userId, workspace_id: workspaceId, plan_name },
-    })
+    }
+    if (stripeCouponId) {
+      subscriptionParams.discounts = [{ coupon: stripeCouponId }]
+    }
+    const subscription = await stripe.subscriptions.create(subscriptionParams)
+
+    // Record coupon redemption
+    if (couponRecord) {
+      await supabaseAdmin.from('coupon_redemptions').insert({
+        coupon_id: couponRecord.id,
+        workspace_id: workspaceId,
+        user_id: userId,
+        stripe_subscription_id: subscription.id,
+        discount_type: couponRecord.discount_type,
+        discount_value: couponRecord.discount_value,
+        redeemed_at: new Date().toISOString(),
+      })
+
+      await supabaseAdmin.rpc('increment_coupon_uses', { coupon_id_param: couponRecord.id })
+        .catch(() => {
+          // Fallback: manual increment if RPC doesn't exist
+          return supabaseAdmin
+            .from('coupons')
+            .update({ uses_count: (couponRecord.uses_count || 0) + 1 })
+            .eq('id', couponRecord.id)
+        })
+    }
 
     // Save subscription to subscriptions table
     await supabaseAdmin.from('subscriptions').insert({

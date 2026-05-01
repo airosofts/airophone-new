@@ -72,7 +72,7 @@ export async function POST(request) {
     }
 
     const body = await request.json()
-    const { name, description, instructions, phoneNumbers, contacts } = body
+    const { name, description, instructions, phoneNumbers, contacts, contact_list_ids } = body
 
     if (!name || !instructions) {
       return NextResponse.json(
@@ -90,7 +90,8 @@ export async function POST(request) {
         description: description || null,
         instructions,
         created_by: user.userId,
-        is_active: true
+        is_active: true,
+        restrict_to_contact_lists: contact_list_ids?.length > 0 ? contact_list_ids : null,
       })
       .select()
       .single()

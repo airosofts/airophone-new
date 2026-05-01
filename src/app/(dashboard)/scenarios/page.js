@@ -371,6 +371,7 @@ function CreateScenarioModal({ phoneNumbers, onClose, onSuccess }) {
     description: '',
     instructions: '',
     phoneNumbers: [],
+    contact_list_ids: [],
     enable_followups: false,
     max_followup_attempts: 3,
     enable_business_hours: false,
@@ -379,9 +380,16 @@ function CreateScenarioModal({ phoneNumbers, onClose, onSuccess }) {
     business_hours_timezone: 'America/New_York',
     auto_stop_keywords: 'STOP,UNSUBSCRIBE,CANCEL',
   })
+  const [contactLists, setContactLists] = useState([])
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [created, setCreated] = useState(false)
+
+  useEffect(() => {
+    apiGet('/api/contact-lists').then(r => r.json()).then(d => {
+      setContactLists(d.contactLists || [])
+    }).catch(() => {})
+  }, [])
 
   const validateForm = () => {
     const newErrors = {}
@@ -406,6 +414,7 @@ function CreateScenarioModal({ phoneNumbers, onClose, onSuccess }) {
         description: formData.description || null,
         instructions: formData.instructions,
         phoneNumbers: formData.phoneNumbers,
+        contact_list_ids: formData.contact_list_ids,
         enable_followups: formData.enable_followups,
         max_followup_attempts: formData.max_followup_attempts,
         enable_business_hours: formData.enable_business_hours,
@@ -516,6 +525,41 @@ function CreateScenarioModal({ phoneNumbers, onClose, onSuccess }) {
                   </label>
                 ))}
               </div>
+            </div>
+
+            <div className="col-span-2">
+              <label className="block text-xs font-medium text-[#5C5A55] mb-1">Contact Restrictions</label>
+              <p className="text-[11px] text-[#9B9890] mb-1.5">Restrict this scenario to contacts in specific lists. Leave empty to apply to all incoming contacts.</p>
+              <div className="space-y-1.5 max-h-28 overflow-y-auto border border-[#E3E1DB] rounded-md p-2">
+                {contactLists.length === 0 ? (
+                  <p className="text-xs text-[#9B9890] py-1">No contact lists found</p>
+                ) : contactLists.map((cl) => (
+                  <label key={cl.id} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.contact_list_ids.includes(cl.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setFormData({ ...formData, contact_list_ids: [...formData.contact_list_ids, cl.id] })
+                        } else {
+                          setFormData({ ...formData, contact_list_ids: formData.contact_list_ids.filter(id => id !== cl.id) })
+                        }
+                      }}
+                      className="text-[#D63B1F]"
+                    />
+                    <span className="text-sm text-[#5C5A55]">{cl.name}</span>
+                    {cl.contactCount !== undefined && (
+                      <span className="text-xs text-[#9B9890]">({cl.contactCount} contacts)</span>
+                    )}
+                  </label>
+                ))}
+              </div>
+              {formData.contact_list_ids.length > 0 && (
+                <p className="text-[11px] text-[#D63B1F] mt-1.5">
+                  <i className="fas fa-filter mr-1"></i>
+                  Restricted to {formData.contact_list_ids.length} list{formData.contact_list_ids.length > 1 ? 's' : ''}
+                </p>
+              )}
             </div>
           </div>
 
@@ -650,6 +694,7 @@ function ViewScenarioModal({ scenario, phoneNumbers, onClose, onUpdated, onToggl
     description: scenario.description || '',
     instructions: scenario.instructions || '',
     phoneNumbers: scenario.scenario_phone_numbers?.map(spn => spn.phone_number_id) || [],
+    contact_list_ids: scenario.restrict_to_contact_lists || [],
     enable_followups: scenario.enable_followups || false,
     max_followup_attempts: scenario.max_followup_attempts || 3,
     enable_business_hours: scenario.enable_business_hours || false,
@@ -658,8 +703,15 @@ function ViewScenarioModal({ scenario, phoneNumbers, onClose, onUpdated, onToggl
     business_hours_timezone: scenario.business_hours_timezone || 'America/New_York',
     auto_stop_keywords: (scenario.auto_stop_keywords || ['STOP', 'UNSUBSCRIBE']).join(','),
   })
+  const [contactLists, setContactLists] = useState([])
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  useEffect(() => {
+    apiGet('/api/contact-lists').then(r => r.json()).then(d => {
+      setContactLists(d.contactLists || [])
+    }).catch(() => {})
+  }, [])
 
   const handleEditSubmit = async (e) => {
     e.preventDefault()
@@ -679,6 +731,7 @@ function ViewScenarioModal({ scenario, phoneNumbers, onClose, onUpdated, onToggl
           description: editData.description || null,
           instructions: editData.instructions,
           phoneNumbers: editData.phoneNumbers,
+          contact_list_ids: editData.contact_list_ids,
           enable_followups: editData.enable_followups,
           max_followup_attempts: editData.max_followup_attempts,
           enable_business_hours: editData.enable_business_hours,
@@ -766,6 +819,41 @@ function ViewScenarioModal({ scenario, phoneNumbers, onClose, onUpdated, onToggl
                   </label>
                 ))}
               </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-[#5C5A55] mb-1">Contact Restrictions</label>
+              <p className="text-[11px] text-[#9B9890] mb-1.5">Restrict to contacts in specific lists. Leave empty to apply to all.</p>
+              <div className="space-y-1.5 max-h-28 overflow-y-auto border border-[#E3E1DB] rounded-md p-2">
+                {contactLists.length === 0 ? (
+                  <p className="text-xs text-[#9B9890] py-1">No contact lists found</p>
+                ) : contactLists.map((cl) => (
+                  <label key={cl.id} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editData.contact_list_ids.includes(cl.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setEditData({ ...editData, contact_list_ids: [...editData.contact_list_ids, cl.id] })
+                        } else {
+                          setEditData({ ...editData, contact_list_ids: editData.contact_list_ids.filter(id => id !== cl.id) })
+                        }
+                      }}
+                      className="text-[#D63B1F]"
+                    />
+                    <span className="text-sm text-[#5C5A55]">{cl.name}</span>
+                    {cl.contactCount !== undefined && (
+                      <span className="text-xs text-[#9B9890]">({cl.contactCount} contacts)</span>
+                    )}
+                  </label>
+                ))}
+              </div>
+              {editData.contact_list_ids.length > 0 && (
+                <p className="text-[11px] text-[#D63B1F] mt-1.5">
+                  <i className="fas fa-filter mr-1"></i>
+                  Restricted to {editData.contact_list_ids.length} list{editData.contact_list_ids.length > 1 ? 's' : ''}
+                </p>
+              )}
             </div>
 
             {/* Follow-up Settings */}
@@ -901,6 +989,23 @@ function ViewScenarioModal({ scenario, phoneNumbers, onClose, onUpdated, onToggl
                       ? `${scenario.business_hours_start?.slice(0, 5)} – ${scenario.business_hours_end?.slice(0, 5)}`
                       : 'Not restricted'}
                   </p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Contact Restrictions</p>
+                  {scenario.restrict_to_contact_lists?.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {scenario.restrict_to_contact_lists.map(id => {
+                        const list = contactLists.find(cl => cl.id === id)
+                        return (
+                          <span key={id} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[rgba(214,59,31,0.07)] text-[#D63B1F]">
+                            <i className="fas fa-filter mr-1 text-[10px]"></i>{list?.name || 'List'}
+                          </span>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-[#5C5A55]">All contacts (unrestricted)</p>
+                  )}
                 </div>
               </div>
             </div>

@@ -564,7 +564,7 @@ export default function OnboardingPage() {
     finally { setWhatsappLoading(false) }
   }
 
-  const handleComplete = async (paymentMethodId, cardholderName, plan) => {
+  const handleComplete = async (paymentMethodId, cardholderName, plan, couponId) => {
     setSaving(true); setError('')
     try {
       const res = await fetch('/api/onboarding/complete', {
@@ -573,6 +573,7 @@ export default function OnboardingPage() {
         body: JSON.stringify({
           plan_name: plan.id, price_id: plan.priceId,
           payment_method_id: paymentMethodId, cardholder_name: cardholderName,
+          coupon_id: couponId || null,
         }),
       })
       const data = await res.json()
@@ -1301,7 +1302,7 @@ export default function OnboardingPage() {
                 </div>
                 <Elements stripe={stripePromise}>
                   <OnboardingCardForm
-                    onComplete={(pmId, name) => handleComplete(pmId, name, PLANS.find(p => p.id === selectedPlan))}
+                    onComplete={(pmId, name, couponId) => handleComplete(pmId, name, PLANS.find(p => p.id === selectedPlan), couponId)}
                     saving={saving}
                     setError={setError}
                     selectedPlan={PLANS.find(p => p.id === selectedPlan)}
@@ -1327,6 +1328,40 @@ function OnboardingCardForm({ onComplete, saving, setError, selectedPlan }) {
   const stripe = useStripe()
   const elements = useElements()
   const [name, setName] = useState('')
+  const [couponCode, setCouponCode] = useState('')
+  const [couponApplied, setCouponApplied] = useState(null) // { id, code, discount_type, discount_value, description }
+  const [couponError, setCouponError] = useState('')
+  const [couponLoading, setCouponLoading] = useState(false)
+
+  const discountedPrice = couponApplied
+    ? couponApplied.discount_type === 'percent'
+      ? (selectedPlan?.price * (1 - couponApplied.discount_value / 100)).toFixed(2)
+      : Math.max(0, selectedPlan?.price - couponApplied.discount_value).toFixed(2)
+    : null
+
+  const handleApplyCoupon = async () => {
+    if (!couponCode.trim()) return
+    setCouponLoading(true)
+    setCouponError('')
+    try {
+      const session = localStorage.getItem('user_session')
+      const s = session ? JSON.parse(session) : {}
+      const res = await fetch('/api/coupons/validate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': s.userId || '',
+          'x-workspace-id': s.workspaceId || '',
+        },
+        body: JSON.stringify({ code: couponCode.trim(), plan_name: selectedPlan?.id }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setCouponError(data.error || 'Invalid coupon'); return }
+      setCouponApplied(data.coupon)
+      setCouponCode('')
+    } catch { setCouponError('Failed to apply coupon') }
+    finally { setCouponLoading(false) }
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -1338,7 +1373,7 @@ function OnboardingCardForm({ onComplete, saving, setError, selectedPlan }) {
       billing_details: { name: name.trim() },
     })
     if (stripeError) { setError(stripeError.message); return }
-    onComplete(paymentMethod.id, name.trim())
+    onComplete(paymentMethod.id, name.trim(), couponApplied?.id || null)
   }
 
   return (
@@ -1364,7 +1399,81 @@ function OnboardingCardForm({ onComplete, saving, setError, selectedPlan }) {
             }} />
           </div>
         </div>
+
+        {/* Coupon */}
+        <div>
+          <label style={labelStyle}>Coupon code <span style={{ color: C.text3, fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span></label>
+          {couponApplied ? (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '10px 14px', borderRadius: 9,
+              background: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.2)',
+            }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" style={{ flexShrink: 0 }}>
+                <circle cx="12" cy="12" r="10"/><polyline points="16 8 10 14 8 12"/>
+              </svg>
+              <div style={{ flex: 1 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#16a34a', fontFamily: C.mono }}>{couponApplied.code}</span>
+                <span style={{ fontSize: 12, color: '#16a34a', marginLeft: 8 }}>
+                  — {couponApplied.discount_type === 'percent' ? `${couponApplied.discount_value}% off` : `$${couponApplied.discount_value} off`}
+                  {couponApplied.description ? ` · ${couponApplied.description}` : ''}
+                </span>
+              </div>
+              <button type="button" onClick={() => setCouponApplied(null)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#16a34a', fontSize: 12, padding: 0 }}>
+                Remove
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                value={couponCode}
+                onChange={e => { setCouponCode(e.target.value.toUpperCase()); setCouponError('') }}
+                placeholder="ENTER CODE"
+                style={{ ...inputStyle, flex: 1, fontFamily: C.mono, letterSpacing: '0.05em' }}
+                onFocus={focusHandler} onBlur={blurHandler}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleApplyCoupon() } }}
+              />
+              <button type="button" onClick={handleApplyCoupon} disabled={!couponCode.trim() || couponLoading}
+                style={{
+                  height: 42, padding: '0 16px', borderRadius: 9, border: `1px solid ${C.border2}`,
+                  background: C.surface, fontSize: 13, fontWeight: 500, color: C.text2,
+                  cursor: couponCode.trim() && !couponLoading ? 'pointer' : 'not-allowed',
+                  opacity: couponCode.trim() && !couponLoading ? 1 : 0.5,
+                  fontFamily: C.sans, whiteSpace: 'nowrap',
+                }}>
+                {couponLoading ? 'Checking...' : 'Apply'}
+              </button>
+            </div>
+          )}
+          {couponError && (
+            <p style={{ marginTop: 6, fontSize: 12, color: C.red }}>{couponError}</p>
+          )}
+        </div>
       </div>
+
+      {/* Price summary */}
+      {couponApplied && (
+        <div style={{
+          padding: '12px 14px', borderRadius: 9,
+          background: C.bg, border: `1px solid ${C.border}`,
+          marginBottom: 16, fontSize: 13,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: C.text2, marginBottom: 4 }}>
+            <span>{selectedPlan?.name} plan</span>
+            <span>${selectedPlan?.price}/mo</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#16a34a', marginBottom: 4 }}>
+            <span>Coupon ({couponApplied.code})</span>
+            <span>−{couponApplied.discount_type === 'percent' ? `${couponApplied.discount_value}%` : `$${couponApplied.discount_value}`}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: C.text, fontWeight: 600, borderTop: `1px solid ${C.border}`, paddingTop: 8, marginTop: 4 }}>
+            <span>Total after trial</span>
+            <span>${discountedPrice}/mo</span>
+          </div>
+        </div>
+      )}
+
       <button type="submit" disabled={saving || !stripe}
         style={{
           ...btnPrimary, height: 50, fontSize: 15, fontWeight: 600,
@@ -1376,7 +1485,7 @@ function OnboardingCardForm({ onComplete, saving, setError, selectedPlan }) {
         {saving ? 'Setting up your account...' : <>Start 7-day free trial <ArrowRight /></>}
       </button>
       <p style={{ textAlign: 'center', fontSize: 12, color: C.text3, marginTop: 12, lineHeight: 1.6, fontWeight: 300 }}>
-        No charge until {new Date(Date.now() + 7*24*60*60*1000).toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'})}. Then <strong style={{ fontWeight: 600 }}>${selectedPlan?.price}/month</strong> for {selectedPlan?.name} plan.
+        No charge until {new Date(Date.now() + 7*24*60*60*1000).toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'})}. Then <strong style={{ fontWeight: 600 }}>${couponApplied ? discountedPrice : selectedPlan?.price}/month</strong> for {selectedPlan?.name} plan.
       </p>
     </form>
   )

@@ -36,7 +36,8 @@ export async function findMatchingScenario(recipientNumber, senderNumber) {
           workspace_id,
           name,
           instructions,
-          is_active
+          is_active,
+          restrict_to_contact_lists
         )
       `)
       .in('phone_number_id', phoneIds)
@@ -52,7 +53,7 @@ export async function findMatchingScenario(recipientNumber, senderNumber) {
       return null
     }
 
-    // Priority 1: Explicit assignment — scenario has this specific contact listed
+    // Priority 1: Explicit individual contact assignment
     for (const item of scenarioPhoneNumbers) {
       const scenario = item.scenarios
 
@@ -69,10 +70,29 @@ export async function findMatchingScenario(recipientNumber, senderNumber) {
       }
     }
 
-    // Priority 2: Unrestricted scenario — no contacts in scenario_contacts at all
+    // Priority 2: Contact list restriction — sender must be in one of the allowed lists
     for (const item of scenarioPhoneNumbers) {
       const scenario = item.scenarios
+      const listIds = scenario.restrict_to_contact_lists
 
+      if (listIds && listIds.length > 0) {
+        const { data: contactInList } = await supabaseAdmin
+          .from('contacts')
+          .select('id')
+          .eq('workspace_id', scenario.workspace_id)
+          .eq('phone_number', senderNumber)
+          .in('contact_list_id', listIds)
+          .limit(1)
+          .single()
+
+        if (contactInList) {
+          return scenario
+        }
+        // Has list restriction but sender not in list — skip this scenario
+        continue
+      }
+
+      // Priority 3: Unrestricted — no individual contacts AND no list restrictions
       const { data: anyContacts } = await supabaseAdmin
         .from('scenario_contacts')
         .select('id')
