@@ -515,15 +515,31 @@ function CreateScenarioModal({ phoneNumbers, onClose, onSuccess }) {
   })
   const [individualContacts, setIndividualContacts] = useState([])
   const [contactLists, setContactLists] = useState([])
+  const [listColumns, setListColumns] = useState([])
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [created, setCreated] = useState(false)
+  const instructionsRef = useState(null)
 
   useEffect(() => {
     apiGet('/api/contact-lists').then(r => r.json()).then(d => {
       setContactLists(d.contactLists || [])
     }).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (formData.contact_list_ids.length === 0) { setListColumns([]); return }
+    Promise.all(formData.contact_list_ids.map(id =>
+      fetchWithWorkspace(`/api/contact-lists/${id}/columns`).then(r => r.json())
+    )).then(results => {
+      const seen = new Set()
+      const cols = []
+      results.forEach(r => (r.columns || []).forEach(col => {
+        if (!seen.has(col.key)) { seen.add(col.key); cols.push(col) }
+      }))
+      setListColumns(cols)
+    }).catch(() => {})
+  }, [formData.contact_list_ids])
 
   const validateForm = () => {
     const newErrors = {}
@@ -625,11 +641,29 @@ function CreateScenarioModal({ phoneNumbers, onClose, onSuccess }) {
 
               <div>
                 <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">AI Instructions *</label>
-                <textarea value={formData.instructions}
+                <textarea id="create-instructions" value={formData.instructions}
                   onChange={e => toggle('instructions', e.target.value)}
                   placeholder="You are a helpful assistant for XYZ company. When a customer messages, respond professionally and…"
                   rows="7"
                   className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F] resize-none" />
+                {listColumns.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    <span className="text-[10px] text-[#9B9890] self-center mr-0.5">Insert tag:</span>
+                    {listColumns.map(col => (
+                      <button key={col.key} type="button"
+                        onClick={() => {
+                          const ta = document.getElementById('create-instructions')
+                          const start = ta.selectionStart ?? formData.instructions.length
+                          const tag = `{{${col.key}}}`
+                          const next = formData.instructions.slice(0, start) + tag + formData.instructions.slice(start)
+                          toggle('instructions', next)
+                          setTimeout(() => { ta.focus(); ta.setSelectionRange(start + tag.length, start + tag.length) }, 0)
+                        }}
+                        className="px-2 py-0.5 text-[11px] font-mono bg-[#F7F6F3] border border-[#D4D1C9] rounded hover:bg-[#EFEDE8] text-[#D63B1F] transition-colors"
+                      >{`{{${col.key}}}`}</button>
+                    ))}
+                  </div>
+                )}
                 {errors.instructions && <p className="text-[#D63B1F] text-xs mt-1">{errors.instructions}</p>}
               </div>
 
@@ -786,6 +820,7 @@ function ViewScenarioModal({ scenario, phoneNumbers, onClose, onUpdated, onToggl
     (scenario.scenario_contacts || []).map(sc => ({ phone: sc.recipient_phone, id: sc.contact_id, label: sc.contacts?.business_name || sc.recipient_phone }))
   )
   const [contactLists, setContactLists] = useState([])
+  const [listColumns, setListColumns] = useState([])
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -794,6 +829,20 @@ function ViewScenarioModal({ scenario, phoneNumbers, onClose, onUpdated, onToggl
       setContactLists(d.contactLists || [])
     }).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (editData.contact_list_ids.length === 0) { setListColumns([]); return }
+    Promise.all(editData.contact_list_ids.map(id =>
+      fetchWithWorkspace(`/api/contact-lists/${id}/columns`).then(r => r.json())
+    )).then(results => {
+      const seen = new Set()
+      const cols = []
+      results.forEach(r => (r.columns || []).forEach(col => {
+        if (!seen.has(col.key)) { seen.add(col.key); cols.push(col) }
+      }))
+      setListColumns(cols)
+    }).catch(() => {})
+  }, [editData.contact_list_ids])
 
   const handleEditSubmit = async (e) => {
     e.preventDefault()
@@ -873,11 +922,30 @@ function ViewScenarioModal({ scenario, phoneNumbers, onClose, onUpdated, onToggl
             <div>
               <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">AI Instructions *</label>
               <textarea
+                id="edit-instructions"
                 value={editData.instructions}
                 onChange={(e) => setEditData({ ...editData, instructions: e.target.value })}
                 rows="5"
                 className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F] resize-none"
               />
+              {listColumns.length > 0 && (
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  <span className="text-[10px] text-[#9B9890] self-center mr-0.5">Insert tag:</span>
+                  {listColumns.map(col => (
+                    <button key={col.key} type="button"
+                      onClick={() => {
+                        const ta = document.getElementById('edit-instructions')
+                        const start = ta.selectionStart ?? editData.instructions.length
+                        const tag = `{{${col.key}}}`
+                        const next = editData.instructions.slice(0, start) + tag + editData.instructions.slice(start)
+                        setEditData(p => ({ ...p, instructions: next }))
+                        setTimeout(() => { ta.focus(); ta.setSelectionRange(start + tag.length, start + tag.length) }, 0)
+                      }}
+                      className="px-2 py-0.5 text-[11px] font-mono bg-[#F7F6F3] border border-[#D4D1C9] rounded hover:bg-[#EFEDE8] text-[#D63B1F] transition-colors"
+                    >{`{{${col.key}}}`}</button>
+                  ))}
+                </div>
+              )}
               {errors.instructions && <p className="text-[#D63B1F] text-xs mt-1">{errors.instructions}</p>}
             </div>
 

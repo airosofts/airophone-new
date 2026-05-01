@@ -155,8 +155,35 @@ export async function executeScenario(scenario, message, conversation) {
 
     executionLog.conversation_history = conversationHistory
 
+    // Look up the contact and substitute {{key}} tokens in instructions
+    let instructions = scenario.instructions
+    const { data: contactRecord } = await supabaseAdmin
+      .from('contacts')
+      .select('first_name, last_name, business_name, phone_number, email, city, state, country, custom_fields')
+      .eq('workspace_id', scenario.workspace_id)
+      .eq('phone_number', message.from_number)
+      .limit(1)
+      .single()
+
+    if (contactRecord) {
+      const substitutions = {
+        first_name: contactRecord.first_name || '',
+        last_name: contactRecord.last_name || '',
+        business_name: contactRecord.business_name || '',
+        phone_number: contactRecord.phone_number || '',
+        email: contactRecord.email || '',
+        city: contactRecord.city || '',
+        state: contactRecord.state || '',
+        country: contactRecord.country || '',
+        ...(contactRecord.custom_fields || {})
+      }
+      instructions = instructions.replace(/\{\{(\w+)\}\}/g, (_, key) =>
+        substitutions[key] !== undefined ? substitutions[key] : `{{${key}}}`
+      )
+    }
+
     // Build AI prompt
-    const aiPrompt = `${scenario.instructions}
+    const aiPrompt = `${instructions}
 
 IMPORTANT RULES:
 1. Follow the scenario instructions strictly

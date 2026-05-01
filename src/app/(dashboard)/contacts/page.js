@@ -700,29 +700,90 @@ function AddContactModal({ onClose, contactListId, onContactAdded, onError }) {
   )
 }
 
-function ImportCsvModal({ onClose, contactListId, onImportComplete, onError }) {
+const STANDARD_FIELD_OPTIONS = [
+  { value: 'skip', label: '— Skip —' },
+  { value: 'first_name', label: 'First Name' },
+  { value: 'last_name', label: 'Last Name' },
+  { value: 'business_name', label: 'Company Name' },
+  { value: 'phone_number', label: 'Phone Number *' },
+  { value: 'email', label: 'Email' },
+  { value: 'city', label: 'City' },
+  { value: 'state', label: 'State' },
+  { value: 'country', label: 'Country' },
+]
+
+function parseCSVHeaders(csvText) {
+  const lines = csvText.split(/\r?\n/).filter(l => l.trim())
+  if (!lines.length) return []
+  const result = []
+  let current = ''
+  let inQuotes = false
+  for (let i = 0; i < lines[0].length; i++) {
+    const c = lines[0][i]
+    if (c === '"') { inQuotes = !inQuotes }
+    else if (c === ',' && !inQuotes) { result.push(current.trim()); current = '' }
+    else { current += c }
+  }
+  result.push(current.trim())
+  return result
+}
+
+function autoDetectField(header) {
+  const h = header.toLowerCase().trim()
+  if (h === 'firstname' || h === 'first_name' || h === 'first name') return 'first_name'
+  if (h === 'lastname' || h === 'last_name' || h === 'last name') return 'last_name'
+  if ((h.includes('business') && h.includes('name')) || h === 'company' || h === 'company name') return 'business_name'
+  if (h === 'phone_number_1' || h === 'phone_number' || h === 'phone_1' || h.includes('phone')) return 'phone_number'
+  if (h === 'email_1' || h === 'email') return 'email'
+  if (h.includes('city')) return 'city'
+  if (h.includes('state')) return 'state'
+  if (h.includes('country')) return 'country'
+  return 'skip'
+}
+
+function ImportCsvModal({ onClose, contactListId, onImportComplete, onError, listColumns = [] }) {
+  const [step, setStep] = useState(1) // 1=file select, 2=map columns
   const [selectedFile, setSelectedFile] = useState(null)
+  const [csvHeaders, setCsvHeaders] = useState([])
+  const [fieldMapping, setFieldMapping] = useState({}) // { header: fieldValue }
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
 
-  const handleFileSelect = (event) => {
+  const handleFileSelect = async (event) => {
     const file = event.target.files[0]
-    if (file) { setSelectedFile(file); setResult(null) }
+    if (!file) return
+    setSelectedFile(file)
+    setResult(null)
+    const text = await file.text()
+    const headers = parseCSVHeaders(text)
+    setCsvHeaders(headers)
+    // Auto-detect field mappings
+    const auto = {}
+    headers.forEach(h => { auto[h] = autoDetectField(h) })
+    setFieldMapping(auto)
+    setStep(2)
   }
 
+  const customColumnOptions = listColumns.map(col => ({
+    value: `custom:${col.key}`,
+    label: `Custom: ${col.label}`
+  }))
+
+  const allOptions = [...STANDARD_FIELD_OPTIONS, ...customColumnOptions]
+
   const handleImport = async () => {
-    if (!selectedFile) return
     setLoading(true)
     const fd = new FormData()
     fd.append('file', selectedFile)
     if (contactListId) fd.append('contact_list_id', contactListId)
+    fd.append('column_mapping', JSON.stringify(fieldMapping))
     try {
       const response = await fetchWithWorkspace('/api/contacts/import', { method: 'POST', body: fd, headers: {} })
       const data = await response.json()
       if (data.success) { setResult(data); onImportComplete(); setTimeout(() => onClose(), 3000) }
-      else { setResult({ error: data.error, details: data.details }) }
+      else { setResult({ error: data.error }) }
     } catch (error) {
-      setResult({ error: 'Import failed', details: error.message })
+      setResult({ error: 'Import failed: ' + error.message })
     } finally {
       setLoading(false)
     }
@@ -730,9 +791,12 @@ function ImportCsvModal({ onClose, contactListId, onImportComplete, onError }) {
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
-      <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-md">
+      <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-lg">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#E3E1DB]">
-          <h3 className="text-sm font-semibold text-[#131210]">Import CSV</h3>
+          <div>
+            <h3 className="text-sm font-semibold text-[#131210]">Import CSV</h3>
+            {step === 2 && <p className="text-xs text-[#9B9890] mt-0.5">Map columns to fields</p>}
+          </div>
           <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1"><i className="fas fa-times text-sm"></i></button>
         </div>
         <div className="px-5 py-4 space-y-4">
@@ -747,28 +811,48 @@ function ImportCsvModal({ onClose, contactListId, onImportComplete, onError }) {
                 </div>
               )}
             </div>
+          ) : step === 1 ? (
+            <>
+              <p className="text-xs text-[#9B9890]">Upload a CSV file. You'll be able to map each column to a contact field on the next step.</p>
+              <label className="flex items-center gap-3 px-4 py-3 border-2 border-dashed border-[#D4D1C9] rounded-lg cursor-pointer hover:border-[#D63B1F] transition-colors">
+                <i className="fas fa-file-csv text-2xl text-[#9B9890]"></i>
+                <p className="text-sm text-[#9B9890]">Click to select a CSV file</p>
+                <input type="file" accept=".csv,text/csv" onChange={handleFileSelect} className="hidden" />
+              </label>
+              <div className="flex justify-end">
+                <button onClick={onClose} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
+              </div>
+            </>
           ) : (
             <>
-              <div>
-                <label className="block text-xs font-medium text-[#5C5A55] mb-2">Select CSV file</label>
-                <p className="text-xs text-[#9B9890] mb-3">Supported columns: <strong>first_name</strong>, <strong>last_name</strong>, <strong>business_name</strong> (or company), <strong>phone_number</strong> (or phone_number_1), email</p>
-                <label className="flex items-center gap-3 px-4 py-3 border-2 border-dashed border-[#D4D1C9] rounded-lg cursor-pointer hover:border-[#D63B1F] transition-colors">
-                  <i className="fas fa-file-csv text-2xl text-[#9B9890]"></i>
-                  <div className="flex-1 min-w-0">
-                    {selectedFile ? (
-                      <p className="text-sm font-medium text-[#131210] truncate">{selectedFile.name}</p>
-                    ) : (
-                      <p className="text-sm text-[#9B9890]">Click to select a CSV file</p>
-                    )}
+              <p className="text-xs text-[#9B9890]">File: <strong>{selectedFile?.name}</strong> — {csvHeaders.length} columns detected. Map each CSV column to a contact field.</p>
+              <div className="space-y-2 max-h-72 overflow-y-auto">
+                {csvHeaders.map(header => (
+                  <div key={header} className="flex items-center gap-3">
+                    <span className="text-xs font-mono bg-[#F7F6F3] border border-[#E3E1DB] rounded px-2 py-1 flex-1 truncate">{header}</span>
+                    <i className="fas fa-arrow-right text-[#9B9890] text-xs flex-shrink-0"></i>
+                    <select
+                      value={fieldMapping[header] || 'skip'}
+                      onChange={e => setFieldMapping(m => ({ ...m, [header]: e.target.value }))}
+                      className="flex-1 px-2 py-1.5 text-xs border border-[#D4D1C9] rounded-md focus:outline-none focus:ring-1 focus:ring-[#D63B1F]"
+                    >
+                      {allOptions.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
                   </div>
-                  <input type="file" accept=".csv,text/csv" onChange={handleFileSelect} className="hidden" />
-                </label>
+                ))}
               </div>
-              <div className="flex justify-end gap-2">
-                <button onClick={onClose} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
-                <button onClick={handleImport} disabled={!selectedFile || loading} className="px-4 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md disabled:opacity-50">
-                  {loading ? <><i className="fas fa-spinner fa-spin mr-1.5"></i>Importing…</> : 'Import'}
+              <div className="flex justify-between gap-2 pt-1">
+                <button onClick={() => setStep(1)} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">
+                  <i className="fas fa-arrow-left mr-1.5 text-xs"></i>Back
                 </button>
+                <div className="flex gap-2">
+                  <button onClick={onClose} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
+                  <button onClick={handleImport} disabled={loading} className="px-4 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md disabled:opacity-50">
+                    {loading ? <><i className="fas fa-spinner fa-spin mr-1.5"></i>Importing…</> : 'Import'}
+                  </button>
+                </div>
               </div>
             </>
           )}
@@ -780,9 +864,11 @@ function ImportCsvModal({ onClose, contactListId, onImportComplete, onError }) {
 
 function ViewContactsModal({ list, onClose, onContactsUpdated, onError }) {
   const [contacts, setContacts] = useState([])
+  const [columns, setColumns] = useState([])
   const [loading, setLoading] = useState(true)
   const [showAddContact, setShowAddContact] = useState(false)
   const [showImportCsv, setShowImportCsv] = useState(false)
+  const [showManageColumns, setShowManageColumns] = useState(false)
   const [selectedContacts, setSelectedContacts] = useState([])
   const [searchTerm, setSearchTerm] = useState('')
   const [editingContact, setEditingContact] = useState(null)
@@ -803,7 +889,17 @@ function ViewContactsModal({ list, onClose, onContactsUpdated, onError }) {
     }
   }, [list.id])
 
-  useEffect(() => { fetchContacts() }, [fetchContacts])
+  const fetchColumns = useCallback(async () => {
+    try {
+      const response = await fetchWithWorkspace(`/api/contact-lists/${list.id}/columns`)
+      const data = await response.json()
+      if (data.success) setColumns(data.columns || [])
+    } catch (error) {
+      console.error('Error fetching columns:', error)
+    }
+  }, [list.id])
+
+  useEffect(() => { fetchContacts(); fetchColumns() }, [fetchContacts, fetchColumns])
 
   const filteredContacts = useMemo(() =>
     contacts.filter(c => {
@@ -874,6 +970,9 @@ function ViewContactsModal({ list, onClose, onContactsUpdated, onError }) {
             <p className="text-xs text-[#9B9890] mt-0.5">{filteredContacts.length} contact{filteredContacts.length !== 1 ? 's' : ''}</p>
           </div>
           <div className="flex items-center gap-2">
+            <button onClick={() => setShowManageColumns(true)} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3] transition-colors" title="Manage custom columns">
+              <i className="fas fa-columns mr-1.5 text-xs"></i>Columns
+            </button>
             <button onClick={() => setShowImportCsv(true)} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3] transition-colors">
               <i className="fas fa-file-csv mr-1.5 text-xs"></i>Import CSV
             </button>
@@ -920,6 +1019,9 @@ function ViewContactsModal({ list, onClose, onContactsUpdated, onError }) {
                       <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Company</th>
                       <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Phone</th>
                       <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Email</th>
+                      {columns.map(col => (
+                        <th key={col.key} className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">{col.label}</th>
+                      ))}
                       <th className="px-5 py-3 text-right text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
@@ -965,16 +1067,34 @@ function ViewContactsModal({ list, onClose, onContactsUpdated, onError }) {
                             <span className="text-sm text-[#5C5A55]">{contact.email || '—'}</span>
                           )}
                         </td>
+                        {columns.map(col => (
+                          <td key={col.key} className="px-5 py-3">
+                            {editingContact?.id === contact.id ? (
+                              <input
+                                type="text"
+                                value={editingContact.custom_fields?.[col.key] || ''}
+                                onChange={(e) => setEditingContact(prev => ({
+                                  ...prev,
+                                  custom_fields: { ...(prev.custom_fields || {}), [col.key]: e.target.value }
+                                }))}
+                                placeholder={col.label}
+                                className={`${inputClass} w-28`}
+                              />
+                            ) : (
+                              <span className="text-sm text-[#5C5A55]">{contact.custom_fields?.[col.key] || '—'}</span>
+                            )}
+                          </td>
+                        ))}
                         <td className="px-5 py-3 text-right">
                           {editingContact?.id === contact.id ? (
                             <div className="flex items-center justify-end gap-1.5">
-                              <button onClick={() => updateContact(contact.id, { first_name: editingContact.first_name, last_name: editingContact.last_name, business_name: editingContact.business_name, phone_number: editingContact.phone_number, email: editingContact.email })}
+                              <button onClick={() => updateContact(contact.id, { first_name: editingContact.first_name, last_name: editingContact.last_name, business_name: editingContact.business_name, phone_number: editingContact.phone_number, email: editingContact.email, custom_fields: editingContact.custom_fields })}
                                 className="px-2.5 py-1.5 text-xs font-medium text-white bg-[#D63B1F] rounded hover:bg-[#c4351b]">Save</button>
                               <button onClick={() => setEditingContact(null)} className="px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded hover:bg-[#F7F6F3]">Cancel</button>
                             </div>
                           ) : (
                             <div className="flex items-center justify-end gap-1">
-                              <button onClick={() => setEditingContact({ ...contact })} className="p-1.5 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded transition-colors" title="Edit"><i className="fas fa-pen text-[11px]"></i></button>
+                              <button onClick={() => setEditingContact({ ...contact, custom_fields: { ...(contact.custom_fields || {}) } })} className="p-1.5 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded transition-colors" title="Edit"><i className="fas fa-pen text-[11px]"></i></button>
                               <button onClick={() => setDeleteContactConfirm(contact)} className="p-1.5 text-[#9B9890] hover:text-[#D63B1F] hover:bg-[rgba(214,59,31,0.07)] rounded transition-colors" title="Delete"><i className="fas fa-trash-alt text-[11px]"></i></button>
                             </div>
                           )}
@@ -982,7 +1102,7 @@ function ViewContactsModal({ list, onClose, onContactsUpdated, onError }) {
                       </tr>
                     ))}
                     {currentContacts.length === 0 && (
-                      <tr><td colSpan="6" className="px-5 py-10 text-center"><p className="text-sm text-[#9B9890]">No contacts found</p><p className="text-xs text-[#9B9890] mt-1">Add contacts or import from CSV</p></td></tr>
+                      <tr><td colSpan={6 + columns.length} className="px-5 py-10 text-center"><p className="text-sm text-[#9B9890]">No contacts found</p><p className="text-xs text-[#9B9890] mt-1">Add contacts or import from CSV</p></td></tr>
                     )}
                   </tbody>
                 </table>
@@ -1011,13 +1131,112 @@ function ViewContactsModal({ list, onClose, onContactsUpdated, onError }) {
         )}
         {showImportCsv && (
           <ImportCsvModal onClose={() => setShowImportCsv(false)} contactListId={list.id}
+            listColumns={columns}
             onImportComplete={() => { fetchContacts(); onContactsUpdated() }} onError={onError} />
+        )}
+        {showManageColumns && (
+          <ManageColumnsModal
+            listId={list.id}
+            columns={columns}
+            onClose={() => setShowManageColumns(false)}
+            onColumnsChanged={fetchColumns}
+          />
         )}
         {deleteContactConfirm && (
           <DeleteContactConfirmModal contact={deleteContactConfirm} selectedCount={selectedContacts.length}
             onConfirm={deleteContactConfirm.multiple ? deleteSelectedContacts : () => deleteContact(deleteContactConfirm.id)}
             onCancel={() => setDeleteContactConfirm(null)} />
         )}
+      </div>
+    </div>
+  )
+}
+
+function ManageColumnsModal({ listId, columns, onClose, onColumnsChanged }) {
+  const [newLabel, setNewLabel] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [deletingId, setDeletingId] = useState(null)
+  const [error, setError] = useState('')
+
+  const addColumn = async () => {
+    if (!newLabel.trim()) return
+    setAdding(true)
+    setError('')
+    try {
+      const response = await fetchWithWorkspace(`/api/contact-lists/${listId}/columns`, {
+        method: 'POST',
+        body: JSON.stringify({ label: newLabel.trim() })
+      })
+      const data = await response.json()
+      if (data.success) { setNewLabel(''); onColumnsChanged() }
+      else { setError(data.error || 'Failed to add column') }
+    } catch { setError('An error occurred') }
+    finally { setAdding(false) }
+  }
+
+  const deleteColumn = async (col) => {
+    setDeletingId(col.id)
+    try {
+      const response = await fetchWithWorkspace(`/api/contact-lists/${listId}/columns?column_id=${col.id}`, { method: 'DELETE' })
+      const data = await response.json()
+      if (data.success) { onColumnsChanged() }
+      else { setError(data.error || 'Failed to delete column') }
+    } catch { setError('An error occurred') }
+    finally { setDeletingId(null) }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[70] p-4">
+      <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-sm">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#E3E1DB]">
+          <div>
+            <h3 className="text-sm font-semibold text-[#131210]">Custom Columns</h3>
+            <p className="text-xs text-[#9B9890] mt-0.5">Use <code className="bg-[#F7F6F3] px-1 rounded">{'{{key}}'}</code> in scenario instructions</p>
+          </div>
+          <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1"><i className="fas fa-times text-sm"></i></button>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          {columns.length === 0 ? (
+            <p className="text-xs text-[#9B9890] text-center py-2">No custom columns yet</p>
+          ) : (
+            <div className="space-y-1.5">
+              {columns.map(col => (
+                <div key={col.id} className="flex items-center justify-between gap-2 px-3 py-2 bg-[#F7F6F3] border border-[#E3E1DB] rounded-md">
+                  <div>
+                    <span className="text-sm font-medium text-[#131210]">{col.label}</span>
+                    <span className="text-xs text-[#9B9890] ml-2 font-mono">{`{{${col.key}}}`}</span>
+                  </div>
+                  <button
+                    onClick={() => deleteColumn(col)}
+                    disabled={deletingId === col.id}
+                    className="p-1 text-[#9B9890] hover:text-[#D63B1F] transition-colors disabled:opacity-50"
+                    title="Delete column"
+                  >
+                    {deletingId === col.id ? <i className="fas fa-spinner fa-spin text-xs"></i> : <i className="fas fa-trash-alt text-xs"></i>}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <input
+              type="text"
+              value={newLabel}
+              onChange={e => { setNewLabel(e.target.value); setError('') }}
+              onKeyDown={e => e.key === 'Enter' && addColumn()}
+              placeholder="Column name, e.g. State"
+              className="flex-1 px-3 py-1.5 text-sm border border-[#D4D1C9] rounded-md focus:outline-none focus:ring-1 focus:ring-[#D63B1F]"
+            />
+            <button onClick={addColumn} disabled={adding || !newLabel.trim()} className="px-3 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md disabled:opacity-50">
+              {adding ? <i className="fas fa-spinner fa-spin"></i> : 'Add'}
+            </button>
+          </div>
+          {error && <p className="text-xs text-[#D63B1F]">{error}</p>}
+        </div>
+        <div className="px-5 py-3 border-t border-[#E3E1DB] flex justify-end">
+          <button onClick={onClose} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Done</button>
+        </div>
       </div>
     </div>
   )

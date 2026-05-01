@@ -4,6 +4,12 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
 import { getUserFromRequest, getWorkspaceFromRequest } from '@/lib/session-helper'
 
+// POST /api/contacts/import/parse — parse CSV headers only (for column mapping UI)
+export async function GET(request) {
+  // This endpoint is not used; header parsing happens client-side
+  return NextResponse.json({ error: 'Use POST' }, { status: 405 })
+}
+
 export async function POST(request) {
   try {
     console.log('=== CSV Import API Called ===')
@@ -24,6 +30,9 @@ export async function POST(request) {
     const formData = await request.formData()
     const file = formData.get('file')
     const contactListId = formData.get('contact_list_id') || null
+    // column_mapping: JSON string like { "csv_header": "field_name_or_custom:key" }
+    const columnMappingRaw = formData.get('column_mapping')
+    const columnMapping = columnMappingRaw ? JSON.parse(columnMappingRaw) : null
 
     console.log('Form data:', {
       fileName: file?.name,
@@ -86,22 +95,34 @@ export async function POST(request) {
     const headers = parseCSVLine(headerLine).map(h => h.toLowerCase().trim())
     console.log('Parsed headers:', headers)
 
-    // Find name columns — support first_name/last_name OR business_name/company/name
-    const firstNameIndex = headers.findIndex(h => h === 'firstname' || h === 'first_name' || h === 'first name')
-    const lastNameIndex = headers.findIndex(h => h === 'lastname' || h === 'last_name' || h === 'last name')
-    const businessNameIndex = headers.findIndex(h =>
-      (h.includes('business') && h.includes('name')) || h === 'company' || h === 'company name'
-    )
-    const genericNameIndex = businessNameIndex !== -1 ? businessNameIndex
-      : (firstNameIndex === -1 && lastNameIndex === -1 ? headers.findIndex(h => h.includes('name')) : -1)
+    // Build field mapping: header index -> field assignment
+    // If columnMapping provided (from UI), use it. Otherwise auto-detect.
+    const STANDARD_FIELDS = ['first_name', 'last_name', 'business_name', 'phone_number', 'email', 'city', 'state', 'country']
 
-    // Find phone column — support phone_number_1, phone_1, phone, etc.
-    const phoneIndex = headers.findIndex(h => h === 'phone_number_1' || h === 'phone_number' || h === 'phone_1')
-      !== -1 ? headers.findIndex(h => h === 'phone_number_1' || h === 'phone_number' || h === 'phone_1')
-      : headers.findIndex(h => h.includes('phone'))
+    // headerFieldMap[i] = 'first_name' | 'phone_number' | 'custom:some_key' | 'skip'
+    const headerFieldMap = headers.map((h, i) => {
+      if (columnMapping) {
+        // Use provided mapping (keyed by original header)
+        const originalHeader = parseCSVLine(lines[0])[i]?.trim() || h
+        return columnMapping[originalHeader] || 'skip'
+      }
+      // Auto-detect
+      if (h === 'firstname' || h === 'first_name' || h === 'first name') return 'first_name'
+      if (h === 'lastname' || h === 'last_name' || h === 'last name') return 'last_name'
+      if ((h.includes('business') && h.includes('name')) || h === 'company' || h === 'company name') return 'business_name'
+      if (h === 'phone_number_1' || h === 'phone_number' || h === 'phone_1' || h.includes('phone')) return 'phone_number'
+      if (h === 'email_1' || h === 'email') return 'email'
+      if (h.includes('city')) return 'city'
+      if (h.includes('state')) return 'state'
+      if (h.includes('country')) return 'country'
+      if (h === 'name' && !headers.some(hh => hh.includes('first') || hh.includes('last'))) return 'business_name'
+      return 'skip'
+    })
 
-    console.log('Column indices - firstName:', firstNameIndex, 'lastName:', lastNameIndex,
-      'businessName:', businessNameIndex, 'genericName:', genericNameIndex, 'phone:', phoneIndex)
+    const phoneIndex = headerFieldMap.indexOf('phone_number')
+    const hasNameMapping = headerFieldMap.some(f => f === 'first_name' || f === 'last_name' || f === 'business_name')
+
+    console.log('Header field map:', headers.map((h, i) => `${h}→${headerFieldMap[i]}`))
 
     if (phoneIndex === -1) {
       return NextResponse.json(
@@ -110,19 +131,12 @@ export async function POST(request) {
       )
     }
 
-    const hasNameColumn = firstNameIndex !== -1 || lastNameIndex !== -1 || businessNameIndex !== -1 || genericNameIndex !== -1
-    if (!hasNameColumn) {
+    if (!hasNameMapping) {
       return NextResponse.json(
         { error: 'CSV must contain a name column (first_name, last_name, business_name, company, or name)' },
         { status: 400 }
       )
     }
-
-    // Find optional columns
-    const emailIndex = headers.findIndex(h => h === 'email_1' || h === 'email')
-    const cityIndex = headers.findIndex(h => h.includes('city'))
-    const stateIndex = headers.findIndex(h => h.includes('state'))
-    const countryIndex = headers.findIndex(h => h.includes('country'))
 
     // Parse data rows
     const contacts = []
@@ -133,13 +147,23 @@ export async function POST(request) {
         const values = parseCSVLine(lines[i])
         console.log(`Row ${i}:`, values)
 
-        const first_name = firstNameIndex !== -1 ? values[firstNameIndex]?.trim() || null : null
-        const last_name = lastNameIndex !== -1 ? values[lastNameIndex]?.trim() || null : null
-        const business_name = businessNameIndex !== -1
-          ? values[businessNameIndex]?.trim() || null
-          : genericNameIndex !== -1 ? values[genericNameIndex]?.trim() || null : null
+        const standard = {}
+        const custom_fields = {}
 
-        const phone_number = values[phoneIndex]?.trim()
+        headerFieldMap.forEach((field, idx) => {
+          const val = values[idx]?.trim() || null
+          if (!val || field === 'skip') return
+          if (field.startsWith('custom:')) {
+            custom_fields[field.slice(7)] = val
+          } else {
+            standard[field] = val
+          }
+        })
+
+        const phone_number = standard.phone_number
+        const first_name = standard.first_name || null
+        const last_name = standard.last_name || null
+        const business_name = standard.business_name || null
 
         if (!phone_number) {
           errors.push(`Row ${i + 1}: Missing phone number`)
@@ -170,10 +194,11 @@ export async function POST(request) {
           last_name,
           business_name,
           phone_number: formattedPhone,
-          email: emailIndex !== -1 ? (values[emailIndex]?.trim() || null) : null,
-          city: cityIndex !== -1 ? (values[cityIndex]?.trim() || null) : null,
-          state: stateIndex !== -1 ? (values[stateIndex]?.trim() || null) : null,
-          country: countryIndex !== -1 ? (values[countryIndex]?.trim() || null) : null,
+          email: standard.email || null,
+          city: standard.city || null,
+          state: standard.state || null,
+          country: standard.country || null,
+          custom_fields: Object.keys(custom_fields).length > 0 ? custom_fields : null,
           contact_list_id: contactListId || null,
           workspace_id: workspace.workspaceId,
           created_by: user.userId
