@@ -365,6 +365,139 @@ export default function ScenariosPage() {
 
 // ─── Create Scenario Modal ───────────────────────────────────────────────────
 
+function ContactRestrictionPicker({ contactLists, selectedListIds, onListToggle, individualContacts, onAddContact, onRemoveContact }) {
+  const [tab, setTab] = useState('lists') // 'lists' | 'search' | 'manual'
+  const [searchQ, setSearchQ] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [searching, setSearching] = useState(false)
+  const [manualPhone, setManualPhone] = useState('')
+
+  const doSearch = useCallback(async (q) => {
+    if (!q.trim()) { setSearchResults([]); return }
+    setSearching(true)
+    try {
+      const res = await apiGet(`/api/contacts?q=${encodeURIComponent(q)}`)
+      const d = await res.json()
+      setSearchResults(d.contacts || [])
+    } catch {}
+    setSearching(false)
+  }, [])
+
+  useEffect(() => {
+    const t = setTimeout(() => doSearch(searchQ), 300)
+    return () => clearTimeout(t)
+  }, [searchQ, doSearch])
+
+  const addManual = () => {
+    const phone = manualPhone.trim().replace(/\s/g, '')
+    if (!phone) return
+    onAddContact({ phone, label: phone })
+    setManualPhone('')
+  }
+
+  const tabBtn = (key, label) => (
+    <button type="button" onClick={() => setTab(key)}
+      className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${tab === key ? 'bg-[#D63B1F] text-white' : 'text-[#5C5A55] hover:bg-[#F7F6F3]'}`}>
+      {label}
+    </button>
+  )
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <div>
+          <label className="block text-xs font-medium text-[#5C5A55]">Contact Restrictions</label>
+          <p className="text-[11px] text-[#9B9890] mt-0.5">Leave empty to apply to all contacts.</p>
+        </div>
+        <div className="flex gap-1 bg-[#F7F6F3] rounded-md p-0.5">
+          {tabBtn('lists', 'By List')}
+          {tabBtn('search', 'Search')}
+          {tabBtn('manual', 'Manual')}
+        </div>
+      </div>
+
+      {tab === 'lists' && (
+        <div className="space-y-1.5 max-h-36 overflow-y-auto border border-[#E3E1DB] rounded-md p-2">
+          {contactLists.length === 0
+            ? <p className="text-xs text-[#9B9890] py-1">No contact lists found</p>
+            : contactLists.map(cl => (
+              <label key={cl.id} className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={selectedListIds.includes(cl.id)}
+                  onChange={(e) => onListToggle(cl.id, e.target.checked)} className="accent-[#D63B1F]" />
+                <span className="text-sm text-[#5C5A55] flex-1">{cl.name}</span>
+                <span className="text-xs text-[#9B9890]">{cl.contactCount} contacts</span>
+              </label>
+            ))}
+        </div>
+      )}
+
+      {tab === 'search' && (
+        <div>
+          <input value={searchQ} onChange={e => setSearchQ(e.target.value)}
+            placeholder="Search by name, business, or phone..."
+            className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm mb-2 focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]" />
+          <div className="max-h-32 overflow-y-auto border border-[#E3E1DB] rounded-md">
+            {searching && <p className="text-xs text-[#9B9890] p-3">Searching…</p>}
+            {!searching && searchQ && searchResults.length === 0 && <p className="text-xs text-[#9B9890] p-3">No contacts found</p>}
+            {searchResults.map(c => {
+              const phone = c.phone_number
+              const already = individualContacts.some(x => x.phone === phone)
+              const label = [c.first_name, c.last_name, c.business_name].filter(Boolean).join(' ') || phone
+              return (
+                <div key={c.id} className="flex items-center justify-between px-3 py-2 border-b border-[#F7F6F3] last:border-0">
+                  <div>
+                    <div className="text-sm text-[#131210]">{label}</div>
+                    <div className="text-xs text-[#9B9890]">{phone}</div>
+                  </div>
+                  <button type="button" disabled={already}
+                    onClick={() => onAddContact({ phone, id: c.id, label })}
+                    className={`text-xs px-2.5 py-1 rounded-md border transition-colors ${already ? 'border-[#E3E1DB] text-[#9B9890] cursor-not-allowed' : 'border-[#D63B1F] text-[#D63B1F] hover:bg-[rgba(214,59,31,0.07)]'}`}>
+                    {already ? 'Added' : 'Add'}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {tab === 'manual' && (
+        <div className="flex gap-2">
+          <input value={manualPhone} onChange={e => setManualPhone(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addManual())}
+            placeholder="+1 (555) 000-0000"
+            className="flex-1 px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]" />
+          <button type="button" onClick={addManual}
+            className="px-3 py-2 text-sm font-medium bg-[#D63B1F] text-white rounded-md hover:bg-[#c23119]">Add</button>
+        </div>
+      )}
+
+      {individualContacts.length > 0 && (
+        <div className="mt-2">
+          <p className="text-[11px] text-[#9B9890] mb-1.5">Added contacts/numbers ({individualContacts.length}):</p>
+          <div className="flex flex-wrap gap-1.5">
+            {individualContacts.map(c => (
+              <span key={c.phone} className="inline-flex items-center gap-1 px-2 py-0.5 bg-[rgba(214,59,31,0.07)] border border-[rgba(214,59,31,0.15)] text-[#D63B1F] rounded text-xs">
+                {c.label || c.phone}
+                <button type="button" onClick={() => onRemoveContact(c.phone)} className="hover:text-[#a02e17]">
+                  <i className="fas fa-times text-[9px]"></i>
+                </button>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {(selectedListIds.length > 0 || individualContacts.length > 0) && (
+        <p className="text-[11px] text-[#D63B1F] mt-1.5">
+          <i className="fas fa-filter mr-1"></i>
+          Restricted to {[selectedListIds.length > 0 && `${selectedListIds.length} list${selectedListIds.length > 1 ? 's' : ''}`, individualContacts.length > 0 && `${individualContacts.length} number${individualContacts.length > 1 ? 's' : ''}`].filter(Boolean).join(' + ')}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function CreateScenarioModal({ phoneNumbers, onClose, onSuccess }) {
   const [formData, setFormData] = useState({
     name: '',
@@ -380,6 +513,7 @@ function CreateScenarioModal({ phoneNumbers, onClose, onSuccess }) {
     business_hours_timezone: 'America/New_York',
     auto_stop_keywords: 'STOP,UNSUBSCRIBE,CANCEL',
   })
+  const [individualContacts, setIndividualContacts] = useState([])
   const [contactLists, setContactLists] = useState([])
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -415,6 +549,7 @@ function CreateScenarioModal({ phoneNumbers, onClose, onSuccess }) {
         instructions: formData.instructions,
         phoneNumbers: formData.phoneNumbers,
         contact_list_ids: formData.contact_list_ids,
+        contacts: individualContacts.map(c => ({ phone: c.phone, id: c.id || null })),
         enable_followups: formData.enable_followups,
         max_followup_attempts: formData.max_followup_attempts,
         enable_business_hours: formData.enable_business_hours,
@@ -455,227 +590,171 @@ function CreateScenarioModal({ phoneNumbers, onClose, onSuccess }) {
     )
   }
 
+  const toggle = (field, val) => setFormData(p => ({ ...p, [field]: val }))
+
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-2xl my-8">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#E3E1DB] sticky top-0 bg-[#FFFFFF] z-10">
+      <div className="bg-[#FFFFFF] rounded-xl shadow-xl w-full max-w-4xl my-8">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#E3E1DB] sticky top-0 bg-[#FFFFFF] z-10 rounded-t-xl">
           <h3 className="text-sm font-semibold text-[#131210]">New Scenario</h3>
           <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1">
             <i className="fas fa-times text-sm"></i>
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2">
-              <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Scenario Name *</label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g., Real Estate Lead Follow-up"
-                className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
-              />
-              {errors.name && <p className="text-[#D63B1F] text-xs mt-1">{errors.name}</p>}
-            </div>
-
-            <div className="col-span-2">
-              <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Description</label>
-              <input
-                type="text"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Brief description (optional)"
-                className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
-              />
-            </div>
-
-            <div className="col-span-2">
-              <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">AI Instructions *</label>
-              <textarea
-                value={formData.instructions}
-                onChange={(e) => setFormData({ ...formData, instructions: e.target.value })}
-                placeholder="You are a helpful assistant for XYZ company. When a customer messages, respond professionally and…"
-                rows="5"
-                className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F] resize-none"
-              />
-              {errors.instructions && <p className="text-[#D63B1F] text-xs mt-1">{errors.instructions}</p>}
-            </div>
-
-            <div className="col-span-2">
-              <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Assign Phone Numbers</label>
-              <div className="space-y-1.5 max-h-28 overflow-y-auto border border-[#E3E1DB] rounded-md p-2">
-                {phoneNumbers.length === 0 ? (
-                  <p className="text-xs text-[#9B9890] py-1">No phone numbers available</p>
-                ) : phoneNumbers.map((pn) => (
-                  <label key={pn.id} className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formData.phoneNumbers.includes(pn.id)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setFormData({ ...formData, phoneNumbers: [...formData.phoneNumbers, pn.id] })
-                        } else {
-                          setFormData({ ...formData, phoneNumbers: formData.phoneNumbers.filter(id => id !== pn.id) })
-                        }
-                      }}
-                      className="text-[#D63B1F]"
-                    />
-                    <span className="text-sm text-[#5C5A55]">{pn.custom_name || pn.phoneNumber}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div className="col-span-2">
-              <label className="block text-xs font-medium text-[#5C5A55] mb-1">Contact Restrictions</label>
-              <p className="text-[11px] text-[#9B9890] mb-1.5">Restrict this scenario to contacts in specific lists. Leave empty to apply to all incoming contacts.</p>
-              <div className="space-y-1.5 max-h-28 overflow-y-auto border border-[#E3E1DB] rounded-md p-2">
-                {contactLists.length === 0 ? (
-                  <p className="text-xs text-[#9B9890] py-1">No contact lists found</p>
-                ) : contactLists.map((cl) => (
-                  <label key={cl.id} className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formData.contact_list_ids.includes(cl.id)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setFormData({ ...formData, contact_list_ids: [...formData.contact_list_ids, cl.id] })
-                        } else {
-                          setFormData({ ...formData, contact_list_ids: formData.contact_list_ids.filter(id => id !== cl.id) })
-                        }
-                      }}
-                      className="text-[#D63B1F]"
-                    />
-                    <span className="text-sm text-[#5C5A55]">{cl.name}</span>
-                    {cl.contactCount !== undefined && (
-                      <span className="text-xs text-[#9B9890]">({cl.contactCount} contacts)</span>
-                    )}
-                  </label>
-                ))}
-              </div>
-              {formData.contact_list_ids.length > 0 && (
-                <p className="text-[11px] text-[#D63B1F] mt-1.5">
-                  <i className="fas fa-filter mr-1"></i>
-                  Restricted to {formData.contact_list_ids.length} list{formData.contact_list_ids.length > 1 ? 's' : ''}
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Follow-up Settings */}
-          <div className="border border-[#E3E1DB] rounded-md p-3 space-y-3">
-            <div className="flex items-center justify-between">
+        <form onSubmit={handleSubmit} className="px-6 py-5">
+          <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+            {/* ── LEFT COLUMN ── */}
+            <div className="space-y-4">
               <div>
-                <p className="text-xs font-semibold text-[#5C5A55]">Automatic Follow-ups</p>
-                <p className="text-[11px] text-[#9B9890] mt-0.5">Send follow-up messages if no response</p>
+                <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Scenario Name *</label>
+                <input type="text" value={formData.name}
+                  onChange={e => toggle('name', e.target.value)}
+                  placeholder="e.g., Real Estate Lead Follow-up"
+                  className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]" />
+                {errors.name && <p className="text-[#D63B1F] text-xs mt-1">{errors.name}</p>}
               </div>
-              <button
-                type="button"
-                onClick={() => setFormData({ ...formData, enable_followups: !formData.enable_followups })}
-                className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${formData.enable_followups ? 'bg-[#D63B1F]' : 'bg-[#EFEDE8]'}`}
-              >
-                <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-[#FFFFFF] shadow ring-0 transition duration-200 ease-in-out ${formData.enable_followups ? 'translate-x-4' : 'translate-x-0'}`} />
-              </button>
-            </div>
 
-            {formData.enable_followups && (
-              <div className="grid grid-cols-2 gap-3 pt-1">
-                <div>
-                  <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Max Follow-up Attempts</label>
-                  <select
-                    value={formData.max_followup_attempts}
-                    onChange={(e) => setFormData({ ...formData, max_followup_attempts: parseInt(e.target.value) })}
-                    className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
-                  >
-                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
-                      <option key={n} value={n}>{n}</option>
+              <div>
+                <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Description</label>
+                <input type="text" value={formData.description}
+                  onChange={e => toggle('description', e.target.value)}
+                  placeholder="Brief description (optional)"
+                  className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]" />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">AI Instructions *</label>
+                <textarea value={formData.instructions}
+                  onChange={e => toggle('instructions', e.target.value)}
+                  placeholder="You are a helpful assistant for XYZ company. When a customer messages, respond professionally and…"
+                  rows="7"
+                  className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F] resize-none" />
+                {errors.instructions && <p className="text-[#D63B1F] text-xs mt-1">{errors.instructions}</p>}
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Assign Phone Numbers</label>
+                <div className="space-y-1.5 max-h-32 overflow-y-auto border border-[#E3E1DB] rounded-md p-2">
+                  {phoneNumbers.length === 0
+                    ? <p className="text-xs text-[#9B9890] py-1">No phone numbers available</p>
+                    : phoneNumbers.map(pn => (
+                      <label key={pn.id} className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={formData.phoneNumbers.includes(pn.id)}
+                          onChange={e => toggle('phoneNumbers', e.target.checked
+                            ? [...formData.phoneNumbers, pn.id]
+                            : formData.phoneNumbers.filter(id => id !== pn.id))}
+                          className="accent-[#D63B1F]" />
+                        <span className="text-sm text-[#5C5A55]">{pn.custom_name || pn.phoneNumber}</span>
+                      </label>
                     ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Stop Keywords</label>
-                  <input
-                    type="text"
-                    value={formData.auto_stop_keywords}
-                    onChange={(e) => setFormData({ ...formData, auto_stop_keywords: e.target.value })}
-                    placeholder="STOP,UNSUBSCRIBE"
-                    className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
-                  />
                 </div>
               </div>
-            )}
-          </div>
-
-          {/* Business Hours */}
-          <div className="border border-[#E3E1DB] rounded-md p-3 space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold text-[#5C5A55]">Business Hours Restriction</p>
-                <p className="text-[11px] text-[#9B9890] mt-0.5">Only respond during business hours</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setFormData({ ...formData, enable_business_hours: !formData.enable_business_hours })}
-                className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${formData.enable_business_hours ? 'bg-[#D63B1F]' : 'bg-[#EFEDE8]'}`}
-              >
-                <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-[#FFFFFF] shadow ring-0 transition duration-200 ease-in-out ${formData.enable_business_hours ? 'translate-x-4' : 'translate-x-0'}`} />
-              </button>
             </div>
 
-            {formData.enable_business_hours && (
-              <div className="grid grid-cols-3 gap-3 pt-1">
-                <div>
-                  <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Start Time</label>
-                  <input
-                    type="time"
-                    value={formData.business_hours_start}
-                    onChange={(e) => setFormData({ ...formData, business_hours_start: e.target.value })}
-                    className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
-                  />
+            {/* ── RIGHT COLUMN ── */}
+            <div className="space-y-4">
+              <ContactRestrictionPicker
+                contactLists={contactLists}
+                selectedListIds={formData.contact_list_ids}
+                onListToggle={(id, checked) => toggle('contact_list_ids', checked
+                  ? [...formData.contact_list_ids, id]
+                  : formData.contact_list_ids.filter(x => x !== id))}
+                individualContacts={individualContacts}
+                onAddContact={c => setIndividualContacts(p => p.some(x => x.phone === c.phone) ? p : [...p, c])}
+                onRemoveContact={phone => setIndividualContacts(p => p.filter(x => x.phone !== phone))}
+              />
+
+              {/* Follow-ups */}
+              <div className="border border-[#E3E1DB] rounded-md p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold text-[#5C5A55]">Automatic Follow-ups</p>
+                    <p className="text-[11px] text-[#9B9890] mt-0.5">Send follow-up messages if no response</p>
+                  </div>
+                  <button type="button" onClick={() => toggle('enable_followups', !formData.enable_followups)}
+                    className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${formData.enable_followups ? 'bg-[#D63B1F]' : 'bg-[#EFEDE8]'}`}>
+                    <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${formData.enable_followups ? 'translate-x-4' : 'translate-x-0'}`} />
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">End Time</label>
-                  <input
-                    type="time"
-                    value={formData.business_hours_end}
-                    onChange={(e) => setFormData({ ...formData, business_hours_end: e.target.value })}
-                    className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Timezone</label>
-                  <select
-                    value={formData.business_hours_timezone}
-                    onChange={(e) => setFormData({ ...formData, business_hours_timezone: e.target.value })}
-                    className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
-                  >
-                    <option value="America/New_York">Eastern (ET)</option>
-                    <option value="America/Chicago">Central (CT)</option>
-                    <option value="America/Denver">Mountain (MT)</option>
-                    <option value="America/Los_Angeles">Pacific (PT)</option>
-                    <option value="America/Phoenix">Arizona (MST)</option>
-                    <option value="America/Anchorage">Alaska (AKT)</option>
-                    <option value="Pacific/Honolulu">Hawaii (HST)</option>
-                    <option value="UTC">UTC</option>
-                  </select>
-                </div>
+                {formData.enable_followups && (
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Max Attempts</label>
+                      <select value={formData.max_followup_attempts}
+                        onChange={e => toggle('max_followup_attempts', parseInt(e.target.value))}
+                        className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F]">
+                        {[1,2,3,4,5,6,7,8,9,10].map(n => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Stop Keywords</label>
+                      <input type="text" value={formData.auto_stop_keywords}
+                        onChange={e => toggle('auto_stop_keywords', e.target.value)}
+                        placeholder="STOP,UNSUBSCRIBE"
+                        className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F]" />
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
+
+              {/* Business Hours */}
+              <div className="border border-[#E3E1DB] rounded-md p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold text-[#5C5A55]">Business Hours Restriction</p>
+                    <p className="text-[11px] text-[#9B9890] mt-0.5">Only respond during business hours</p>
+                  </div>
+                  <button type="button" onClick={() => toggle('enable_business_hours', !formData.enable_business_hours)}
+                    className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${formData.enable_business_hours ? 'bg-[#D63B1F]' : 'bg-[#EFEDE8]'}`}>
+                    <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${formData.enable_business_hours ? 'translate-x-4' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+                {formData.enable_business_hours && (
+                  <div className="grid grid-cols-3 gap-3 pt-1">
+                    <div>
+                      <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Start</label>
+                      <input type="time" value={formData.business_hours_start}
+                        onChange={e => toggle('business_hours_start', e.target.value)}
+                        className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F]" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">End</label>
+                      <input type="time" value={formData.business_hours_end}
+                        onChange={e => toggle('business_hours_end', e.target.value)}
+                        className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F]" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Timezone</label>
+                      <select value={formData.business_hours_timezone}
+                        onChange={e => toggle('business_hours_timezone', e.target.value)}
+                        className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F]">
+                        <option value="America/New_York">Eastern (ET)</option>
+                        <option value="America/Chicago">Central (CT)</option>
+                        <option value="America/Denver">Mountain (MT)</option>
+                        <option value="America/Los_Angeles">Pacific (PT)</option>
+                        <option value="America/Phoenix">Arizona (MST)</option>
+                        <option value="America/Anchorage">Alaska (AKT)</option>
+                        <option value="Pacific/Honolulu">Hawaii (HST)</option>
+                        <option value="UTC">UTC</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           {errors.submit && (
-            <div className="bg-[rgba(214,59,31,0.07)] border border-[rgba(214,59,31,0.14)] text-[#D63B1F] px-3 py-2.5 rounded-md text-sm">
+            <div className="mt-4 bg-[rgba(214,59,31,0.07)] border border-[rgba(214,59,31,0.14)] text-[#D63B1F] px-3 py-2.5 rounded-md text-sm">
               {errors.submit}
             </div>
           )}
 
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex justify-end gap-2 pt-5 border-t border-[#E3E1DB] mt-5">
             <button type="button" onClick={onClose} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
-            <button
-              type="submit" disabled={isSubmitting}
-              className="px-4 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md disabled:opacity-50"
-            >
+            <button type="submit" disabled={isSubmitting}
+              className="px-4 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md disabled:opacity-50">
               {isSubmitting ? <><i className="fas fa-spinner fa-spin mr-1.5"></i>Creating…</> : 'Create Scenario'}
             </button>
           </div>
@@ -703,6 +782,9 @@ function ViewScenarioModal({ scenario, phoneNumbers, onClose, onUpdated, onToggl
     business_hours_timezone: scenario.business_hours_timezone || 'America/New_York',
     auto_stop_keywords: (scenario.auto_stop_keywords || ['STOP', 'UNSUBSCRIBE']).join(','),
   })
+  const [editIndividualContacts, setEditIndividualContacts] = useState(
+    (scenario.scenario_contacts || []).map(sc => ({ phone: sc.recipient_phone, id: sc.contact_id, label: sc.contacts?.business_name || sc.recipient_phone }))
+  )
   const [contactLists, setContactLists] = useState([])
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -732,6 +814,7 @@ function ViewScenarioModal({ scenario, phoneNumbers, onClose, onUpdated, onToggl
           instructions: editData.instructions,
           phoneNumbers: editData.phoneNumbers,
           contact_list_ids: editData.contact_list_ids,
+          contacts: editIndividualContacts.map(c => ({ phone: c.phone, id: c.id || null })),
           enable_followups: editData.enable_followups,
           max_followup_attempts: editData.max_followup_attempts,
           enable_business_hours: editData.enable_business_hours,
@@ -821,40 +904,14 @@ function ViewScenarioModal({ scenario, phoneNumbers, onClose, onUpdated, onToggl
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-medium text-[#5C5A55] mb-1">Contact Restrictions</label>
-              <p className="text-[11px] text-[#9B9890] mb-1.5">Restrict to contacts in specific lists. Leave empty to apply to all.</p>
-              <div className="space-y-1.5 max-h-28 overflow-y-auto border border-[#E3E1DB] rounded-md p-2">
-                {contactLists.length === 0 ? (
-                  <p className="text-xs text-[#9B9890] py-1">No contact lists found</p>
-                ) : contactLists.map((cl) => (
-                  <label key={cl.id} className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={editData.contact_list_ids.includes(cl.id)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setEditData({ ...editData, contact_list_ids: [...editData.contact_list_ids, cl.id] })
-                        } else {
-                          setEditData({ ...editData, contact_list_ids: editData.contact_list_ids.filter(id => id !== cl.id) })
-                        }
-                      }}
-                      className="text-[#D63B1F]"
-                    />
-                    <span className="text-sm text-[#5C5A55]">{cl.name}</span>
-                    {cl.contactCount !== undefined && (
-                      <span className="text-xs text-[#9B9890]">({cl.contactCount} contacts)</span>
-                    )}
-                  </label>
-                ))}
-              </div>
-              {editData.contact_list_ids.length > 0 && (
-                <p className="text-[11px] text-[#D63B1F] mt-1.5">
-                  <i className="fas fa-filter mr-1"></i>
-                  Restricted to {editData.contact_list_ids.length} list{editData.contact_list_ids.length > 1 ? 's' : ''}
-                </p>
-              )}
-            </div>
+            <ContactRestrictionPicker
+              contactLists={contactLists}
+              selectedListIds={editData.contact_list_ids}
+              onListToggle={(id, checked) => setEditData(p => ({ ...p, contact_list_ids: checked ? [...p.contact_list_ids, id] : p.contact_list_ids.filter(x => x !== id) }))}
+              individualContacts={editIndividualContacts}
+              onAddContact={c => setEditIndividualContacts(p => p.some(x => x.phone === c.phone) ? p : [...p, c])}
+              onRemoveContact={phone => setEditIndividualContacts(p => p.filter(x => x.phone !== phone))}
+            />
 
             {/* Follow-up Settings */}
             <div className="border border-[#E3E1DB] rounded-md p-3 space-y-3">
