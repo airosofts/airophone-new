@@ -74,7 +74,7 @@ export default function AiSettings() {
             Set both to <strong>0</strong> to reply instantly.
           </p>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Min delay (seconds)</label>
               <div className="relative">

@@ -119,19 +119,31 @@ export default function ScenariosPage() {
 
   return (
     <div className="h-full bg-[#F7F6F3] overflow-auto">
-      <div className="p-6 space-y-4">
+      <div className="p-4 md:p-6 space-y-4">
 
         {/* Main Card */}
         <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg overflow-hidden">
-          {/* Card Header */}
-          <div className="px-5 py-3.5 border-b border-[#E3E1DB] flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3 flex-1 min-w-0">
-              <h3 className="text-sm font-semibold text-[#131210] flex-shrink-0">AI Scenarios</h3>
-              <div className="relative flex-1 max-w-xs">
+          {/* Card Header — stacked on mobile, single row on desktop */}
+          <div className="px-4 py-3 border-b border-[#E3E1DB] space-y-2.5 md:space-y-0 md:flex md:items-center md:justify-between md:gap-4 md:px-5 md:py-3.5">
+            {/* Row 1: title + new button */}
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold text-[#131210]">AI Scenarios</h3>
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#D63B1F] hover:bg-[#c23119] text-white text-sm font-medium rounded-md transition-colors whitespace-nowrap shrink-0"
+              >
+                <i className="fas fa-plus text-xs"></i>
+                <span className="hidden sm:inline">New Scenario</span>
+                <span className="sm:hidden">New</span>
+              </button>
+            </div>
+            {/* Row 2: search + filter */}
+            <div className="flex items-center gap-2 md:flex-1 md:max-w-sm md:ml-3">
+              <div className="relative flex-1">
                 <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-[#9B9890] text-xs"></i>
                 <input
                   type="text"
-                  placeholder="Search scenarios…"
+                  placeholder="Search…"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-8 pr-3 py-1.5 border border-[#E3E1DB] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
@@ -140,23 +152,16 @@ export default function ScenariosPage() {
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-3 py-1.5 border border-[#E3E1DB] rounded-md text-sm text-[#5C5A55] focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
+                className="shrink-0 px-2.5 py-1.5 border border-[#E3E1DB] rounded-md text-sm text-[#5C5A55] focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
               >
-                <option value="all">All statuses</option>
+                <option value="all">All</option>
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
               </select>
             </div>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#D63B1F] hover:bg-[#c23119] text-white text-sm font-medium rounded-md transition-colors flex-shrink-0"
-            >
-              <i className="fas fa-plus text-xs"></i>
-              New Scenario
-            </button>
           </div>
 
-          {/* Table */}
+          {/* List */}
           {paginatedScenarios.length === 0 ? (
             <div className="px-5 py-10 text-center">
               <p className="text-sm text-[#9B9890]">No scenarios found</p>
@@ -166,7 +171,68 @@ export default function ScenariosPage() {
             </div>
           ) : (
             <>
-              <div className="overflow-x-auto">
+              {/* ── Mobile card list ── */}
+              <div className="md:hidden divide-y divide-[#E3E1DB]">
+                {paginatedScenarios.map((scenario) => (
+                  <div
+                    key={scenario.id}
+                    className="px-4 py-3.5 cursor-pointer active:bg-[#F7F6F3]"
+                    onClick={() => { setSelectedScenario(scenario); setShowViewModal(true) }}
+                  >
+                    {/* Name + status */}
+                    <div className="flex items-start justify-between gap-3 mb-1">
+                      <p className="text-sm font-semibold text-[#131210] leading-snug flex-1 min-w-0">{scenario.name}</p>
+                      <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                        scenario.is_active ? 'bg-green-50 text-green-700' : 'bg-[#EFEDE8] text-[#5C5A55]'
+                      }`}>
+                        {scenario.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+                    {/* Description */}
+                    <p className="text-xs text-[#9B9890] truncate mb-2.5">
+                      {scenario.description || scenario.instructions?.slice(0, 70) + '…'}
+                    </p>
+                    {/* Meta + actions */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {scenario.enable_followups && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-[rgba(214,59,31,0.07)] text-[#D63B1F]">
+                            <i className="fas fa-robot text-[9px]"></i>Follow-ups
+                          </span>
+                        )}
+                        {scenario.scenario_phone_numbers?.length > 0 && (
+                          <span className="text-xs text-[#9B9890] truncate">
+                            <i className="fas fa-phone text-[10px] mr-1"></i>
+                            {scenario.scenario_phone_numbers.length} line{scenario.scenario_phone_numbers.length !== 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </div>
+                      {/* Actions */}
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        <button title="View" onClick={(e) => { e.stopPropagation(); setSelectedScenario(scenario); setShowViewModal(true) }}
+                          className="p-2 text-[#9B9890] hover:text-[#5C5A55] rounded-lg transition-colors">
+                          <i className="fas fa-eye text-xs"></i>
+                        </button>
+                        <button title="Follow-up Stages" onClick={(e) => { e.stopPropagation(); setSelectedScenario(scenario); setShowFollowupModal(true) }}
+                          className="p-2 text-[#9B9890] hover:text-[#D63B1F] rounded-lg transition-colors">
+                          <i className="fas fa-layer-group text-xs"></i>
+                        </button>
+                        <button title={scenario.is_active ? 'Deactivate' : 'Activate'} onClick={(e) => { e.stopPropagation(); handleToggleActive(scenario) }}
+                          className={`p-2 rounded-lg transition-colors ${scenario.is_active ? 'text-[#9B9890] hover:text-yellow-600' : 'text-[#9B9890] hover:text-green-600'}`}>
+                          <i className={`fas ${scenario.is_active ? 'fa-pause' : 'fa-play'} text-xs`}></i>
+                        </button>
+                        <button title="Delete" onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ scenarioId: scenario.id, scenarioName: scenario.name }) }}
+                          className="p-2 text-[#9B9890] hover:text-[#D63B1F] rounded-lg transition-colors">
+                          <i className="fas fa-trash text-xs"></i>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* ── Desktop table ── */}
+              <div className="hidden md:block overflow-x-auto">
                 <table className="min-w-full">
                   <thead>
                     <tr className="bg-[#F7F6F3] border-b border-[#E3E1DB]">
@@ -179,82 +245,34 @@ export default function ScenariosPage() {
                   </thead>
                   <tbody className="divide-y divide-[#E3E1DB]">
                     {paginatedScenarios.map((scenario) => (
-                      <tr
-                        key={scenario.id}
-                        className="hover:bg-[#F7F6F3] cursor-pointer"
-                        onClick={() => { setSelectedScenario(scenario); setShowViewModal(true) }}
-                      >
+                      <tr key={scenario.id} className="hover:bg-[#F7F6F3] cursor-pointer" onClick={() => { setSelectedScenario(scenario); setShowViewModal(true) }}>
                         <td className="px-5 py-3">
                           <p className="text-sm font-medium text-[#131210]">{scenario.name}</p>
                           <p className="text-xs text-[#9B9890] truncate max-w-xs mt-0.5">{scenario.description || scenario.instructions?.slice(0, 60) + '…'}</p>
                         </td>
                         <td className="px-5 py-3">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                            scenario.is_active ? 'bg-green-50 text-green-700' : 'bg-[#EFEDE8] text-[#5C5A55]'
-                          }`}>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${scenario.is_active ? 'bg-green-50 text-green-700' : 'bg-[#EFEDE8] text-[#5C5A55]'}`}>
                             {scenario.is_active ? 'Active' : 'Inactive'}
                           </span>
                         </td>
                         <td className="px-5 py-3 text-sm text-[#5C5A55]">
                           {scenario.scenario_phone_numbers?.length > 0
                             ? scenario.scenario_phone_numbers.map(spn => spn.phone_numbers?.phone_number || spn.phone_number_id).join(', ')
-                            : <span className="text-[#9B9890] text-xs">None assigned</span>
-                          }
+                            : <span className="text-[#9B9890] text-xs">None assigned</span>}
                         </td>
                         <td className="px-5 py-3">
-                          {scenario.enable_followups ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-[rgba(214,59,31,0.07)] text-[#D63B1F]">
-                              <i className="fas fa-robot text-[10px]"></i>
-                              Enabled
-                            </span>
-                          ) : (
-                            <span className="text-xs text-[#9B9890]">Disabled</span>
-                          )}
+                          {scenario.enable_followups
+                            ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-[rgba(214,59,31,0.07)] text-[#D63B1F]"><i className="fas fa-robot text-[10px]"></i>Enabled</span>
+                            : <span className="text-xs text-[#9B9890]">Disabled</span>}
                         </td>
                         <td className="px-5 py-3 text-right">
                           <div className="flex items-center justify-end gap-1">
-                            <button
-                              title="View"
-                              onClick={(e) => { e.stopPropagation(); setSelectedScenario(scenario); setShowViewModal(true) }}
-                              className="p-1.5 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded transition-colors"
-                            >
-                              <i className="fas fa-eye text-[13px]"></i>
-                            </button>
-                            <button
-                              title="Execution Logs"
-                              onClick={(e) => { e.stopPropagation(); setSelectedScenario(scenario); setShowExecutionsModal(true) }}
-                              className="p-1.5 text-[#9B9890] hover:text-[#D63B1F] hover:bg-[rgba(214,59,31,0.07)] rounded transition-colors"
-                            >
-                              <i className="fas fa-list-alt text-[13px]"></i>
-                            </button>
-                            <button
-                              title="Follow-up Stages"
-                              onClick={(e) => { e.stopPropagation(); setSelectedScenario(scenario); setShowFollowupModal(true) }}
-                              className="p-1.5 text-[#9B9890] hover:text-[#D63B1F] hover:bg-[rgba(214,59,31,0.07)] rounded transition-colors"
-                            >
-                              <i className="fas fa-layer-group text-[13px]"></i>
-                            </button>
-                            <button
-                              title="Analytics"
-                              onClick={(e) => { e.stopPropagation(); setSelectedScenario(scenario); setShowAnalyticsModal(true) }}
-                              className="p-1.5 text-[#9B9890] hover:text-green-600 hover:bg-green-50 rounded transition-colors"
-                            >
-                              <i className="fas fa-chart-bar text-[13px]"></i>
-                            </button>
-                            <button
-                              title={scenario.is_active ? 'Deactivate' : 'Activate'}
-                              onClick={(e) => { e.stopPropagation(); handleToggleActive(scenario) }}
-                              className={`p-1.5 rounded transition-colors ${scenario.is_active ? 'text-[#9B9890] hover:text-yellow-600 hover:bg-yellow-50' : 'text-[#9B9890] hover:text-green-600 hover:bg-green-50'}`}
-                            >
-                              <i className={`fas ${scenario.is_active ? 'fa-pause' : 'fa-play'} text-[13px]`}></i>
-                            </button>
-                            <button
-                              title="Delete"
-                              onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ scenarioId: scenario.id, scenarioName: scenario.name }) }}
-                              className="p-1.5 text-[#9B9890] hover:text-[#D63B1F] hover:bg-[rgba(214,59,31,0.07)] rounded transition-colors"
-                            >
-                              <i className="fas fa-trash text-[13px]"></i>
-                            </button>
+                            <button title="View" onClick={(e) => { e.stopPropagation(); setSelectedScenario(scenario); setShowViewModal(true) }} className="p-1.5 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded transition-colors"><i className="fas fa-eye text-[13px]"></i></button>
+                            <button title="Execution Logs" onClick={(e) => { e.stopPropagation(); setSelectedScenario(scenario); setShowExecutionsModal(true) }} className="p-1.5 text-[#9B9890] hover:text-[#D63B1F] hover:bg-[rgba(214,59,31,0.07)] rounded transition-colors"><i className="fas fa-list-alt text-[13px]"></i></button>
+                            <button title="Follow-up Stages" onClick={(e) => { e.stopPropagation(); setSelectedScenario(scenario); setShowFollowupModal(true) }} className="p-1.5 text-[#9B9890] hover:text-[#D63B1F] hover:bg-[rgba(214,59,31,0.07)] rounded transition-colors"><i className="fas fa-layer-group text-[13px]"></i></button>
+                            <button title="Analytics" onClick={(e) => { e.stopPropagation(); setSelectedScenario(scenario); setShowAnalyticsModal(true) }} className="p-1.5 text-[#9B9890] hover:text-green-600 hover:bg-green-50 rounded transition-colors"><i className="fas fa-chart-bar text-[13px]"></i></button>
+                            <button title={scenario.is_active ? 'Deactivate' : 'Activate'} onClick={(e) => { e.stopPropagation(); handleToggleActive(scenario) }} className={`p-1.5 rounded transition-colors ${scenario.is_active ? 'text-[#9B9890] hover:text-yellow-600 hover:bg-yellow-50' : 'text-[#9B9890] hover:text-green-600 hover:bg-green-50'}`}><i className={`fas ${scenario.is_active ? 'fa-pause' : 'fa-play'} text-[13px]`}></i></button>
+                            <button title="Delete" onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ scenarioId: scenario.id, scenarioName: scenario.name }) }} className="p-1.5 text-[#9B9890] hover:text-[#D63B1F] hover:bg-[rgba(214,59,31,0.07)] rounded transition-colors"><i className="fas fa-trash text-[13px]"></i></button>
                           </div>
                         </td>
                       </tr>

@@ -106,9 +106,9 @@ export default function CallForwarding() {
   )
 
   return (
-    <div className="max-w-3xl">
+    <div className="w-full max-w-3xl">
       {/* Header */}
-      <div className="flex items-start justify-between mb-6">
+      <div className="flex items-start justify-between gap-3 mb-6">
         <div>
           <h2 className="text-xl font-semibold text-[#131210]">Call Forwarding</h2>
           <p className="text-sm text-[#9B9890] mt-1">
@@ -118,12 +118,13 @@ export default function CallForwarding() {
         <button
           onClick={() => setShowAddForm(true)}
           disabled={availableNumbers.length === 0}
-          className="px-4 py-2 bg-[#D63B1F] hover:bg-[#c23119] disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
+          className="shrink-0 px-3 py-2 bg-[#D63B1F] hover:bg-[#c23119] disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
-          Add Forwarding Rule
+          <span className="hidden sm:inline">Add Forwarding Rule</span>
+          <span className="sm:hidden">Add Rule</span>
         </button>
       </div>
 
@@ -163,13 +164,13 @@ export default function CallForwarding() {
               <button
                 onClick={handleAdd}
                 disabled={saving || !selectedPhoneId || !forwardTo.trim()}
-                className="px-4 py-2 bg-[#D63B1F] hover:bg-[#c23119] disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+                className="flex-1 sm:flex-none px-4 py-2.5 bg-[#D63B1F] hover:bg-[#c23119] disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
               >
                 {saving ? 'Saving…' : 'Save Rule'}
               </button>
               <button
                 onClick={() => { setShowAddForm(false); setSelectedPhoneId(''); setForwardTo('') }}
-                className="px-4 py-2 text-sm text-[#5C5A55] hover:bg-[#F7F6F3] rounded-lg transition-colors"
+                className="flex-1 sm:flex-none px-4 py-2.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3] transition-colors"
               >
                 Cancel
               </button>
@@ -204,8 +205,8 @@ export default function CallForwarding() {
           </div>
         ) : (
           <>
-            {/* Column headers */}
-            <div className="grid grid-cols-[1fr_auto_1fr_100px] px-5 py-2.5 border-b border-[#E3E1DB] bg-[#F7F6F3]/50">
+            {/* Column headers — desktop only */}
+            <div className="hidden sm:grid grid-cols-[1fr_auto_1fr_100px] px-5 py-2.5 border-b border-[#E3E1DB] bg-[#F7F6F3]/50">
               <span className="text-xs font-medium text-[#9B9890] uppercase tracking-wider">From Line</span>
               <span className="text-xs font-medium text-[#9B9890] uppercase tracking-wider px-4">Status</span>
               <span className="text-xs font-medium text-[#9B9890] uppercase tracking-wider">Forward To</span>
@@ -216,52 +217,58 @@ export default function CallForwarding() {
             {rules.map((rule) => (
               <div
                 key={rule.id}
-                className="grid grid-cols-[1fr_auto_1fr_100px] items-center px-5 py-3.5 border-b border-[#EFEDE8] last:border-0 hover:bg-[#F7F6F3]"
+                className="px-5 py-3.5 border-b border-[#EFEDE8] last:border-0 hover:bg-[#F7F6F3] sm:grid sm:grid-cols-[1fr_auto_1fr_100px] sm:items-center"
               >
-                {/* From line */}
-                <div>
-                  <p className="text-sm text-[#131210] font-medium">
-                    {rule.phone_numbers?.custom_name || formatPhoneNumber(rule.phone_numbers?.phone_number)}
-                  </p>
-                  {rule.phone_numbers?.custom_name && (
-                    <p className="text-xs text-[#9B9890]">{formatPhoneNumber(rule.phone_numbers?.phone_number)}</p>
-                  )}
+                {/* Mobile layout */}
+                <div className="flex items-center justify-between sm:contents">
+                  {/* From line */}
+                  <div>
+                    <p className="text-sm text-[#131210] font-medium">
+                      {rule.phone_numbers?.custom_name || formatPhoneNumber(rule.phone_numbers?.phone_number)}
+                    </p>
+                    {rule.phone_numbers?.custom_name && (
+                      <p className="text-xs text-[#9B9890]">{formatPhoneNumber(rule.phone_numbers?.phone_number)}</p>
+                    )}
+                  </div>
+
+                  {/* Toggle */}
+                  <div className="sm:px-4">
+                    <button
+                      onClick={() => handleToggle(rule)}
+                      disabled={togglingId === rule.id}
+                      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                        rule.is_active ? 'bg-[#D63B1F]' : 'bg-[#D4D1C9]'
+                      } ${togglingId === rule.id ? 'opacity-50' : ''}`}
+                    >
+                      <span
+                        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-[#FFFFFF] transition-transform ${
+                          rule.is_active ? 'translate-x-[18px]' : 'translate-x-[3px]'
+                        }`}
+                      />
+                    </button>
+                  </div>
                 </div>
 
-                {/* Toggle */}
-                <div className="px-4">
-                  <button
-                    onClick={() => handleToggle(rule)}
-                    disabled={togglingId === rule.id}
-                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                      rule.is_active ? 'bg-[#D63B1F]' : 'bg-[#D4D1C9]'
-                    } ${togglingId === rule.id ? 'opacity-50' : ''}`}
-                  >
-                    <span
-                      className={`inline-block h-3.5 w-3.5 transform rounded-full bg-[#FFFFFF] transition-transform ${
-                        rule.is_active ? 'translate-x-[18px]' : 'translate-x-[3px]'
-                      }`}
-                    />
-                  </button>
-                </div>
+                {/* Forward to + Delete */}
+                <div className="flex items-center justify-between mt-2 sm:mt-0 sm:contents">
+                  {/* Forward to */}
+                  <div className="flex items-center gap-2">
+                    <svg className="w-3.5 h-3.5 text-[#9B9890] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                    </svg>
+                    <span className="text-sm text-[#5C5A55]">{formatPhoneNumber(rule.forward_to)}</span>
+                  </div>
 
-                {/* Forward to */}
-                <div className="flex items-center gap-2">
-                  <svg className="w-3.5 h-3.5 text-[#9B9890] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                  </svg>
-                  <span className="text-sm text-[#5C5A55]">{formatPhoneNumber(rule.forward_to)}</span>
-                </div>
-
-                {/* Delete */}
-                <div className="flex justify-end">
-                  <button
-                    onClick={() => handleDelete(rule.id)}
-                    disabled={deletingId === rule.id}
-                    className="px-3 py-1 text-xs font-medium text-[#5C5A55] hover:text-red-600 border border-[#E3E1DB] hover:border-red-300 rounded-md transition-colors disabled:opacity-50"
-                  >
-                    {deletingId === rule.id ? 'Removing…' : 'Delete'}
-                  </button>
+                  {/* Delete */}
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() => handleDelete(rule.id)}
+                      disabled={deletingId === rule.id}
+                      className="px-3 py-1 text-xs font-medium text-[#5C5A55] hover:text-red-600 border border-[#E3E1DB] hover:border-red-300 rounded-md transition-colors disabled:opacity-50"
+                    >
+                      {deletingId === rule.id ? 'Removing…' : 'Delete'}
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}

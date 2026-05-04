@@ -94,10 +94,11 @@ export default function MessageTemplates() {
           </div>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#D63B1F] hover:bg-[#c23119] text-white text-sm font-medium rounded-md transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#D63B1F] hover:bg-[#c23119] text-white text-sm font-medium rounded-md transition-colors whitespace-nowrap shrink-0"
           >
             <i className="fas fa-plus text-xs"></i>
-            New Template
+            <span className="hidden sm:inline">New Template</span>
+            <span className="sm:hidden">New</span>
           </button>
         </div>
 

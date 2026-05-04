@@ -219,10 +219,10 @@ export default function ContactsPage() {
 
   return (
     <div className="h-full bg-[#F7F6F3] flex flex-col overflow-auto">
-      <div className="p-6 space-y-4">
+      <div className="p-4 md:p-6 space-y-4">
 
-        {/* Tabs */}
-        <div className="flex items-center gap-1 bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg p-1 self-start w-fit">
+        {/* Tabs — full width on mobile */}
+        <div className="flex items-center gap-1 bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg p-1">
           {[
             { id: 'all', label: 'All Contacts', icon: 'fa-address-book' },
             { id: 'lists', label: 'Contact Lists', icon: 'fa-layer-group' },
@@ -230,7 +230,7 @@ export default function ContactsPage() {
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${tab === t.id ? 'bg-[#D63B1F] text-white' : 'text-[#5C5A55] hover:bg-[#F7F6F3]'}`}
+              className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${tab === t.id ? 'bg-[#D63B1F] text-white' : 'text-[#5C5A55] hover:bg-[#F7F6F3]'}`}
             >
               <i className={`fas ${t.icon} text-xs`}></i>
               {t.label}
@@ -241,25 +241,82 @@ export default function ContactsPage() {
         {/* ── LISTS TAB ── */}
         {tab === 'lists' && (
           <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-[#E3E1DB] flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3 flex-1 min-w-0">
-                <h3 className="text-sm font-semibold text-[#131210] flex-shrink-0">Contact Lists</h3>
-                <div className="relative flex-1 max-w-xs">
+            {/* Header */}
+            <div className="px-4 md:px-5 py-3 md:py-3.5 border-b border-[#E3E1DB]">
+              {/* Mobile: two rows */}
+              <div className="md:hidden space-y-2.5">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-semibold text-[#131210]">Contact Lists</h3>
+                  <button onClick={() => setShowAddList(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-[#D63B1F] hover:bg-[#c23119] text-white text-sm font-medium rounded-md transition-colors whitespace-nowrap shrink-0">
+                    <i className="fas fa-plus text-xs"></i>New List
+                  </button>
+                </div>
+                <div className="relative">
                   <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-[#9B9890] text-xs"></i>
                   <input type="text" placeholder="Search lists…" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full pl-8 pr-3 py-1.5 border border-[#E3E1DB] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]" />
                 </div>
               </div>
-              <button onClick={() => setShowAddList(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-[#D63B1F] hover:bg-[#c23119] text-white text-sm font-medium rounded-md transition-colors flex-shrink-0">
-                <i className="fas fa-plus text-xs"></i>New List
-              </button>
+              {/* Desktop: single row (original layout) */}
+              <div className="hidden md:flex md:items-center md:justify-between md:gap-4">
+                <h3 className="text-sm font-semibold text-[#131210]">Contact Lists</h3>
+                <div className="flex items-center gap-2">
+                  <div className="relative max-w-xs w-60">
+                    <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-[#9B9890] text-xs"></i>
+                    <input type="text" placeholder="Search lists…" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full pl-8 pr-3 py-1.5 border border-[#E3E1DB] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]" />
+                  </div>
+                  <button onClick={() => setShowAddList(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-[#D63B1F] hover:bg-[#c23119] text-white text-sm font-medium rounded-md transition-colors whitespace-nowrap shrink-0">
+                    <i className="fas fa-plus text-xs"></i>New List
+                  </button>
+                </div>
+              </div>
             </div>
 
             {loading ? (
               <div className="px-5 py-8 text-center text-sm text-[#9B9890]"><i className="fas fa-spinner fa-spin mr-2"></i>Loading…</div>
+            ) : currentLists.length === 0 ? (
+              <div className="px-5 py-10 text-center">
+                <p className="text-sm text-[#9B9890]">No contact lists found</p>
+                <p className="text-xs text-[#9B9890] mt-1">Create your first list to start organizing contacts</p>
+              </div>
             ) : (
               <>
-                <div className="overflow-x-auto">
+                {/* Mobile cards */}
+                <div className="md:hidden divide-y divide-[#E3E1DB]">
+                  {currentLists.map((list) => (
+                    <div key={list.id} className="px-4 py-3.5">
+                      {editingList?.id === list.id ? (
+                        <div className="space-y-2">
+                          <input type="text" value={editingList.name} onChange={(e) => setEditingList({ ...editingList, name: e.target.value })}
+                            className="w-full px-3 py-2 border border-[#D63B1F] rounded-md text-sm focus:outline-none" autoFocus placeholder="List name" />
+                          <input type="text" value={editingList.description || ''} onChange={(e) => setEditingList({ ...editingList, description: e.target.value })}
+                            className="w-full px-3 py-2 border border-[#E3E1DB] rounded-md text-sm focus:outline-none" placeholder="Description (optional)" />
+                          <div className="flex gap-2">
+                            <button onClick={() => handleUpdateList(list.id, { name: editingList.name, description: editingList.description })} className="flex-1 py-2 text-xs font-medium text-white bg-[#D63B1F] rounded-md">Save</button>
+                            <button onClick={() => setEditingList(null)} className="flex-1 py-2 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded-md">Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 bg-[#D63B1F] rounded-lg flex items-center justify-center text-white text-sm font-semibold shrink-0">{list.name.charAt(0).toUpperCase()}</div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-[#131210]">{list.name}</p>
+                            <p className="text-xs text-[#9B9890] truncate">{list.description || new Date(list.created_at).toLocaleDateString()}</p>
+                          </div>
+                          <span className="text-xs text-[#9B9890] shrink-0 flex items-center gap-1"><i className="fas fa-users text-[10px]"></i>{list.contactCount || 0}</span>
+                          <div className="flex items-center gap-0.5 shrink-0">
+                            <button onClick={() => { setSelectedList(list); setShowViewContacts(true) }} className="p-2 text-[#9B9890] hover:text-[#5C5A55] rounded-lg" title="View"><i className="fas fa-address-book text-xs"></i></button>
+                            <button onClick={() => setEditingList({ ...list })} className="p-2 text-[#9B9890] hover:text-[#5C5A55] rounded-lg" title="Rename"><i className="fas fa-pen text-xs"></i></button>
+                            <button onClick={() => setDeleteConfirm(list)} className="p-2 text-[#9B9890] hover:text-[#D63B1F] rounded-lg" title="Delete"><i className="fas fa-trash-alt text-xs"></i></button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {/* Desktop table */}
+                <div className="hidden md:block overflow-x-auto">
                   <table className="min-w-full">
                     <thead>
                       <tr className="bg-[#F7F6F3] border-b border-[#E3E1DB]">
@@ -279,7 +336,7 @@ export default function ContactsPage() {
                                 className="px-3 py-1.5 border border-[#D63B1F] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] w-full max-w-xs" autoFocus />
                             ) : (
                               <div className="flex items-center gap-2.5">
-                                <div className="w-7 h-7 bg-[#D63B1F] rounded-md flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">{list.name.charAt(0).toUpperCase()}</div>
+                                <div className="w-7 h-7 bg-[#D63B1F] rounded-md flex items-center justify-center text-white text-xs font-semibold shrink-0">{list.name.charAt(0).toUpperCase()}</div>
                                 <span className="text-sm font-medium text-[#131210]">{list.name}</span>
                               </div>
                             )}
@@ -292,11 +349,7 @@ export default function ContactsPage() {
                               <span className="text-sm text-[#9B9890] line-clamp-1">{list.description || '—'}</span>
                             )}
                           </td>
-                          <td className="px-5 py-3">
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#EFEDE8] text-[#5C5A55]">
-                              <i className="fas fa-users mr-1 text-[10px]"></i>{list.contactCount || 0}
-                            </span>
-                          </td>
+                          <td className="px-5 py-3"><span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#EFEDE8] text-[#5C5A55]"><i className="fas fa-users mr-1 text-[10px]"></i>{list.contactCount || 0}</span></td>
                           <td className="px-5 py-3 text-sm text-[#9B9890] whitespace-nowrap">{new Date(list.created_at).toLocaleDateString()}</td>
                           <td className="px-5 py-3 text-right">
                             {editingList?.id === list.id ? (
@@ -306,19 +359,14 @@ export default function ContactsPage() {
                               </div>
                             ) : (
                               <div className="flex items-center justify-end gap-1">
-                                <button onClick={() => { setSelectedList(list); setShowViewContacts(true) }} className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded hover:bg-[#F7F6F3] transition-colors" title="View contacts">
-                                  <i className="fas fa-address-book text-[11px]"></i>View
-                                </button>
-                                <button onClick={() => setEditingList({ ...list })} className="p-1.5 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded transition-colors" title="Rename list"><i className="fas fa-pen text-[11px]"></i></button>
-                                <button onClick={() => setDeleteConfirm(list)} className="p-1.5 text-[#9B9890] hover:text-[#D63B1F] hover:bg-[rgba(214,59,31,0.07)] rounded transition-colors" title="Delete list"><i className="fas fa-trash-alt text-[11px]"></i></button>
+                                <button onClick={() => { setSelectedList(list); setShowViewContacts(true) }} className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded hover:bg-[#F7F6F3] transition-colors"><i className="fas fa-address-book text-[11px]"></i>View</button>
+                                <button onClick={() => setEditingList({ ...list })} className="p-1.5 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded transition-colors"><i className="fas fa-pen text-[11px]"></i></button>
+                                <button onClick={() => setDeleteConfirm(list)} className="p-1.5 text-[#9B9890] hover:text-[#D63B1F] hover:bg-[rgba(214,59,31,0.07)] rounded transition-colors"><i className="fas fa-trash-alt text-[11px]"></i></button>
                               </div>
                             )}
                           </td>
                         </tr>
                       ))}
-                      {currentLists.length === 0 && (
-                        <tr><td colSpan="5" className="px-5 py-10 text-center"><p className="text-sm text-[#9B9890]">No contact lists found</p><p className="text-xs text-[#9B9890] mt-1">Create your first list to start organizing contacts</p></td></tr>
-                      )}
                     </tbody>
                   </table>
                 </div>
@@ -345,30 +393,53 @@ export default function ContactsPage() {
         {/* ── ALL CONTACTS TAB ── */}
         {tab === 'all' && (
           <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-[#E3E1DB] flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3 flex-1 min-w-0">
-                <h3 className="text-sm font-semibold text-[#131210] flex-shrink-0">All Contacts</h3>
-                <div className="relative flex-1 max-w-xs">
+            {/* Header */}
+            <div className="px-4 md:px-5 py-3 md:py-3.5 border-b border-[#E3E1DB]">
+              {/* Mobile: two rows */}
+              <div className="md:hidden space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-[#131210] shrink-0">All Contacts</h3>
+                  <div className="flex items-center gap-2">
+                    {selectedContacts.length > 0 && (
+                      <button onClick={() => setDeleteContactConfirm({ multiple: true })} className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-white bg-[#D63B1F] rounded-md">
+                        <i className="fas fa-trash text-[10px]"></i>{selectedContacts.length}
+                      </button>
+                    )}
+                    <button onClick={() => setShowImportCsv(true)} className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3] transition-colors whitespace-nowrap">
+                      <i className="fas fa-file-csv text-xs"></i>Import
+                    </button>
+                    <button onClick={() => setShowAddContact(true)} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#D63B1F] hover:bg-[#c23119] text-white text-sm font-medium rounded-md transition-colors whitespace-nowrap">
+                      <i className="fas fa-user-plus text-xs"></i>Add
+                    </button>
+                  </div>
+                </div>
+                <div className="relative">
                   <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-[#9B9890] text-xs"></i>
                   <input type="text" placeholder="Search contacts…" value={allSearchTerm} onChange={(e) => setAllSearchTerm(e.target.value)}
                     className="w-full pl-8 pr-3 py-1.5 border border-[#E3E1DB] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]" />
                 </div>
-                {selectedContacts.length > 0 && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-[#9B9890]">{selectedContacts.length} selected</span>
-                    <button onClick={() => setDeleteContactConfirm({ multiple: true })} className="px-2.5 py-1.5 text-xs font-medium text-white bg-[#D63B1F] rounded hover:bg-[#c4351b]">
-                      <i className="fas fa-trash mr-1"></i>Delete Selected
-                    </button>
-                  </div>
-                )}
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <button onClick={() => setShowImportCsv(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3] transition-colors">
-                  <i className="fas fa-file-csv text-xs"></i>Import CSV
-                </button>
-                <button onClick={() => setShowAddContact(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-[#D63B1F] hover:bg-[#c23119] text-white text-sm font-medium rounded-md transition-colors">
-                  <i className="fas fa-user-plus text-xs"></i>Add Contact
-                </button>
+              {/* Desktop: single row (original layout) */}
+              <div className="hidden md:flex md:items-center md:justify-between md:gap-4">
+                <h3 className="text-sm font-semibold text-[#131210] shrink-0">All Contacts</h3>
+                <div className="flex items-center gap-2">
+                  {selectedContacts.length > 0 && (
+                    <button onClick={() => setDeleteContactConfirm({ multiple: true })} className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-white bg-[#D63B1F] rounded-md">
+                      <i className="fas fa-trash text-[10px]"></i>Delete {selectedContacts.length}
+                    </button>
+                  )}
+                  <div className="relative max-w-xs w-60">
+                    <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-[#9B9890] text-xs"></i>
+                    <input type="text" placeholder="Search contacts…" value={allSearchTerm} onChange={(e) => setAllSearchTerm(e.target.value)}
+                      className="w-full pl-8 pr-3 py-1.5 border border-[#E3E1DB] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]" />
+                  </div>
+                  <button onClick={() => setShowImportCsv(true)} className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3] transition-colors whitespace-nowrap">
+                    <i className="fas fa-file-csv text-xs"></i>Import CSV
+                  </button>
+                  <button onClick={() => setShowAddContact(true)} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#D63B1F] hover:bg-[#c23119] text-white text-sm font-medium rounded-md transition-colors whitespace-nowrap">
+                    <i className="fas fa-user-plus text-xs"></i>Add Contact
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -376,7 +447,49 @@ export default function ContactsPage() {
               <div className="px-5 py-8 text-center text-sm text-[#9B9890]"><i className="fas fa-spinner fa-spin mr-2"></i>Loading…</div>
             ) : (
               <>
-                <div className="overflow-x-auto">
+                {/* Mobile contact cards */}
+                <div className="md:hidden divide-y divide-[#E3E1DB]">
+                  {currentAllContacts.length === 0 ? (
+                    <div className="px-5 py-10 text-center"><p className="text-sm text-[#9B9890]">No contacts found</p><p className="text-xs text-[#9B9890] mt-1">Add contacts or import from CSV</p></div>
+                  ) : currentAllContacts.map((contact) => (
+                    <div key={contact.id} className="px-4 py-3.5">
+                      {editingContact?.id === contact.id ? (
+                        <div className="space-y-2">
+                          <div className="grid grid-cols-2 gap-2">
+                            <input type="text" value={editingContact.first_name || ''} onChange={(e) => setEditingContact({ ...editingContact, first_name: e.target.value })} placeholder="First name" className="px-3 py-2 border border-[#D63B1F] rounded-md text-sm focus:outline-none" autoFocus />
+                            <input type="text" value={editingContact.last_name || ''} onChange={(e) => setEditingContact({ ...editingContact, last_name: e.target.value })} placeholder="Last name" className="px-3 py-2 border border-[#E3E1DB] rounded-md text-sm focus:outline-none" />
+                          </div>
+                          <input type="text" value={editingContact.business_name || ''} onChange={(e) => setEditingContact({ ...editingContact, business_name: e.target.value })} placeholder="Company" className="w-full px-3 py-2 border border-[#E3E1DB] rounded-md text-sm focus:outline-none" />
+                          <input type="tel" value={editingContact.phone_number || ''} onChange={(e) => setEditingContact({ ...editingContact, phone_number: e.target.value })} placeholder="Phone" className="w-full px-3 py-2 border border-[#E3E1DB] rounded-md text-sm focus:outline-none" />
+                          <input type="email" value={editingContact.email || ''} onChange={(e) => setEditingContact({ ...editingContact, email: e.target.value })} placeholder="Email" className="w-full px-3 py-2 border border-[#E3E1DB] rounded-md text-sm focus:outline-none" />
+                          <div className="flex gap-2 pt-1">
+                            <button onClick={() => updateContact(contact.id, { first_name: editingContact.first_name, last_name: editingContact.last_name, business_name: editingContact.business_name, phone_number: editingContact.phone_number, email: editingContact.email })}
+                              className="flex-1 py-2 text-xs font-medium text-white bg-[#D63B1F] rounded-md">Save</button>
+                            <button onClick={() => setEditingContact(null)} className="flex-1 py-2 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded-md">Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          <input type="checkbox" className="w-4 h-4 text-[#D63B1F] border-[#D4D1C9] rounded shrink-0"
+                            checked={selectedContacts.includes(contact.id)}
+                            onChange={() => setSelectedContacts(prev => prev.includes(contact.id) ? prev.filter(id => id !== contact.id) : [...prev, contact.id])} />
+                          <div className="w-9 h-9 bg-[#D63B1F] rounded-full flex items-center justify-center text-white text-sm font-semibold shrink-0">{contactInitial(contact)}</div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-[#131210] truncate">{contactDisplayName(contact)}</p>
+                            <p className="text-xs text-[#9B9890] truncate">{formatPhoneNumber(contact.phone_number)}{contact.email ? ` · ${contact.email}` : ''}</p>
+                          </div>
+                          <div className="flex items-center gap-0.5 shrink-0">
+                            <button onClick={() => setEditingContact({ ...contact })} className="p-2 text-[#9B9890] hover:text-[#5C5A55] rounded-lg"><i className="fas fa-pen text-xs"></i></button>
+                            <button onClick={() => setDeleteContactConfirm(contact)} className="p-2 text-[#9B9890] hover:text-[#D63B1F] rounded-lg"><i className="fas fa-trash-alt text-xs"></i></button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Desktop table */}
+                <div className="hidden md:block overflow-x-auto">
                   <table className="min-w-full">
                     <thead>
                       <tr className="bg-[#F7F6F3] border-b border-[#E3E1DB]">
@@ -396,64 +509,34 @@ export default function ContactsPage() {
                     <tbody className="divide-y divide-[#E3E1DB]">
                       {currentAllContacts.map((contact) => (
                         <tr key={contact.id} className="hover:bg-[#F7F6F3] transition-colors">
-                          <td className="px-5 py-3">
-                            <input type="checkbox" className="w-4 h-4 text-[#D63B1F] border-[#D4D1C9] rounded"
-                              checked={selectedContacts.includes(contact.id)}
-                              onChange={() => setSelectedContacts(prev => prev.includes(contact.id) ? prev.filter(id => id !== contact.id) : [...prev, contact.id])} />
-                          </td>
+                          <td className="px-5 py-3"><input type="checkbox" className="w-4 h-4 text-[#D63B1F] border-[#D4D1C9] rounded" checked={selectedContacts.includes(contact.id)} onChange={() => setSelectedContacts(prev => prev.includes(contact.id) ? prev.filter(id => id !== contact.id) : [...prev, contact.id])} /></td>
                           <td className="px-5 py-3">
                             {editingContact?.id === contact.id ? (
                               <div className="flex gap-1">
-                                <input type="text" value={editingContact.first_name || ''} onChange={(e) => setEditingContact({ ...editingContact, first_name: e.target.value })}
-                                  placeholder="First" className="px-2 py-1.5 border border-[#D63B1F] rounded-md text-sm w-24 focus:outline-none" autoFocus />
-                                <input type="text" value={editingContact.last_name || ''} onChange={(e) => setEditingContact({ ...editingContact, last_name: e.target.value })}
-                                  placeholder="Last" className="px-2 py-1.5 border border-[#D63B1F] rounded-md text-sm w-24 focus:outline-none" />
+                                <input type="text" value={editingContact.first_name || ''} onChange={(e) => setEditingContact({ ...editingContact, first_name: e.target.value })} placeholder="First" className="px-2 py-1.5 border border-[#D63B1F] rounded-md text-sm w-24 focus:outline-none" autoFocus />
+                                <input type="text" value={editingContact.last_name || ''} onChange={(e) => setEditingContact({ ...editingContact, last_name: e.target.value })} placeholder="Last" className="px-2 py-1.5 border border-[#D63B1F] rounded-md text-sm w-24 focus:outline-none" />
                               </div>
                             ) : (
                               <div className="flex items-center gap-2.5">
-                                <div className="w-7 h-7 bg-[#D63B1F] rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">{contactInitial(contact)}</div>
+                                <div className="w-7 h-7 bg-[#D63B1F] rounded-full flex items-center justify-center text-white text-xs font-semibold shrink-0">{contactInitial(contact)}</div>
                                 <span className="text-sm font-medium text-[#131210]">{[contact.first_name, contact.last_name].filter(Boolean).join(' ') || '—'}</span>
                               </div>
                             )}
                           </td>
-                          <td className="px-5 py-3">
-                            {editingContact?.id === contact.id ? (
-                              <input type="text" value={editingContact.business_name || ''} onChange={(e) => setEditingContact({ ...editingContact, business_name: e.target.value })}
-                                placeholder="Company" className="px-2 py-1.5 border border-[#D63B1F] rounded-md text-sm w-32 focus:outline-none" />
-                            ) : (
-                              <span className="text-sm text-[#9B9890]">{contact.business_name || '—'}</span>
-                            )}
-                          </td>
-                          <td className="px-5 py-3">
-                            {editingContact?.id === contact.id ? (
-                              <input type="tel" value={editingContact.phone_number || ''} onChange={(e) => setEditingContact({ ...editingContact, phone_number: e.target.value })}
-                                className="px-2 py-1.5 border border-[#D63B1F] rounded-md text-sm w-36 focus:outline-none" />
-                            ) : (
-                              <span className="text-sm text-[#5C5A55]">{formatPhoneNumber(contact.phone_number)}</span>
-                            )}
-                          </td>
-                          <td className="px-5 py-3">
-                            {editingContact?.id === contact.id ? (
-                              <input type="email" value={editingContact.email || ''} onChange={(e) => setEditingContact({ ...editingContact, email: e.target.value })}
-                                className="px-2 py-1.5 border border-[#D63B1F] rounded-md text-sm w-40 focus:outline-none" />
-                            ) : (
-                              <span className="text-sm text-[#5C5A55]">{contact.email || '—'}</span>
-                            )}
-                          </td>
-                          <td className="px-5 py-3">
-                            <span className="text-xs text-[#9B9890]">{contact.contact_lists?.name || '—'}</span>
-                          </td>
+                          <td className="px-5 py-3">{editingContact?.id === contact.id ? <input type="text" value={editingContact.business_name || ''} onChange={(e) => setEditingContact({ ...editingContact, business_name: e.target.value })} placeholder="Company" className="px-2 py-1.5 border border-[#D63B1F] rounded-md text-sm w-32 focus:outline-none" /> : <span className="text-sm text-[#9B9890]">{contact.business_name || '—'}</span>}</td>
+                          <td className="px-5 py-3">{editingContact?.id === contact.id ? <input type="tel" value={editingContact.phone_number || ''} onChange={(e) => setEditingContact({ ...editingContact, phone_number: e.target.value })} className="px-2 py-1.5 border border-[#D63B1F] rounded-md text-sm w-36 focus:outline-none" /> : <span className="text-sm text-[#5C5A55]">{formatPhoneNumber(contact.phone_number)}</span>}</td>
+                          <td className="px-5 py-3">{editingContact?.id === contact.id ? <input type="email" value={editingContact.email || ''} onChange={(e) => setEditingContact({ ...editingContact, email: e.target.value })} className="px-2 py-1.5 border border-[#D63B1F] rounded-md text-sm w-40 focus:outline-none" /> : <span className="text-sm text-[#5C5A55]">{contact.email || '—'}</span>}</td>
+                          <td className="px-5 py-3"><span className="text-xs text-[#9B9890]">{contact.contact_lists?.name || '—'}</span></td>
                           <td className="px-5 py-3 text-right">
                             {editingContact?.id === contact.id ? (
                               <div className="flex items-center justify-end gap-1.5">
-                                <button onClick={() => updateContact(contact.id, { first_name: editingContact.first_name, last_name: editingContact.last_name, business_name: editingContact.business_name, phone_number: editingContact.phone_number, email: editingContact.email })}
-                                  className="px-2.5 py-1.5 text-xs font-medium text-white bg-[#D63B1F] rounded hover:bg-[#c4351b]">Save</button>
+                                <button onClick={() => updateContact(contact.id, { first_name: editingContact.first_name, last_name: editingContact.last_name, business_name: editingContact.business_name, phone_number: editingContact.phone_number, email: editingContact.email })} className="px-2.5 py-1.5 text-xs font-medium text-white bg-[#D63B1F] rounded hover:bg-[#c4351b]">Save</button>
                                 <button onClick={() => setEditingContact(null)} className="px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded hover:bg-[#F7F6F3]">Cancel</button>
                               </div>
                             ) : (
                               <div className="flex items-center justify-end gap-1">
-                                <button onClick={() => setEditingContact({ ...contact })} className="p-1.5 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded transition-colors" title="Edit"><i className="fas fa-pen text-[11px]"></i></button>
-                                <button onClick={() => setDeleteContactConfirm(contact)} className="p-1.5 text-[#9B9890] hover:text-[#D63B1F] hover:bg-[rgba(214,59,31,0.07)] rounded transition-colors" title="Delete"><i className="fas fa-trash-alt text-[11px]"></i></button>
+                                <button onClick={() => setEditingContact({ ...contact })} className="p-1.5 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded transition-colors"><i className="fas fa-pen text-[11px]"></i></button>
+                                <button onClick={() => setDeleteContactConfirm(contact)} className="p-1.5 text-[#9B9890] hover:text-[#D63B1F] hover:bg-[rgba(214,59,31,0.07)] rounded transition-colors"><i className="fas fa-trash-alt text-[11px]"></i></button>
                               </div>
                             )}
                           </td>

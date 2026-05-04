@@ -283,30 +283,33 @@ export default function AnalyticsPage() {
   const rangeLabel = range === 'day' ? 'Today' : range === 'week' ? 'Last 7 days' : 'Month to date'
 
   return (
-    <div style={{ background: C.bg, minHeight: '100vh', fontFamily: C.sans, WebkitFontSmoothing: 'antialiased' }}>
-      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 24px' }}>
+    <div className="h-full overflow-y-auto" style={{ background: C.bg, fontFamily: C.sans, WebkitFontSmoothing: 'antialiased' }}>
+      <div className="px-4 py-5 md:px-6 md:py-8" style={{ maxWidth: 1200, margin: '0 auto' }}>
 
         {/* ── Page header ── */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 28, flexWrap: 'wrap', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.04em', color: C.text, marginBottom: 4 }}>Analytics</h1>
             <p style={{ fontSize: 13, color: C.text3, fontWeight: 300 }}>Explore key metrics across your workspace</p>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             {/* Range tabs */}
             {[
-              { label: 'Today', value: 'day' },
-              { label: 'Weekly', value: 'week' },
-              { label: 'Month to date', value: 'month' },
+              { label: 'Today', shortLabel: 'Today', value: 'day' },
+              { label: 'Weekly', shortLabel: 'Weekly', value: 'week' },
+              { label: 'Month to date', shortLabel: 'Monthly', value: 'month' },
             ].map(r => (
               <button key={r.value} onClick={() => { setRange(r.value); setUserPage(1) }} style={{
-                height: 32, padding: '0 14px', borderRadius: 7, cursor: 'pointer',
+                height: 32, padding: '0 12px', borderRadius: 7, cursor: 'pointer',
                 border: `1px solid ${range === r.value ? C.red : C.border}`,
                 background: range === r.value ? C.redBg : C.surface,
                 color: range === r.value ? C.red : C.text2,
                 fontSize: 12, fontWeight: range === r.value ? 600 : 400,
-                fontFamily: C.sans, transition: 'all 0.15s',
-              }}>{r.label}</button>
+                fontFamily: C.sans, transition: 'all 0.15s', whiteSpace: 'nowrap',
+              }}>
+                <span className="hidden sm:inline">{r.label}</span>
+                <span className="sm:hidden">{r.shortLabel}</span>
+              </button>
             ))}
           </div>
         </div>
@@ -371,7 +374,60 @@ export default function AnalyticsPage() {
                 <span style={{ fontSize: 12, color: C.text3 }}>{userStats.length} users</span>
               </div>
 
-              <div style={{ overflowX: 'auto' }}>
+              {/* Mobile user cards */}
+              <div className="md:hidden divide-y" style={{ borderColor: C.border }}>
+                {pagedUsers.length === 0 ? (
+                  <div style={{ padding: '40px 20px', textAlign: 'center', color: C.text3, fontSize: 13 }}>
+                    No activity data for this period
+                  </div>
+                ) : pagedUsers.map((u, idx) => (
+                  <div key={u.id} style={{ padding: '12px 16px', background: idx % 2 === 0 ? 'transparent' : '#FAFAF8' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                      {u.avatar ? (
+                        <img src={u.avatar} alt={u.name} style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+                      ) : (
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: C.redBg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, color: C.red, flexShrink: 0 }}>
+                          {u.name?.charAt(0)?.toUpperCase() || '?'}
+                        </div>
+                      )}
+                      <span style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{u.name}</span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px' }}>
+                      <div>
+                        <div style={{ fontSize: 10, color: C.text3, fontWeight: 600, letterSpacing: '0.04em', marginBottom: 2 }}>TOTAL CALLS</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{u.totalCalls}</span>
+                          <Delta cur={u.totalCalls} prev={u.prevTotalCalls} />
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 10, color: C.text3, fontWeight: 600, letterSpacing: '0.04em', marginBottom: 2 }}>OUTGOING</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{u.outboundCalls}</span>
+                          <Delta cur={u.outboundCalls} prev={u.prevOutboundCalls} />
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 10, color: C.text3, fontWeight: 600, letterSpacing: '0.04em', marginBottom: 2 }}>TIME ON CALLS</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: C.text, fontFamily: C.mono }}>{fmtDuration(u.durationSeconds)}</span>
+                          <Delta cur={u.durationSeconds} prev={u.prevDurationSeconds} />
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 10, color: C.text3, fontWeight: 600, letterSpacing: '0.04em', marginBottom: 2 }}>MESSAGES SENT</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{u.sentMessages}</span>
+                          <Delta cur={u.sentMessages} prev={u.prevSentMessages} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop table */}
+              <div className="hidden md:block" style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                   <thead>
                     <tr style={{ background: '#F7F6F3' }}>
@@ -464,7 +520,7 @@ export default function AnalyticsPage() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </div>{/* end hidden md:block */}
 
               {/* Pagination */}
               {totalPages > 1 && (
@@ -501,9 +557,8 @@ export default function AnalyticsPage() {
             </div>
 
             {/* ── Busy times heatmap ── */}
-            <div style={{
+            <div className="px-4 py-4 md:px-6 md:py-5" style={{
               background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10,
-              padding: '20px 24px',
             }}>
               <div style={{ marginBottom: 16 }}>
                 <span style={{ fontSize: 14, fontWeight: 600, color: C.text, letterSpacing: '-0.02em' }}>Busy times</span>

@@ -475,12 +475,12 @@ export default function ManageNumbers() {
 
       {/* My Phone Numbers */}
       <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-[#E3E1DB] flex items-center justify-between">
+        <div className="px-5 py-3.5 border-b border-[#E3E1DB] flex items-center justify-between gap-2 flex-wrap">
           <h3 className="text-sm font-semibold text-[#131210]">Phone Numbers</h3>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
             {subscription?.status === 'trialing' && (
               <span className="text-xs text-[#9B9890] bg-[#F7F6F3] border border-[#E3E1DB] px-2 py-0.5 rounded">
-                Trial: 1 number max
+                Trial: 1 max
               </span>
             )}
             {!loadingMyNumbers && myNumbers.length > 0 && (
@@ -490,14 +490,15 @@ export default function ManageNumbers() {
               onClick={handleRepairCalling}
               disabled={repairingCalling}
               title="Fix inbound SMS and outbound calling if they aren't working"
-              className="text-xs text-[#9B9890] hover:text-[#5C5A55] flex items-center gap-1 px-2 py-0.5 border border-[#E3E1DB] rounded hover:bg-[#F7F6F3] transition-colors"
+              className="text-xs text-[#9B9890] hover:text-[#5C5A55] flex items-center gap-1 px-2 py-0.5 border border-[#E3E1DB] rounded hover:bg-[#F7F6F3] transition-colors whitespace-nowrap"
             >
               {repairingCalling ? (
                 <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="32" strokeDashoffset="12"/></svg>
               ) : (
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
               )}
-              Repair SMS & Calling
+              <span className="hidden sm:inline">Repair SMS & Calling</span>
+              <span className="sm:hidden">Repair</span>
             </button>
           </div>
         </div>
@@ -540,7 +541,7 @@ export default function ManageNumbers() {
                   }`} />
                   <div className="flex-1 min-w-0">
                     {isEditing ? (
-                      <div className="flex gap-2">
+                      <div className="flex flex-col sm:flex-row gap-2">
                         <input
                           type="text"
                           value={editingNumberName}
@@ -555,7 +556,7 @@ export default function ManageNumbers() {
                           onChange={(e) => setEditingNumberPrefix(e.target.value.replace(/\D/g, '').slice(0, 6))}
                           placeholder="Prefix e.g. 217615"
                           maxLength={6}
-                          className="w-36 px-2.5 py-1.5 border border-[#D4D1C9] rounded-md text-sm font-mono focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
+                          className="w-full sm:w-36 px-2.5 py-1.5 border border-[#D4D1C9] rounded-md text-sm font-mono focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
                         />
                       </div>
                     ) : (
@@ -568,9 +569,9 @@ export default function ManageNumbers() {
                     )}
                   </div>
 
-                  {/* Prefix column */}
+                  {/* Prefix column — hidden on mobile */}
                   {!isEditing && (
-                    <div className="w-24 flex-shrink-0">
+                    <div className="hidden sm:block w-24 shrink-0">
                       {number.prefix ? (
                         <span className="inline-flex items-center px-2 py-0.5 rounded bg-blue-50 text-blue-700 text-xs font-mono font-medium">
                           {number.prefix}
@@ -581,7 +582,7 @@ export default function ManageNumbers() {
                     </div>
                   )}
 
-                  <div className="flex items-center gap-3 flex-shrink-0">
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
                     <span className={`px-2 py-0.5 text-xs rounded-full ${number.status === 'active' ? 'bg-green-50 text-green-700' : 'bg-[#EFEDE8] text-[#9B9890]'}`}>
                       {number.status}
                     </span>
@@ -785,15 +786,15 @@ export default function ManageNumbers() {
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-4 flex-shrink-0">
+                    <div className="flex items-center gap-2 sm:gap-4 shrink-0">
                       <div className="text-right">
                         <p className="text-sm font-semibold text-[#131210]">${totalCost.toFixed(2)}</p>
-                        <p className="text-[10px] text-[#9B9890]">setup + 1st month</p>
+                        <p className="text-[10px] text-[#9B9890] hidden sm:block">setup + 1st month</p>
                       </div>
                       <button
                         onClick={() => handlePurchase(number)}
                         disabled={isPurchasing || !canAfford}
-                        className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                        className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
                           isPurchasing ? 'bg-[#EFEDE8] text-[#9B9890] cursor-wait'
                           : canAfford ? 'bg-[#D63B1F] hover:bg-[#c23119] text-white'
                           : 'bg-[#EFEDE8] text-[#9B9890] cursor-not-allowed'

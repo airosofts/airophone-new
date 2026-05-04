@@ -225,35 +225,37 @@ export default function WorkspaceMembers() {
             <p className="text-xs text-[#9B9890] mt-0.5">They'll receive an email to join your workspace.</p>
           </div>
           <div className="px-5 py-4">
-            <form onSubmit={handleInvite} className="flex gap-2.5 flex-wrap">
+            <form onSubmit={handleInvite} className="space-y-2.5 sm:space-y-0 sm:flex sm:gap-2.5 sm:flex-wrap">
               <input
                 type="email"
                 placeholder="colleague@example.com"
                 value={inviteEmail}
                 onChange={e => { setInviteEmail(e.target.value); setError(null); setSuccess(null) }}
                 required
-                className="flex-1 min-w-50 h-9 rounded-md border border-[#E3E1DB] bg-[#F7F6F3] px-3 text-sm text-[#131210] outline-none transition-colors focus:border-[#D63B1F] focus:ring-2 focus:ring-[rgba(214,59,31,0.1)]"
+                className="w-full sm:flex-1 sm:min-w-50 h-9 rounded-md border border-[#E3E1DB] bg-[#F7F6F3] px-3 text-sm text-[#131210] outline-none transition-colors focus:border-[#D63B1F] focus:ring-2 focus:ring-[rgba(214,59,31,0.1)]"
               />
-              <select
-                value={inviteRole}
-                onChange={e => setInviteRole(e.target.value)}
-                className="h-9 rounded-md border border-[#E3E1DB] bg-[#FFFFFF] px-3 text-sm text-[#5C5A55] outline-none cursor-pointer"
-              >
-                <option value="member">Member</option>
-                <option value="admin">Admin</option>
-              </select>
-              <button
-                type="submit"
-                disabled={inviting || !inviteEmail.trim()}
-                className="h-9 px-4 rounded-md text-sm font-medium transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{
-                  background: inviting || !inviteEmail.trim() ? '#EFEDE8' : '#D63B1F',
-                  color: inviting || !inviteEmail.trim() ? '#9B9890' : '#fff',
-                  border: 'none',
-                }}
-              >
-                {inviting ? 'Sending...' : 'Send invite'}
-              </button>
+              <div className="flex gap-2.5">
+                <select
+                  value={inviteRole}
+                  onChange={e => setInviteRole(e.target.value)}
+                  className="h-9 flex-1 sm:flex-none rounded-md border border-[#E3E1DB] bg-[#FFFFFF] px-3 text-sm text-[#5C5A55] outline-none cursor-pointer"
+                >
+                  <option value="member">Member</option>
+                  <option value="admin">Admin</option>
+                </select>
+                <button
+                  type="submit"
+                  disabled={inviting || !inviteEmail.trim()}
+                  className="h-9 px-4 rounded-md text-sm font-medium transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed flex-1 sm:flex-none"
+                  style={{
+                    background: inviting || !inviteEmail.trim() ? '#EFEDE8' : '#D63B1F',
+                    color: inviting || !inviteEmail.trim() ? '#9B9890' : '#fff',
+                    border: 'none',
+                  }}
+                >
+                  {inviting ? 'Sending...' : 'Send invite'}
+                </button>
+              </div>
             </form>
 
             {error && (

@@ -110,7 +110,7 @@ export default function ApiKeys() {
       {/* Error banner */}
       {error && (
         <div className="flex items-center gap-3 px-4 py-3 bg-[rgba(214,59,31,0.07)] border border-red-200 rounded-lg text-sm text-red-700">
-          <i className="fas fa-exclamation-circle text-red-400 flex-shrink-0"></i>
+          <i className="fas fa-exclamation-circle text-red-400 shrink-0"></i>
           <span className="flex-1">{error}</span>
           <button onClick={() => setError(null)} className="text-red-300 hover:text-red-500">
             <i className="fas fa-times text-xs"></i>
@@ -127,10 +127,11 @@ export default function ApiKeys() {
           </div>
           <button
             onClick={() => { setShowCreate(true); setError(null) }}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#D63B1F] hover:bg-[#c23119] text-white text-sm font-medium rounded-md transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#D63B1F] hover:bg-[#c23119] text-white text-sm font-medium rounded-md transition-colors whitespace-nowrap shrink-0"
           >
             <i className="fas fa-plus text-xs"></i>
-            Generate Key
+            <span className="hidden sm:inline">Generate Key</span>
+            <span className="sm:hidden">New Key</span>
           </button>
         </div>
 
@@ -144,55 +145,98 @@ export default function ApiKeys() {
             <p className="text-xs text-[#9B9890] mt-1">Generate a key to let external tools send messages</p>
           </div>
         ) : (
-          <table className="min-w-full">
-            <thead>
-              <tr className="border-b border-[#E3E1DB]">
-                <th className="px-5 py-2.5 text-left text-xs font-medium text-[#9B9890]">Name</th>
-                <th className="px-5 py-2.5 text-left text-xs font-medium text-[#9B9890]">Key</th>
-                <th className="px-5 py-2.5 text-left text-xs font-medium text-[#9B9890]">Created</th>
-                <th className="px-5 py-2.5 text-left text-xs font-medium text-[#9B9890]">Last used</th>
-                <th className="px-5 py-2.5 text-left text-xs font-medium text-[#9B9890]">Status</th>
-                <th className="px-5 py-2.5"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#E3E1DB]">
+          <>
+            {/* Mobile card view */}
+            <div className="md:hidden divide-y divide-[#E3E1DB]">
               {keys.map(k => (
-                <tr key={k.id} className="hover:bg-[#F7F6F3]">
-                  <td className="px-5 py-3 text-sm font-medium text-[#131210]">{k.name}</td>
-                  <td className="px-5 py-3">
-                    <code className="px-2 py-0.5 bg-[#EFEDE8] text-[#5C5A55] text-xs font-mono rounded">{k.key_prefix}…</code>
-                  </td>
-                  <td className="px-5 py-3 text-xs text-[#9B9890]">{formatDate(k.created_at)}</td>
-                  <td className="px-5 py-3 text-xs text-[#9B9890]">{formatDate(k.last_used_at)}</td>
-                  <td className="px-5 py-3">
-                    {k.is_active
-                      ? <span className="px-2 py-0.5 text-xs font-medium bg-green-50 text-green-700 rounded-full">Active</span>
-                      : <span className="px-2 py-0.5 text-xs font-medium bg-[#EFEDE8] text-[#9B9890] rounded-full">Revoked</span>
-                    }
-                  </td>
-                  <td className="px-5 py-3 text-right">
-                    {k.is_active ? (
-                      <button
-                        onClick={() => setConfirmRevoke({ id: k.id, name: k.name })}
-                        disabled={revoking === k.id}
-                        className="text-xs text-red-500 hover:text-red-700 disabled:opacity-40"
-                      >
-                        {revoking === k.id ? <i className="fas fa-spinner fa-spin"></i> : 'Revoke'}
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => setConfirmDelete({ id: k.id, name: k.name })}
-                        disabled={deleting === k.id}
-                        className="text-xs text-[#9B9890] hover:text-red-600 disabled:opacity-40"
-                      >
-                        {deleting === k.id ? <i className="fas fa-spinner fa-spin"></i> : 'Delete'}
-                      </button>
-                    )}
-                  </td>
-                </tr>
+                <div key={k.id} className="px-4 py-3.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-[#131210]">{k.name}</p>
+                      <code className="mt-0.5 inline-block px-2 py-0.5 bg-[#EFEDE8] text-[#5C5A55] text-xs font-mono rounded">{k.key_prefix}…</code>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {k.is_active
+                        ? <span className="px-2 py-0.5 text-xs font-medium bg-green-50 text-green-700 rounded-full">Active</span>
+                        : <span className="px-2 py-0.5 text-xs font-medium bg-[#EFEDE8] text-[#9B9890] rounded-full">Revoked</span>
+                      }
+                      {k.is_active ? (
+                        <button
+                          onClick={() => setConfirmRevoke({ id: k.id, name: k.name })}
+                          disabled={revoking === k.id}
+                          className="text-xs text-red-500 hover:text-red-700 disabled:opacity-40"
+                        >
+                          {revoking === k.id ? <i className="fas fa-spinner fa-spin"></i> : 'Revoke'}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmDelete({ id: k.id, name: k.name })}
+                          disabled={deleting === k.id}
+                          className="text-xs text-[#9B9890] hover:text-red-600 disabled:opacity-40"
+                        >
+                          {deleting === k.id ? <i className="fas fa-spinner fa-spin"></i> : 'Delete'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-1.5 flex gap-4 text-xs text-[#9B9890]">
+                    <span>Created {formatDate(k.created_at)}</span>
+                    {k.last_used_at && <span>Last used {formatDate(k.last_used_at)}</span>}
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+            {/* Desktop table view */}
+            <table className="hidden md:table min-w-full">
+              <thead>
+                <tr className="border-b border-[#E3E1DB]">
+                  <th className="px-5 py-2.5 text-left text-xs font-medium text-[#9B9890]">Name</th>
+                  <th className="px-5 py-2.5 text-left text-xs font-medium text-[#9B9890]">Key</th>
+                  <th className="px-5 py-2.5 text-left text-xs font-medium text-[#9B9890]">Created</th>
+                  <th className="px-5 py-2.5 text-left text-xs font-medium text-[#9B9890]">Last used</th>
+                  <th className="px-5 py-2.5 text-left text-xs font-medium text-[#9B9890]">Status</th>
+                  <th className="px-5 py-2.5"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#E3E1DB]">
+                {keys.map(k => (
+                  <tr key={k.id} className="hover:bg-[#F7F6F3]">
+                    <td className="px-5 py-3 text-sm font-medium text-[#131210]">{k.name}</td>
+                    <td className="px-5 py-3">
+                      <code className="px-2 py-0.5 bg-[#EFEDE8] text-[#5C5A55] text-xs font-mono rounded">{k.key_prefix}…</code>
+                    </td>
+                    <td className="px-5 py-3 text-xs text-[#9B9890]">{formatDate(k.created_at)}</td>
+                    <td className="px-5 py-3 text-xs text-[#9B9890]">{formatDate(k.last_used_at)}</td>
+                    <td className="px-5 py-3">
+                      {k.is_active
+                        ? <span className="px-2 py-0.5 text-xs font-medium bg-green-50 text-green-700 rounded-full">Active</span>
+                        : <span className="px-2 py-0.5 text-xs font-medium bg-[#EFEDE8] text-[#9B9890] rounded-full">Revoked</span>
+                      }
+                    </td>
+                    <td className="px-5 py-3 text-right">
+                      {k.is_active ? (
+                        <button
+                          onClick={() => setConfirmRevoke({ id: k.id, name: k.name })}
+                          disabled={revoking === k.id}
+                          className="text-xs text-red-500 hover:text-red-700 disabled:opacity-40"
+                        >
+                          {revoking === k.id ? <i className="fas fa-spinner fa-spin"></i> : 'Revoke'}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmDelete({ id: k.id, name: k.name })}
+                          disabled={deleting === k.id}
+                          className="text-xs text-[#9B9890] hover:text-red-600 disabled:opacity-40"
+                        >
+                          {deleting === k.id ? <i className="fas fa-spinner fa-spin"></i> : 'Delete'}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
         )}
       </div>
 
@@ -202,15 +246,16 @@ export default function ApiKeys() {
           <h3 className="text-sm font-semibold text-[#131210]">Integration Guide</h3>
           <p className="text-xs text-[#9B9890] mt-0.5">Send SMS from any external tool using your API key</p>
         </div>
-        <div className="p-5">
+        <div className="p-4 md:p-5">
           <div className="bg-[#0F0E0C] rounded-lg overflow-hidden">
-            <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-white/5">
-              <span className="w-2.5 h-2.5 rounded-full bg-[rgba(214,59,31,0.07)]0/70"></span>
-              <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/70"></span>
-              <span className="w-2.5 h-2.5 rounded-full bg-green-500/70"></span>
-              <span className="ml-auto text-[11px] text-[#9B9890] font-mono">POST /api/external/sms/send</span>
+            <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-white/5 overflow-hidden">
+              <span className="w-2.5 h-2.5 rounded-full bg-red-500/70 shrink-0"></span>
+              <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/70 shrink-0"></span>
+              <span className="w-2.5 h-2.5 rounded-full bg-green-500/70 shrink-0"></span>
+              <span className="ml-auto text-[10px] text-[#9B9890] font-mono truncate">POST /api/external/sms/send</span>
             </div>
-            <pre className="px-4 py-4 text-xs font-mono text-[#D4D1C9] overflow-x-auto leading-relaxed">{`POST https://ap.airosofts.com/api/external/sms/send
+            <div className="overflow-x-auto">
+              <pre className="px-4 py-4 text-xs font-mono text-[#D4D1C9] leading-relaxed min-w-0">{`POST https://ap.airosofts.com/api/external/sms/send
 Authorization: Bearer airo_live_<your-key>
 Content-Type: application/json
 
@@ -221,11 +266,12 @@ Content-Type: application/json
 }
 
 // 200 OK
-{ "success": true, "messageId": "msg_xxx", "creditsRemaining": 248 }
+{ "success": true, "messageId": "msg_xxx" }
 
 // 402 Insufficient Credits
-{ "error": "Insufficient credits", "currentCredits": 0 }`}
-            </pre>
+{ "error": "Insufficient credits" }`}
+              </pre>
+            </div>
           </div>
           <p className="mt-3 text-xs text-[#9B9890]">
             Each SMS deducts 1 credit from your wallet. A <code className="bg-[#EFEDE8] px-1 rounded">402</code> is returned when credits run out.
@@ -317,7 +363,7 @@ Content-Type: application/json
             </div>
             <div className="px-5 py-4 space-y-4">
               <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-md">
-                <i className="fas fa-exclamation-triangle text-amber-500 text-xs mt-0.5 flex-shrink-0"></i>
+                <i className="fas fa-exclamation-triangle text-amber-500 text-xs mt-0.5 shrink-0"></i>
                 <p className="text-xs text-amber-800">
                   <strong>Copy this key now.</strong> It will never be shown again.
                 </p>

@@ -52,6 +52,7 @@ export default function InboxPage() {
     } catch { return null }
   })
 
+
   const { phoneNumbers, setPhoneNumbers } = usePhoneNumbers(workspaceId)
 
   const [selectedConversation, setSelectedConversation] = useState(null)
@@ -540,7 +541,7 @@ export default function InboxPage() {
   }
 
   return (
-    <div className="flex flex-col h-full" style={{ background: '#FFFFFF' }}>
+    <div className="flex flex-col flex-1 min-h-0" style={{ background: '#FFFFFF' }}>
       {/* Notification + audio unlock banner */}
       {!bannerDismissed && (!audioUnlocked || notifPermission !== 'granted') && (
         <div
@@ -693,9 +694,9 @@ export default function InboxPage() {
         </div>
       )}
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden min-h-0">
       {/* Conversation List - Hidden on mobile when chat is open */}
-      <div className={`${mobileView === 'chat' ? 'hidden' : 'flex'} md:flex w-full md:w-96 flex-col`} style={{ borderRight: '1px solid #E3E1DB' }}>
+      <div data-tour="left-panel" className={`${mobileView === 'chat' ? 'hidden' : 'flex'} md:flex w-full md:w-96 flex-col`} style={{ borderRight: '1px solid #E3E1DB' }}>
         <div className="sticky top-0 z-10" style={{ background: '#FFFFFF' }}>
           {/* Row 1: Chats/Calls tabs + call + compose icons */}
           <div className="flex items-center justify-between" style={{ padding: '12px 16px 8px' }}>
@@ -723,12 +724,12 @@ export default function InboxPage() {
                 Calls
               </button>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, position: 'relative' }}>
+            <div data-tour="inbox-actions" style={{ display: 'flex', alignItems: 'center', gap: 6, position: 'relative' }}>
               {/* Call button */}
               <button
                 onClick={() => { setShowDialer(v => !v); setDialerQuery(''); setDialerContacts([]) }}
                 style={{
-                  width: 30, height: 30, borderRadius: 7,
+                  width: 36, height: 36, borderRadius: 7,
                   border: 'none', background: showDialer ? '#F7F6F3' : 'transparent',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   color: '#5C5A55', cursor: 'pointer', transition: 'all 0.15s',
@@ -737,32 +738,30 @@ export default function InboxPage() {
                 onMouseLeave={(e) => { if (!showDialer) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = '#E3E1DB' } }}
                 title="Start a call"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
-                  <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.68A2 2 0 012 .99h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/>
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M3.34459 3.76868C4.23952 2.87405 5.69 2.87484 6.58482 3.76965L7.56236 4.74719C8.31673 5.5017 8.27235 6.68841 7.49205 7.46887L6.80552 8.15442C7.26201 9.18598 7.95142 10.2114 8.86998 11.13C9.78885 12.0489 10.8148 12.7378 11.8456 13.1935L12.6014 12.4376C13.3333 11.7045 14.5216 11.7054 15.2538 12.4376L16.2313 13.4152L16.3885 13.589C17.1224 14.4894 17.0703 15.8172 16.2313 16.6564L15.6883 17.1993C14.9161 17.9714 13.8128 18.2818 12.7391 18.0792C10.4215 17.6411 7.92727 16.3064 5.81041 14.1896C3.69372 12.0729 2.35899 9.57932 1.92076 7.26184V7.26086C1.71826 6.18712 2.02938 5.08388 2.80162 4.31165L3.34459 3.76868ZM5.70103 4.65344C5.31975 4.27216 4.71655 4.24765 4.30748 4.58118L4.22838 4.65344L3.68443 5.19641C3.22226 5.65909 3.01862 6.33697 3.14927 7.02942L3.23033 7.41418C3.68625 9.34992 4.85231 11.4639 6.6942 13.3058C8.65886 15.2704 10.9333 16.4654 12.9706 16.8507C13.6634 16.9814 14.3419 16.7773 14.8045 16.3146L15.3475 15.7726C15.7539 15.366 15.7537 14.7067 15.3465 14.299L14.37 13.3214C14.156 13.1074 13.8258 13.0812 13.5838 13.2413L13.4862 13.3214L12.7176 14.09C12.3773 14.4302 11.8455 14.5603 11.371 14.3517V14.3507C10.1848 13.8312 9.02036 13.048 7.98619 12.0138C6.95601 10.9836 6.17437 9.82427 5.65416 8.6427V8.64172C5.44185 8.15995 5.57376 7.61958 5.91978 7.27356L6.60826 6.58508C6.94585 6.24735 6.90054 5.85308 6.67857 5.63098L5.70103 4.65344ZM10.8104 5.21594C11.8292 5.2022 12.8575 5.58055 13.6385 6.36145C14.4199 7.14277 14.7979 8.17167 14.784 9.19055C14.7793 9.53563 14.4953 9.81145 14.1503 9.80676C13.8052 9.80195 13.5294 9.51804 13.534 9.17297C13.5434 8.47368 13.285 7.77547 12.7547 7.24524C12.2243 6.715 11.5261 6.45645 10.827 6.46594C10.4819 6.47062 10.1979 6.19487 10.1932 5.84973C10.1885 5.50459 10.4653 5.22063 10.8104 5.21594ZM16.8895 9.18176C16.8895 7.62748 16.2968 6.07436 15.1112 4.88879C13.9256 3.7034 12.3723 3.11047 10.8182 3.11047C10.4732 3.1103 10.1932 2.83054 10.1932 2.48547C10.1932 2.1404 10.4732 1.86065 10.8182 1.86047C12.6906 1.86047 14.5666 2.57564 15.996 4.005C17.4252 5.43435 18.1395 7.30953 18.1395 9.18176C18.1395 9.52694 17.8597 9.80676 17.5145 9.80676C17.1695 9.80654 16.8895 9.52681 16.8895 9.18176Z"/>
                 </svg>
               </button>
 
               {/* Dialer dropdown — centered modal */}
               {showDialer && (
                 <>
-                  {/* Backdrop */}
-                  <div style={{ position: 'fixed', inset: 0, zIndex: 99, background: 'rgba(19,18,16,0.18)' }} />
                   <div ref={dialerRef} style={{
                     position: 'fixed', top: '50%', left: '50%',
                     transform: 'translate(-50%, -50%)',
-                    zIndex: 100, width: 380, background: '#FFFFFF',
-                    border: '1px solid #E3E1DB', borderRadius: 16,
-                    boxShadow: '0 16px 48px rgba(19,18,16,0.18)',
+                    zIndex: 100, width: 480, background: '#1A1916',
+                    border: '1px solid #2E2C29', borderRadius: 16,
+                    boxShadow: '0 24px 64px rgba(0,0,0,0.5)',
                     overflow: 'hidden',
                   }}>
                   {/* Header */}
-                  <div style={{ padding: '18px 20px 12px', borderBottom: '1px solid #F0EEE9' }}>
-                    <p style={{ fontSize: 15, fontWeight: 600, color: '#131210', marginBottom: 6 }}>Start a call</p>
-                    <p style={{ fontSize: 12, color: '#9B9890', marginBottom: 12 }}>
-                      From: <span style={{ color: '#5C5A55', fontWeight: 500 }}>{selectedPhoneNumber?.phoneNumber || '—'}</span>
+                  <div style={{ padding: '18px 20px 12px', borderBottom: '1px solid #2E2C29' }}>
+                    <p style={{ fontSize: 15, fontWeight: 600, color: '#FFFFFF', marginBottom: 6 }}>Start a call</p>
+                    <p style={{ fontSize: 12, color: '#6B6965', marginBottom: 12 }}>
+                      From: <span style={{ color: '#C4C2BC', fontWeight: 500 }}>{selectedPhoneNumber?.phoneNumber || '—'}</span>
                     </p>
                     <div style={{ position: 'relative' }}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9B9890" strokeWidth="2" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6B6965" strokeWidth="2" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }}>
                         <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
                       </svg>
                       <input
@@ -779,8 +778,8 @@ export default function InboxPage() {
                         placeholder="Enter a name or phone number..."
                         style={{
                           width: '100%', height: 40, borderRadius: 8,
-                          border: '1px solid #E3E1DB', background: '#F7F6F3',
-                          fontSize: 13, color: '#131210', padding: '0 12px 0 34px',
+                          border: '1px solid #3A3835', background: '#252320',
+                          fontSize: 13, color: '#FFFFFF', padding: '0 12px 0 34px',
                           outline: 'none', fontFamily: 'inherit',
                         }}
                       />
@@ -790,7 +789,7 @@ export default function InboxPage() {
                   {/* Results */}
                   <div style={{ maxHeight: 220, overflowY: 'auto' }}>
                     {dialerLoading && (
-                      <div style={{ padding: '12px 14px', fontSize: 12, color: '#9B9890' }}>Searching…</div>
+                      <div style={{ padding: '12px 14px', fontSize: 12, color: '#6B6965' }}>Searching…</div>
                     )}
                     {!dialerLoading && dialerContacts.length > 0 && dialerContacts.map(c => {
                       const name = [c.first_name, c.last_name].filter(Boolean).join(' ') || c.business_name || c.phone_number
@@ -801,15 +800,15 @@ export default function InboxPage() {
                             padding: '9px 14px', background: 'none', border: 'none',
                             cursor: 'pointer', textAlign: 'left', transition: 'background 0.1s',
                           }}
-                          onMouseEnter={e => e.currentTarget.style.background = '#F7F6F3'}
+                          onMouseEnter={e => e.currentTarget.style.background = '#252320'}
                           onMouseLeave={e => e.currentTarget.style.background = 'none'}
                         >
                           <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#D63B1F', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                             <span style={{ fontSize: 11, fontWeight: 600, color: '#fff' }}>{name.charAt(0).toUpperCase()}</span>
                           </div>
                           <div>
-                            <p style={{ fontSize: 12, fontWeight: 500, color: '#131210', lineHeight: 1.3 }}>{name}</p>
-                            <p style={{ fontSize: 11, color: '#9B9890', lineHeight: 1.3 }}>{c.phone_number}</p>
+                            <p style={{ fontSize: 12, fontWeight: 500, color: '#FFFFFF', lineHeight: 1.3 }}>{name}</p>
+                            <p style={{ fontSize: 11, color: '#6B6965', lineHeight: 1.3 }}>{c.phone_number}</p>
                           </div>
                         </button>
                       )
@@ -820,26 +819,26 @@ export default function InboxPage() {
                         style={{
                           width: '100%', display: 'flex', alignItems: 'center', gap: 10,
                           padding: '9px 14px', background: 'none', border: 'none',
-                          cursor: 'pointer', textAlign: 'left', borderTop: dialerContacts.length ? '1px solid #F0EEE9' : 'none',
+                          cursor: 'pointer', textAlign: 'left', borderTop: dialerContacts.length ? '1px solid #2E2C29' : 'none',
                           transition: 'background 0.1s',
                         }}
-                        onMouseEnter={e => e.currentTarget.style.background = '#F7F6F3'}
+                        onMouseEnter={e => e.currentTarget.style.background = '#252320'}
                         onMouseLeave={e => e.currentTarget.style.background = 'none'}
                       >
                         <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#D63B1F', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.68A2 2 0 012 .99h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg>
+                          <svg width="12" height="12" viewBox="0 0 20 20" fill="#fff"><path d="M3.34459 3.76868C4.23952 2.87405 5.69 2.87484 6.58482 3.76965L7.56236 4.74719C8.31673 5.5017 8.27235 6.68841 7.49205 7.46887L6.80552 8.15442C7.26201 9.18598 7.95142 10.2114 8.86998 11.13C9.78885 12.0489 10.8148 12.7378 11.8456 13.1935L12.6014 12.4376C13.3333 11.7045 14.5216 11.7054 15.2538 12.4376L16.2313 13.4152L16.3885 13.589C17.1224 14.4894 17.0703 15.8172 16.2313 16.6564L15.6883 17.1993C14.9161 17.9714 13.8128 18.2818 12.7391 18.0792C10.4215 17.6411 7.92727 16.3064 5.81041 14.1896C3.69372 12.0729 2.35899 9.57932 1.92076 7.26184V7.26086C1.71826 6.18712 2.02938 5.08388 2.80162 4.31165L3.34459 3.76868ZM5.70103 4.65344C5.31975 4.27216 4.71655 4.24765 4.30748 4.58118L4.22838 4.65344L3.68443 5.19641C3.22226 5.65909 3.01862 6.33697 3.14927 7.02942L3.23033 7.41418C3.68625 9.34992 4.85231 11.4639 6.6942 13.3058C8.65886 15.2704 10.9333 16.4654 12.9706 16.8507C13.6634 16.9814 14.3419 16.7773 14.8045 16.3146L15.3475 15.7726C15.7539 15.366 15.7537 14.7067 15.3465 14.299L14.37 13.3214C14.156 13.1074 13.8258 13.0812 13.5838 13.2413L13.4862 13.3214L12.7176 14.09C12.3773 14.4302 11.8455 14.5603 11.371 14.3517V14.3507C10.1848 13.8312 9.02036 13.048 7.98619 12.0138C6.95601 10.9836 6.17437 9.82427 5.65416 8.6427V8.64172C5.44185 8.15995 5.57376 7.61958 5.91978 7.27356L6.60826 6.58508C6.94585 6.24735 6.90054 5.85308 6.67857 5.63098L5.70103 4.65344ZM10.8104 5.21594C11.8292 5.2022 12.8575 5.58055 13.6385 6.36145C14.4199 7.14277 14.7979 8.17167 14.784 9.19055C14.7793 9.53563 14.4953 9.81145 14.1503 9.80676C13.8052 9.80195 13.5294 9.51804 13.534 9.17297C13.5434 8.47368 13.285 7.77547 12.7547 7.24524C12.2243 6.715 11.5261 6.45645 10.827 6.46594C10.4819 6.47062 10.1979 6.19487 10.1932 5.84973C10.1885 5.50459 10.4653 5.22063 10.8104 5.21594ZM16.8895 9.18176C16.8895 7.62748 16.2968 6.07436 15.1112 4.88879C13.9256 3.7034 12.3723 3.11047 10.8182 3.11047C10.4732 3.1103 10.1932 2.83054 10.1932 2.48547C10.1932 2.1404 10.4732 1.86065 10.8182 1.86047C12.6906 1.86047 14.5666 2.57564 15.996 4.005C17.4252 5.43435 18.1395 7.30953 18.1395 9.18176C18.1395 9.52694 17.8597 9.80676 17.5145 9.80676C17.1695 9.80654 16.8895 9.52681 16.8895 9.18176Z"/></svg>
                         </div>
                         <div>
-                          <p style={{ fontSize: 12, fontWeight: 500, color: '#131210', lineHeight: 1.3 }}>Call {dialerQuery.trim()}</p>
-                          <p style={{ fontSize: 11, color: '#9B9890', lineHeight: 1.3 }}>Press Enter or click to dial</p>
+                          <p style={{ fontSize: 12, fontWeight: 500, color: '#FFFFFF', lineHeight: 1.3 }}>Call {dialerQuery.trim()}</p>
+                          <p style={{ fontSize: 11, color: '#6B6965', lineHeight: 1.3 }}>Press Enter or click to dial</p>
                         </div>
                       </button>
                     )}
                     {!dialerLoading && dialerQuery.trim() && dialerContacts.length === 0 && dialerQuery.replace(/\D/g, '').length < 6 && (
-                      <div style={{ padding: '12px 14px', fontSize: 12, color: '#9B9890' }}>No contacts found</div>
+                      <div style={{ padding: '12px 14px', fontSize: 12, color: '#6B6965' }}>No contacts found</div>
                     )}
                     {!dialerQuery.trim() && (
-                      <div style={{ padding: '12px 14px', fontSize: 12, color: '#9B9890' }}>Type a name or number to search</div>
+                      <div style={{ padding: '12px 14px', fontSize: 12, color: '#6B6965' }}>Type a name or number to search</div>
                     )}
                   </div>
                 </div>
@@ -854,7 +853,7 @@ export default function InboxPage() {
                   setMobileView('chat')
                 }}
                 style={{
-                  width: 30, height: 30, borderRadius: 7,
+                  width: 36, height: 36, borderRadius: 7,
                   border: 'none', background: 'transparent',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   color: '#5C5A55', cursor: 'pointer', transition: 'all 0.15s',
@@ -863,8 +862,8 @@ export default function InboxPage() {
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = '#E3E1DB' }}
                 title="New conversation"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
-                  <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M5.99805 8.28223C6.30871 7.8939 6.78015 7.91224 7.08594 8.07715L7.20605 8.15625L7.26367 8.20703C7.31678 8.25917 7.36011 8.31812 7.39453 8.38086C7.63506 8.74097 7.53729 9.20196 7.27734 9.46191C7.25791 9.48133 7.23726 9.49944 7.21582 9.5166C6.89023 9.77707 6.38593 9.78403 6.05469 9.45312C5.76853 9.16697 5.72608 8.73269 5.92188 8.40137C5.94382 8.3598 5.96834 8.31936 5.99805 8.28223ZM9.33301 8.28223C9.64367 7.89396 10.1151 7.91225 10.4209 8.07715L10.541 8.15625L10.5986 8.20703C10.6517 8.25915 10.6951 8.31814 10.7295 8.38086C10.97 8.74093 10.8722 9.20197 10.6123 9.46191C10.5929 9.4813 10.5722 9.49945 10.5508 9.5166C10.2252 9.77705 9.72089 9.78397 9.38965 9.45312C9.10349 9.16697 9.06104 8.73269 9.25684 8.40137C9.27877 8.35981 9.30332 8.31935 9.33301 8.28223ZM12.665 8.28223C12.9757 7.89405 13.4472 7.91226 13.7529 8.07715L13.873 8.15625L13.9307 8.20703C13.9837 8.25913 14.0271 8.31818 14.0615 8.38086C14.3019 8.74088 14.2041 9.20197 13.9443 9.46191C13.925 9.48127 13.9042 9.49948 13.8828 9.5166C13.5573 9.77703 13.0529 9.78387 12.7217 9.45312C12.4355 9.16697 12.3931 8.73269 12.5889 8.40137C12.6108 8.35984 12.6354 8.31932 12.665 8.28223ZM15 1.875C16.6954 1.875 18.125 3.18821 18.125 4.875V12.792C18.1248 14.4786 16.6953 15.792 15 15.792H13.958V18.333C13.958 18.5704 13.824 18.788 13.6113 18.8936C13.3986 18.9991 13.1441 18.9747 12.9551 18.8311L8.95605 15.792H5C3.30469 15.792 1.87518 14.4786 1.875 12.792V4.875C1.875 3.18821 3.30458 1.875 5 1.875H15ZM5 3.125C3.93375 3.125 3.125 3.93821 3.125 4.875V12.792C3.12519 13.7286 3.93387 14.542 5 14.542H9.16699C9.30347 14.5421 9.43626 14.5864 9.54492 14.6689L12.708 17.0723V15.167C12.708 14.8219 12.988 14.5422 13.333 14.542H15C16.0661 14.542 16.8748 13.7286 16.875 12.792V4.875C16.875 3.93821 16.0663 3.125 15 3.125H5Z"/>
                 </svg>
               </button>
             </div>
@@ -993,8 +992,8 @@ export default function InboxPage() {
               ) : calls.length === 0 ? (
                 <div className="p-8 text-center">
                   <div className="mx-auto mb-4 flex items-center justify-center" style={{ width: 48, height: 48, borderRadius: 13, background: '#EFEDE8', border: '1px solid #E3E1DB' }}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9B9890" strokeWidth="1.5">
-                      <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.66A2 2 0 012 3H5a2 2 0 012 1.72c.12.96.36 1.9.7 2.81a2 2 0 01-.45 2.11L6.09 10.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.91.34 1.85.58 2.81.7A2 2 0 0122 17v-.08z"/>
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="#9B9890">
+                      <path d="M3.34459 3.76868C4.23952 2.87405 5.69 2.87484 6.58482 3.76965L7.56236 4.74719C8.31673 5.5017 8.27235 6.68841 7.49205 7.46887L6.80552 8.15442C7.26201 9.18598 7.95142 10.2114 8.86998 11.13C9.78885 12.0489 10.8148 12.7378 11.8456 13.1935L12.6014 12.4376C13.3333 11.7045 14.5216 11.7054 15.2538 12.4376L16.2313 13.4152L16.3885 13.589C17.1224 14.4894 17.0703 15.8172 16.2313 16.6564L15.6883 17.1993C14.9161 17.9714 13.8128 18.2818 12.7391 18.0792C10.4215 17.6411 7.92727 16.3064 5.81041 14.1896C3.69372 12.0729 2.35899 9.57932 1.92076 7.26184V7.26086C1.71826 6.18712 2.02938 5.08388 2.80162 4.31165L3.34459 3.76868ZM5.70103 4.65344C5.31975 4.27216 4.71655 4.24765 4.30748 4.58118L4.22838 4.65344L3.68443 5.19641C3.22226 5.65909 3.01862 6.33697 3.14927 7.02942L3.23033 7.41418C3.68625 9.34992 4.85231 11.4639 6.6942 13.3058C8.65886 15.2704 10.9333 16.4654 12.9706 16.8507C13.6634 16.9814 14.3419 16.7773 14.8045 16.3146L15.3475 15.7726C15.7539 15.366 15.7537 14.7067 15.3465 14.299L14.37 13.3214C14.156 13.1074 13.8258 13.0812 13.5838 13.2413L13.4862 13.3214L12.7176 14.09C12.3773 14.4302 11.8455 14.5603 11.371 14.3517V14.3507C10.1848 13.8312 9.02036 13.048 7.98619 12.0138C6.95601 10.9836 6.17437 9.82427 5.65416 8.6427V8.64172C5.44185 8.15995 5.57376 7.61958 5.91978 7.27356L6.60826 6.58508C6.94585 6.24735 6.90054 5.85308 6.67857 5.63098L5.70103 4.65344ZM10.8104 5.21594C11.8292 5.2022 12.8575 5.58055 13.6385 6.36145C14.4199 7.14277 14.7979 8.17167 14.784 9.19055C14.7793 9.53563 14.4953 9.81145 14.1503 9.80676C13.8052 9.80195 13.5294 9.51804 13.534 9.17297C13.5434 8.47368 13.285 7.77547 12.7547 7.24524C12.2243 6.715 11.5261 6.45645 10.827 6.46594C10.4819 6.47062 10.1979 6.19487 10.1932 5.84973C10.1885 5.50459 10.4653 5.22063 10.8104 5.21594ZM16.8895 9.18176C16.8895 7.62748 16.2968 6.07436 15.1112 4.88879C13.9256 3.7034 12.3723 3.11047 10.8182 3.11047C10.4732 3.1103 10.1932 2.83054 10.1932 2.48547C10.1932 2.1404 10.4732 1.86065 10.8182 1.86047C12.6906 1.86047 14.5666 2.57564 15.996 4.005C17.4252 5.43435 18.1395 7.30953 18.1395 9.18176C18.1395 9.52694 17.8597 9.80676 17.5145 9.80676C17.1695 9.80654 16.8895 9.52681 16.8895 9.18176Z"/>
                     </svg>
                   </div>
                   <p style={{ fontSize: 14, fontWeight: 600, letterSpacing: '-0.02em', color: '#131210', marginBottom: 4 }}>No calls yet</p>
@@ -1050,9 +1049,8 @@ export default function InboxPage() {
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}>
                         {isMissed ? (
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D63B1F" strokeWidth="2" strokeLinecap="round">
-                            <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.66A2 2 0 012 3H5"/>
-                            <line x1="1" y1="1" x2="23" y2="23"/>
+                          <svg width="14" height="14" viewBox="0 0 20 20" fill="#D63B1F">
+                            <path d="M3.34459 3.76868C4.23952 2.87405 5.69 2.87484 6.58482 3.76965L7.56236 4.74719C8.31673 5.5017 8.27235 6.68841 7.49205 7.46887L6.80552 8.15442C7.26201 9.18598 7.95142 10.2114 8.86998 11.13C9.78885 12.0489 10.8148 12.7378 11.8456 13.1935L12.6014 12.4376C13.3333 11.7045 14.5216 11.7054 15.2538 12.4376L16.2313 13.4152L16.3885 13.589C17.1224 14.4894 17.0703 15.8172 16.2313 16.6564L15.6883 17.1993C14.9161 17.9714 13.8128 18.2818 12.7391 18.0792C10.4215 17.6411 7.92727 16.3064 5.81041 14.1896C3.69372 12.0729 2.35899 9.57932 1.92076 7.26184V7.26086C1.71826 6.18712 2.02938 5.08388 2.80162 4.31165L3.34459 3.76868ZM5.70103 4.65344C5.31975 4.27216 4.71655 4.24765 4.30748 4.58118L4.22838 4.65344L3.68443 5.19641C3.22226 5.65909 3.01862 6.33697 3.14927 7.02942L3.23033 7.41418C3.68625 9.34992 4.85231 11.4639 6.6942 13.3058C8.65886 15.2704 10.9333 16.4654 12.9706 16.8507C13.6634 16.9814 14.3419 16.7773 14.8045 16.3146L15.3475 15.7726C15.7539 15.366 15.7537 14.7067 15.3465 14.299L14.37 13.3214C14.156 13.1074 13.8258 13.0812 13.5838 13.2413L13.4862 13.3214L12.7176 14.09C12.3773 14.4302 11.8455 14.5603 11.371 14.3517V14.3507C10.1848 13.8312 9.02036 13.048 7.98619 12.0138C6.95601 10.9836 6.17437 9.82427 5.65416 8.6427V8.64172C5.44185 8.15995 5.57376 7.61958 5.91978 7.27356L6.60826 6.58508C6.94585 6.24735 6.90054 5.85308 6.67857 5.63098L5.70103 4.65344ZM10.8104 5.21594C11.8292 5.2022 12.8575 5.58055 13.6385 6.36145C14.4199 7.14277 14.7979 8.17167 14.784 9.19055C14.7793 9.53563 14.4953 9.81145 14.1503 9.80676C13.8052 9.80195 13.5294 9.51804 13.534 9.17297C13.5434 8.47368 13.285 7.77547 12.7547 7.24524C12.2243 6.715 11.5261 6.45645 10.827 6.46594C10.4819 6.47062 10.1979 6.19487 10.1932 5.84973C10.1885 5.50459 10.4653 5.22063 10.8104 5.21594ZM16.8895 9.18176C16.8895 7.62748 16.2968 6.07436 15.1112 4.88879C13.9256 3.7034 12.3723 3.11047 10.8182 3.11047C10.4732 3.1103 10.1932 2.83054 10.1932 2.48547C10.1932 2.1404 10.4732 1.86065 10.8182 1.86047C12.6906 1.86047 14.5666 2.57564 15.996 4.005C17.4252 5.43435 18.1395 7.30953 18.1395 9.18176C18.1395 9.52694 17.8597 9.80676 17.5145 9.80676C17.1695 9.80654 16.8895 9.52681 16.8895 9.18176Z"/>
                           </svg>
                         ) : isIncoming ? (
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5C5A55" strokeWidth="2" strokeLinecap="round">
@@ -1105,9 +1103,9 @@ export default function InboxPage() {
       </div>
 
       {/* Chat Window - Full width on mobile when open */}
-      <div className={`${mobileView === 'list' ? 'hidden md:flex' : 'flex'} flex-1`}>
+      <div data-tour="chat-window" className={`${mobileView === 'list' ? 'hidden md:flex' : 'flex'} flex-1`}>
         {isCreatingNewConversation ? (
-          <div className="flex-1">
+          <div className="flex-1 min-h-0 flex flex-col">
             <NewConversationView
               phoneNumber={selectedPhoneNumber}
               formatPhoneNumber={formatPhoneNumber}
@@ -1121,7 +1119,7 @@ export default function InboxPage() {
           </div>
         ) : activeConversation ? (
           <>
-            <div className="flex-1">
+            <div className="flex-1 min-h-0 flex flex-col">
               <ChatWindow
                 conversation={activeConversation}
                 messages={messages}
@@ -1149,7 +1147,7 @@ export default function InboxPage() {
             </div>
 
             {/* Contact Panel - Always visible on desktop, hidden on mobile */}
-            <div className="hidden lg:block w-[340px] overflow-y-auto" style={{ borderLeft: '1px solid #E3E1DB', background: '#FFFFFF' }}>
+            <div data-tour="contact-panel" className="hidden lg:block w-[340px] overflow-y-auto" style={{ borderLeft: '1px solid #E3E1DB', background: '#FFFFFF' }}>
               <ContactPanel
                 conversation={activeConversation}
                 formatPhoneNumber={formatPhoneNumber}
@@ -1176,9 +1174,8 @@ export default function InboxPage() {
           <div className="flex-1 flex items-center justify-center p-8" style={{ background: '#F7F6F3' }}>
             <div className="text-center" style={{ maxWidth: 280 }}>
               <div className="mx-auto mb-4 flex items-center justify-center" style={{ width: 48, height: 48, borderRadius: 13, background: '#EFEDE8', border: '1px solid #E3E1DB' }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9B9890" strokeWidth="1.5">
-                  <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
-                  <path d="M8 10h.01M12 10h.01M16 10h.01"/>
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="#9B9890">
+                  <path d="M5.99805 8.28223C6.30871 7.8939 6.78015 7.91224 7.08594 8.07715L7.20605 8.15625L7.26367 8.20703C7.31678 8.25917 7.36011 8.31812 7.39453 8.38086C7.63506 8.74097 7.53729 9.20196 7.27734 9.46191C7.25791 9.48133 7.23726 9.49944 7.21582 9.5166C6.89023 9.77707 6.38593 9.78403 6.05469 9.45312C5.76853 9.16697 5.72608 8.73269 5.92188 8.40137C5.94382 8.3598 5.96834 8.31936 5.99805 8.28223ZM9.33301 8.28223C9.64367 7.89396 10.1151 7.91225 10.4209 8.07715L10.541 8.15625L10.5986 8.20703C10.6517 8.25915 10.6951 8.31814 10.7295 8.38086C10.97 8.74093 10.8722 9.20197 10.6123 9.46191C10.5929 9.4813 10.5722 9.49945 10.5508 9.5166C10.2252 9.77705 9.72089 9.78397 9.38965 9.45312C9.10349 9.16697 9.06104 8.73269 9.25684 8.40137C9.27877 8.35981 9.30332 8.31935 9.33301 8.28223ZM12.665 8.28223C12.9757 7.89405 13.4472 7.91226 13.7529 8.07715L13.873 8.15625L13.9307 8.20703C13.9837 8.25913 14.0271 8.31818 14.0615 8.38086C14.3019 8.74088 14.2041 9.20197 13.9443 9.46191C13.925 9.48127 13.9042 9.49948 13.8828 9.5166C13.5573 9.77703 13.0529 9.78387 12.7217 9.45312C12.4355 9.16697 12.3931 8.73269 12.5889 8.40137C12.6108 8.35984 12.6354 8.31932 12.665 8.28223ZM15 1.875C16.6954 1.875 18.125 3.18821 18.125 4.875V12.792C18.1248 14.4786 16.6953 15.792 15 15.792H13.958V18.333C13.958 18.5704 13.824 18.788 13.6113 18.8936C13.3986 18.9991 13.1441 18.9747 12.9551 18.8311L8.95605 15.792H5C3.30469 15.792 1.87518 14.4786 1.875 12.792V4.875C1.875 3.18821 3.30458 1.875 5 1.875H15ZM5 3.125C3.93375 3.125 3.125 3.93821 3.125 4.875V12.792C3.12519 13.7286 3.93387 14.542 5 14.542H9.16699C9.30347 14.5421 9.43626 14.5864 9.54492 14.6689L12.708 17.0723V15.167C12.708 14.8219 12.988 14.5422 13.333 14.542H15C16.0661 14.542 16.8748 13.7286 16.875 12.792V4.875C16.875 3.93821 16.0663 3.125 15 3.125H5Z"/>
                 </svg>
               </div>
               <h3 style={{ fontSize: 14, fontWeight: 600, letterSpacing: '-0.02em', color: '#131210', marginBottom: 4 }}>Select a conversation</h3>
@@ -1232,6 +1229,7 @@ export default function InboxPage() {
           onClose={() => setAssignScenarioModal(null)}
         />
       )}
+
     </div>
   )
 }

@@ -217,8 +217,8 @@ export default function CampaignsPage() {
                 <i className="fas fa-rocket text-[#D63B1F] text-xs"></i>
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-[#131210]">Your campaigns are ready to launch</p>
-                <p className="text-xs text-[#5C5A55]">You&rsquo;re on a free trial &mdash; activate your plan to start sending SMS campaigns to your contacts.</p>
+                <p className="text-sm font-semibold text-[#131210]">Campaigns require a paid subscription</p>
+                <p className="text-xs text-[#5C5A55]">Upgrade your plan to unlock SMS campaigns and start sending to your contacts.</p>
               </div>
             </div>
             <button
@@ -230,17 +230,51 @@ export default function CampaignsPage() {
           </div>
         )}
 
+        {/* Campaign type tabs */}
+        <div className="flex items-center gap-2">
+          {/* SMS — active */}
+          <div className="flex items-center gap-1.5 px-3 py-2 bg-[#FFFFFF] border border-[#D63B1F] rounded-lg">
+            <i className="fas fa-comment-sms text-[#D63B1F] text-xs"></i>
+            <span className="text-sm font-semibold text-[#131210]">SMS</span>
+            <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-green-50 text-green-700 rounded-full uppercase tracking-wide">Active</span>
+          </div>
+          {/* RVM — coming soon */}
+          <div className="flex items-center gap-1.5 px-3 py-2 bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg opacity-55 cursor-not-allowed">
+            <i className="fas fa-voicemail text-[#9B9890] text-xs"></i>
+            <span className="text-sm font-medium text-[#5C5A55]">
+              <span className="hidden sm:inline">Ringless Voicemail</span>
+              <span className="sm:hidden">RVM</span>
+            </span>
+            <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-[#EFEDE8] text-[#9B9890] rounded-full whitespace-nowrap">Coming Soon</span>
+          </div>
+        </div>
+
         {/* Main Card */}
         <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg overflow-hidden">
           {/* Card Header */}
-          <div className="px-5 py-3.5 border-b border-[#E3E1DB] flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3 flex-1 min-w-0">
-              <h3 className="text-sm font-semibold text-[#131210] flex-shrink-0">Campaigns</h3>
-              <div className="relative flex-1 max-w-xs">
+          <div className="px-4 py-3 border-b border-[#E3E1DB] space-y-2.5 md:space-y-0 md:flex md:items-center md:justify-between md:gap-4 md:px-5 md:py-3.5">
+            {/* Row 1: title + new button */}
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <h3 className="text-sm font-semibold text-[#131210] whitespace-nowrap">SMS Campaigns</h3>
+                <span className="hidden sm:inline text-[10px] font-medium text-[#9B9890] bg-[#F7F6F3] border border-[#E3E1DB] px-1.5 py-0.5 rounded whitespace-nowrap">Bulk SMS to contact lists</span>
+              </div>
+              <button
+                onClick={() => setShowCreateCampaign(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#D63B1F] hover:bg-[#c23119] text-white text-sm font-medium rounded-md transition-colors whitespace-nowrap shrink-0"
+              >
+                <i className="fas fa-plus text-xs"></i>
+                <span className="hidden sm:inline">New Campaign</span>
+                <span className="sm:hidden">New</span>
+              </button>
+            </div>
+            {/* Row 2: search + filter */}
+            <div className="flex items-center gap-2 md:flex-1 md:max-w-sm md:ml-3">
+              <div className="relative flex-1">
                 <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-[#9B9890] text-xs"></i>
                 <input
                   type="text"
-                  placeholder="Search campaigns…"
+                  placeholder="Search…"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-8 pr-3 py-1.5 border border-[#E3E1DB] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
@@ -249,34 +283,86 @@ export default function CampaignsPage() {
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-3 py-1.5 border border-[#E3E1DB] rounded-md text-sm text-[#5C5A55] focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
+                className="shrink-0 px-2.5 py-1.5 border border-[#E3E1DB] rounded-md text-sm text-[#5C5A55] focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
               >
-                <option value="all">All statuses</option>
+                <option value="all">All</option>
                 <option value="active">Active</option>
                 <option value="paused">Paused</option>
                 <option value="archived">Archived</option>
               </select>
             </div>
-            <button
-              onClick={() => setShowCreateCampaign(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#D63B1F] hover:bg-[#c23119] text-white text-sm font-medium rounded-md transition-colors flex-shrink-0"
-            >
-              <i className="fas fa-plus text-xs"></i>
-              New Campaign
-            </button>
           </div>
 
           {/* Table */}
           {paginatedCampaigns.length === 0 ? (
             <div className="px-5 py-10 text-center">
-              <p className="text-sm text-[#9B9890]">No campaigns found</p>
+              <p className="text-sm text-[#9B9890]">No SMS campaigns found</p>
               <p className="text-xs text-[#9B9890] mt-1">
-                {campaigns.length === 0 ? 'Create your first campaign to get started' : 'Try adjusting your filters'}
+                {campaigns.length === 0 ? 'Create your first SMS campaign to start sending bulk messages' : 'Try adjusting your filters'}
               </p>
             </div>
           ) : (
             <>
-              <div className="overflow-x-auto">
+              {/* ── Mobile card list ── */}
+              <div className="md:hidden divide-y divide-[#E3E1DB]">
+                {paginatedCampaigns.map((campaign) => {
+                  const status = getStatusBadge(campaign)
+                  return (
+                    <div
+                      key={campaign.id}
+                      className="px-4 py-3.5 active:bg-[#F7F6F3] cursor-pointer"
+                      onClick={() => { setSelectedCampaign(campaign); setShowViewCampaign(true) }}
+                    >
+                      {/* Name + status */}
+                      <div className="flex items-start justify-between gap-3 mb-1.5">
+                        <p className="text-sm font-semibold text-[#131210] leading-snug flex-1 min-w-0">{campaign.name}</p>
+                        <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${status.className}`}>
+                          {status.label}
+                        </span>
+                      </div>
+                      {/* Message preview */}
+                      <p className="text-xs text-[#9B9890] truncate mb-2">{campaign.message_template}</p>
+                      {/* Meta row */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-3 text-xs text-[#9B9890] min-w-0">
+                          <span className="flex items-center gap-1 min-w-0">
+                            <i className="fas fa-users text-[10px]"></i>
+                            <span>{campaign.total_recipients ?? 0} recipients</span>
+                          </span>
+                          <span className="truncate hidden xs:block">{campaign.contact_list_names?.join(', ') || '—'}</span>
+                        </div>
+                        {/* Actions */}
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          <button
+                            title="View"
+                            onClick={(e) => { e.stopPropagation(); setSelectedCampaign(campaign); setShowViewCampaign(true) }}
+                            className="p-2 text-[#9B9890] hover:text-[#5C5A55] rounded-lg transition-colors"
+                          >
+                            <i className="fas fa-eye text-xs"></i>
+                          </button>
+                          <button
+                            title={campaign.status === 'paused' ? 'Resume' : 'Pause'}
+                            onClick={(e) => { e.stopPropagation(); handlePauseCampaign(campaign.id, campaign.status === 'paused') }}
+                            className="p-2 text-[#9B9890] hover:text-yellow-600 rounded-lg transition-colors"
+                          >
+                            <i className={`fas ${campaign.status === 'paused' ? 'fa-play' : 'fa-pause'} text-xs`}></i>
+                          </button>
+                          <button
+                            title="Delete"
+                            onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ campaignId: campaign.id, campaignName: campaign.name }) }}
+                            className="p-2 text-[#9B9890] hover:text-[#D63B1F] rounded-lg transition-colors"
+                          >
+                            <i className="fas fa-trash text-xs"></i>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* ── Desktop table ── */}
+              <div className="hidden md:block overflow-x-auto">
                 <table className="min-w-full">
                   <thead>
                     <tr className="bg-[#F7F6F3] border-b border-[#E3E1DB]">
@@ -311,32 +397,16 @@ export default function CampaignsPage() {
                           <td className="px-5 py-3 text-sm text-[#9B9890] whitespace-nowrap">{formatDate(campaign.created_at)}</td>
                           <td className="px-5 py-3 text-right">
                             <div className="flex items-center justify-end gap-1">
-                              <button
-                                title="View"
-                                onClick={(e) => { e.stopPropagation(); setSelectedCampaign(campaign); setShowViewCampaign(true) }}
-                                className="p-1.5 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded transition-colors"
-                              >
+                              <button title="View" onClick={(e) => { e.stopPropagation(); setSelectedCampaign(campaign); setShowViewCampaign(true) }} className="p-1.5 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded transition-colors">
                                 <i className="fas fa-eye text-[13px]"></i>
                               </button>
-                              <button
-                                title={campaign.status === 'paused' ? 'Resume' : 'Pause'}
-                                onClick={(e) => { e.stopPropagation(); handlePauseCampaign(campaign.id, campaign.status === 'paused') }}
-                                className="p-1.5 text-[#9B9890] hover:text-yellow-600 hover:bg-yellow-50 rounded transition-colors"
-                              >
+                              <button title={campaign.status === 'paused' ? 'Resume' : 'Pause'} onClick={(e) => { e.stopPropagation(); handlePauseCampaign(campaign.id, campaign.status === 'paused') }} className="p-1.5 text-[#9B9890] hover:text-yellow-600 hover:bg-yellow-50 rounded transition-colors">
                                 <i className={`fas ${campaign.status === 'paused' ? 'fa-play' : 'fa-pause'} text-[13px]`}></i>
                               </button>
-                              <button
-                                title={campaign.status === 'archived' ? 'Unarchive' : 'Archive'}
-                                onClick={(e) => { e.stopPropagation(); handleArchiveCampaign(campaign.id, campaign.status === 'archived') }}
-                                className="p-1.5 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded transition-colors"
-                              >
+                              <button title={campaign.status === 'archived' ? 'Unarchive' : 'Archive'} onClick={(e) => { e.stopPropagation(); handleArchiveCampaign(campaign.id, campaign.status === 'archived') }} className="p-1.5 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded transition-colors">
                                 <i className="fas fa-archive text-[13px]"></i>
                               </button>
-                              <button
-                                title="Delete"
-                                onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ campaignId: campaign.id, campaignName: campaign.name }) }}
-                                className="p-1.5 text-[#9B9890] hover:text-[#D63B1F] hover:bg-[rgba(214,59,31,0.07)] rounded transition-colors"
-                              >
+                              <button title="Delete" onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ campaignId: campaign.id, campaignName: campaign.name }) }} className="p-1.5 text-[#9B9890] hover:text-[#D63B1F] hover:bg-[rgba(214,59,31,0.07)] rounded transition-colors">
                                 <i className="fas fa-trash text-[13px]"></i>
                               </button>
                             </div>
@@ -1003,11 +1073,11 @@ function TrialUpsellModal({ subscription, user, onClose, onActivated }) {
           <div className="w-12 h-12 bg-[rgba(214,59,31,0.08)] rounded-full flex items-center justify-center mx-auto mb-4">
             <i className="fas fa-rocket text-[#D63B1F] text-lg"></i>
           </div>
-          <h2 className="text-[17px] font-semibold text-[#131210] tracking-tight mb-1.5">Your campaigns are ready to launch</h2>
+          <h2 className="text-[17px] font-semibold text-[#131210] tracking-tight mb-1.5">Campaigns require a paid subscription</h2>
           <p className="text-sm text-[#5C5A55] leading-relaxed">
             {daysLeft !== null
-              ? `You have ${daysLeft} day${daysLeft !== 1 ? 's' : ''} left on your trial — activate now to start sending before it ends.`
-              : 'Activate your plan to start reaching your contacts now.'}
+              ? `You have ${daysLeft} day${daysLeft !== 1 ? 's' : ''} left on your trial — upgrade now to unlock campaigns before it ends.`
+              : 'Upgrade your plan to start sending SMS campaigns to your contacts.'}
           </p>
         </div>
 

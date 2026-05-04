@@ -183,7 +183,7 @@ export default function BillingPage() {
 
   return (
     <div className="h-full bg-[#F7F6F3] overflow-auto">
-      <div className="p-6">
+      <div className="p-4 md:p-6">
 
         {/* Tabs */}
         <div className="flex gap-1 p-1 bg-[#EFEDE8] rounded-lg w-fit mb-5">
@@ -249,7 +249,7 @@ export default function BillingPage() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-4 mt-5 pt-5 border-t border-[#E3E1DB]">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-5 pt-5 border-t border-[#E3E1DB]">
                       <div>
                         <p className="text-[10px] font-semibold text-[#9B9890] uppercase tracking-wider mb-1">Included credits</p>
                         <p className="text-sm font-semibold text-[#131210]">{plan?.credits?.toLocaleString()} / mo</p>
@@ -307,7 +307,7 @@ export default function BillingPage() {
                     <h3 className="text-sm font-semibold text-[#131210]">Available Plans</h3>
                     <p className="text-xs text-[#9B9890] mt-0.5">Contact support to change your plan</p>
                   </div>
-                  <div className="grid grid-cols-3 divide-x divide-[#E3E1DB]">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-[#E3E1DB]">
                     {Object.entries(PLANS).map(([key, p]) => {
                       const isCurrent = subscription.plan_name === key
                       return (
@@ -382,23 +382,29 @@ export default function BillingPage() {
 
             {/* Balance */}
             <div className="bg-white border border-[#E3E1DB] rounded-lg overflow-hidden">
-              <div className="px-5 py-3.5 border-b border-[#E3E1DB] flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold text-[#131210]">Available Credits</h3>
-                  <p className="text-xs text-[#9B9890] mt-0.5">Used for SMS, calls and AI replies</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => setShowAddCardModal(true)}
-                    className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3] transition-colors">
-                    <i className="fas fa-credit-card mr-1.5 text-xs"></i>Add Card
-                  </button>
-                  <button onClick={() => setShowTopUpModal(true)}
-                    className="px-3 py-1.5 bg-[#D63B1F] hover:bg-[#c23119] text-white text-sm font-medium rounded-md transition-colors">
-                    <i className="fas fa-plus mr-1.5 text-xs"></i>Buy Credits
-                  </button>
+              <div className="px-4 md:px-5 py-3 md:py-3.5 border-b border-[#E3E1DB]">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-[#131210]">Available Credits</h3>
+                    <p className="text-xs text-[#9B9890] mt-0.5">Used for SMS, calls and AI replies</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button onClick={() => setShowAddCardModal(true)}
+                      className="px-2.5 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3] transition-colors whitespace-nowrap">
+                      <i className="fas fa-credit-card mr-1 text-xs"></i>
+                      <span className="hidden sm:inline">Add Card</span>
+                      <span className="sm:hidden">Card</span>
+                    </button>
+                    <button onClick={() => setShowTopUpModal(true)}
+                      className="px-2.5 py-1.5 bg-[#D63B1F] hover:bg-[#c23119] text-white text-sm font-medium rounded-md transition-colors whitespace-nowrap">
+                      <i className="fas fa-plus mr-1 text-xs"></i>
+                      <span className="hidden sm:inline">Buy Credits</span>
+                      <span className="sm:hidden">Buy</span>
+                    </button>
+                  </div>
                 </div>
               </div>
-              <div className="px-5 py-5 flex items-end gap-8">
+              <div className="px-4 md:px-5 py-4 md:py-5 flex items-end gap-6 flex-wrap">
                 <div>
                   <div className="flex items-baseline gap-2">
                     <span className="text-3xl font-semibold text-[#131210]">{loading ? '—' : Math.round(credits).toLocaleString()}</span>
@@ -510,7 +516,7 @@ export default function BillingPage() {
                     : 'Rate depends on your subscription plan'}
                 </p>
               </div>
-              <div className="grid grid-cols-3 divide-x divide-[#E3E1DB]">
+              <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-[#E3E1DB]">
                 {Object.entries(PLANS).map(([key, p]) => {
                   const isCurrent = subscription?.plan_name === key
                   return (
@@ -560,7 +566,41 @@ export default function BillingPage() {
                 </div>
               ) : (
                 <>
-                  <div className="overflow-x-auto">
+                  {/* Mobile transaction cards */}
+                  <div className="md:hidden divide-y divide-[#E3E1DB]">
+                    {currentTransactions.map(tx => {
+                      const isCredit = tx.type === 'topup' || tx.type === 'refund'
+                      const icon = isCredit ? 'fa-arrow-up' : 'fa-arrow-down'
+                      const iconColor = isCredit ? 'text-green-600' : 'text-red-600'
+                      const iconBg = isCredit ? 'bg-green-50' : 'bg-red-50'
+                      return (
+                        <div key={tx.id} className="px-4 py-3.5 flex items-center gap-3">
+                          <div className={`w-8 h-8 ${iconBg} rounded-md flex items-center justify-center shrink-0`}>
+                            <i className={`fas ${icon} ${iconColor} text-xs`}></i>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-[#131210] font-medium truncate">{tx.description}</p>
+                            <p className="text-xs text-[#9B9890]">{formatDateTime(tx.created_at)}</p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className={`text-sm font-semibold ${isCredit ? 'text-green-600' : 'text-red-600'}`}>
+                              {isCredit ? '+' : '−'}{Math.round(Math.abs(tx.credits ?? tx.amount)).toLocaleString()}
+                            </p>
+                            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                              tx.status === 'completed' ? 'bg-green-50 text-green-700'
+                              : tx.status === 'pending' ? 'bg-yellow-50 text-yellow-700'
+                              : 'bg-red-50 text-red-700'
+                            }`}>
+                              {tx.status ? tx.status.charAt(0).toUpperCase() + tx.status.slice(1) : 'Unknown'}
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  {/* Desktop table */}
+                  <div className="hidden md:block overflow-x-auto">
                     <table className="min-w-full">
                       <thead>
                         <tr className="bg-[#F7F6F3] border-b border-[#E3E1DB]">
@@ -609,7 +649,7 @@ export default function BillingPage() {
                         })}
                       </tbody>
                     </table>
-                  </div>
+                  </div>{/* end hidden md:block */}
                   {totalPages > 1 && (
                     <div className="px-5 py-3 border-t border-[#E3E1DB] flex items-center justify-between bg-[#F7F6F3]">
                       <p className="text-xs text-[#9B9890]">

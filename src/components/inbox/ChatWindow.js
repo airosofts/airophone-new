@@ -215,7 +215,7 @@ export default function ChatWindow({
   const isWebRTCReady = callHook?.isRegistered && !callHook?.isInitializing
 
   return (
-    <div className="flex h-full bg-[#FFFFFF]">
+    <div className="flex flex-1 min-h-0 bg-[#FFFFFF]">
       {/* Main Chat Area */}
       <div className="flex flex-col flex-1 relative">
         {/* Header */}
@@ -259,7 +259,7 @@ export default function ChatWindow({
               </div>
 
               {/* Right: Action Buttons */}
-              <div className="flex items-center gap-0.5">
+              <div className="flex items-center gap-0.5 shrink-0">
                 {/* Call */}
                 <button
                   onClick={handleCallClick}
@@ -276,21 +276,12 @@ export default function ChatWindow({
                     'Call'
                   }
                 >
-                  <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.01 2.18 2 2 0 012 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 14.92v2z" />
+                  <svg className="w-[18px] h-[18px]" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M3.34459 3.76868C4.23952 2.87405 5.69 2.87484 6.58482 3.76965L7.56236 4.74719C8.31673 5.5017 8.27235 6.68841 7.49205 7.46887L6.80552 8.15442C7.26201 9.18598 7.95142 10.2114 8.86998 11.13C9.78885 12.0489 10.8148 12.7378 11.8456 13.1935L12.6014 12.4376C13.3333 11.7045 14.5216 11.7054 15.2538 12.4376L16.2313 13.4152L16.3885 13.589C17.1224 14.4894 17.0703 15.8172 16.2313 16.6564L15.6883 17.1993C14.9161 17.9714 13.8128 18.2818 12.7391 18.0792C10.4215 17.6411 7.92727 16.3064 5.81041 14.1896C3.69372 12.0729 2.35899 9.57932 1.92076 7.26184V7.26086C1.71826 6.18712 2.02938 5.08388 2.80162 4.31165L3.34459 3.76868ZM5.70103 4.65344C5.31975 4.27216 4.71655 4.24765 4.30748 4.58118L4.22838 4.65344L3.68443 5.19641C3.22226 5.65909 3.01862 6.33697 3.14927 7.02942L3.23033 7.41418C3.68625 9.34992 4.85231 11.4639 6.6942 13.3058C8.65886 15.2704 10.9333 16.4654 12.9706 16.8507C13.6634 16.9814 14.3419 16.7773 14.8045 16.3146L15.3475 15.7726C15.7539 15.366 15.7537 14.7067 15.3465 14.299L14.37 13.3214C14.156 13.1074 13.8258 13.0812 13.5838 13.2413L13.4862 13.3214L12.7176 14.09C12.3773 14.4302 11.8455 14.5603 11.371 14.3517V14.3507C10.1848 13.8312 9.02036 13.048 7.98619 12.0138C6.95601 10.9836 6.17437 9.82427 5.65416 8.6427V8.64172C5.44185 8.15995 5.57376 7.61958 5.91978 7.27356L6.60826 6.58508C6.94585 6.24735 6.90054 5.85308 6.67857 5.63098L5.70103 4.65344ZM10.8104 5.21594C11.8292 5.2022 12.8575 5.58055 13.6385 6.36145C14.4199 7.14277 14.7979 8.17167 14.784 9.19055C14.7793 9.53563 14.4953 9.81145 14.1503 9.80676C13.8052 9.80195 13.5294 9.51804 13.534 9.17297C13.5434 8.47368 13.285 7.77547 12.7547 7.24524C12.2243 6.715 11.5261 6.45645 10.827 6.46594C10.4819 6.47062 10.1979 6.19487 10.1932 5.84973C10.1885 5.50459 10.4653 5.22063 10.8104 5.21594ZM16.8895 9.18176C16.8895 7.62748 16.2968 6.07436 15.1112 4.88879C13.9256 3.7034 12.3723 3.11047 10.8182 3.11047C10.4732 3.1103 10.1932 2.83054 10.1932 2.48547C10.1932 2.1404 10.4732 1.86065 10.8182 1.86047C12.6906 1.86047 14.5666 2.57564 15.996 4.005C17.4252 5.43435 18.1395 7.30953 18.1395 9.18176C18.1395 9.52694 17.8597 9.80676 17.5145 9.80676C17.1695 9.80654 16.8895 9.52681 16.8895 9.18176Z"/>
                   </svg>
-                  {callHook?.isInitializing && (
-                    <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 border border-white rounded-full bg-[#f59e0b] animate-pulse" />
-                  )}
-                  {isWebRTCReady && (
-                    <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 border border-white rounded-full bg-[#22c55e]" />
-                  )}
-                  {!callHook?.isInitializing && !isWebRTCReady && (
-                    <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 border border-white rounded-full bg-[#D63B1F]" />
-                  )}
                 </button>
 
-                {/* Done / Open toggle */}
+                {/* Done / Open toggle — hidden on mobile, in more menu instead */}
                 <button
                   onClick={() => {
                     if (conversation.status === 'closed') {
@@ -299,7 +290,7 @@ export default function ChatWindow({
                       onMarkAsDone?.(conversation.id)
                     }
                   }}
-                  className="p-2 text-[#5C5A55] hover:text-[#131210] hover:bg-[#F7F6F3] rounded-lg transition-colors"
+                  className="hidden md:flex p-2 text-[#5C5A55] hover:text-[#131210] hover:bg-[#F7F6F3] rounded-lg transition-colors"
                   title={conversation.status === 'closed' ? 'Mark as open' : 'Mark as done'}
                 >
                   <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
@@ -307,10 +298,10 @@ export default function ChatWindow({
                   </svg>
                 </button>
 
-                {/* Mark as unread */}
+                {/* Mark as unread — hidden on mobile */}
                 <button
                   onClick={() => onMarkAsUnread?.(conversation.id)}
-                  className="p-2 text-[#5C5A55] hover:text-[#131210] hover:bg-[#F7F6F3] rounded-lg transition-colors"
+                  className="hidden md:flex p-2 text-[#5C5A55] hover:text-[#131210] hover:bg-[#F7F6F3] rounded-lg transition-colors"
                   title="Mark as unread"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 20 20" fill="currentColor">
@@ -401,8 +392,8 @@ export default function ChatWindow({
 
         {/* Input Area */}
         <div className="bg-[#FFFFFF] border-t border-[#E3E1DB] sticky bottom-0 z-10">
-          <div className="p-4">
-            <form onSubmit={sendMessage} className="flex items-center gap-2">
+          <div className="px-3 py-3 md:px-4 md:py-4">
+            <form onSubmit={sendMessage} className="flex items-end gap-2">
               <textarea
                 ref={textareaRef}
                 rows={1}
@@ -413,10 +404,10 @@ export default function ChatWindow({
                 onInput={handleTextareaInput}
                 placeholder="Type a message..."
                 disabled={sending || !phoneNumber}
-                className="flex-1 px-3 py-2 border border-[#D4D1C9] rounded-lg resize-none focus:outline-none focus:border-[#D4D1C9] text-sm"
+                className="flex-1 px-3.5 py-2.5 border border-[#D4D1C9] rounded-2xl md:rounded-lg resize-none focus:outline-none focus:border-[#D4D1C9] text-sm bg-[#F7F6F3] md:bg-white"
                 style={{
                   height: 'auto',
-                  minHeight: '36px',
+                  minHeight: '44px',
                   maxHeight: '120px',
                 }}
               />
@@ -424,13 +415,13 @@ export default function ChatWindow({
               <button
                 type="submit"
                 disabled={!newMessage.trim() || sending || !phoneNumber}
-                className="p-2 text-[#5C5A55] hover:text-[#131210] disabled:opacity-50 disabled:cursor-not-allowed"
+                className="shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-[#D63B1F] text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors hover:bg-[#c23119] md:w-auto md:h-auto md:rounded-lg md:p-2 md:bg-transparent md:text-[#5C5A55] md:hover:text-[#131210] md:hover:bg-[#F7F6F3]"
                 aria-label="Send message"
               >
                 {sending ? (
-                  <div className="w-5 h-5 border-2 border-[#D4D1C9] border-t-[#5C5A55] rounded-full animate-spin"></div>
+                  <div className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin md:border-[#D4D1C9] md:border-t-[#5C5A55]"></div>
                 ) : (
-                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                     <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
                   </svg>
                 )}

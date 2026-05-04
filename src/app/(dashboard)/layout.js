@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { getCurrentUser, isAuthenticated } from '@/lib/auth'
 import Sidebar from '@/components/layout/Sidebar'
+import ProductTour from '@/components/inbox/ProductTour'
 
 const BLOCKED_STATUSES = ['canceled', 'past_due']
 
@@ -63,6 +64,7 @@ export default function DashboardLayout({ children }) {
   const [loading, setLoading] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [planStatus, setPlanStatus] = useState(null)
+  const [showTour, setShowTour] = useState(false)
   const router = useRouter()
   const pathname = usePathname()
 
@@ -140,6 +142,21 @@ export default function DashboardLayout({ children }) {
       }
 
       setUser(currentUser)
+
+      // Check if user has seen the inbox product tour
+      try {
+        const tourRes = await fetch('/api/onboarding/tour-seen', {
+          headers: {
+            'x-user-id': currentUser.userId,
+            'x-workspace-id': currentUser.workspaceId,
+          },
+        })
+        if (tourRes.ok) {
+          const { seen } = await tourRes.json()
+          if (!seen) setShowTour(true)
+        }
+      } catch { /* non-critical */ }
+
       setLoading(false)
     }
 
@@ -174,6 +191,20 @@ export default function DashboardLayout({ children }) {
   }
 
   const isBlocked = planStatus && BLOCKED_STATUSES.includes(planStatus) && pathname !== '/billing'
+
+  const handleTourDone = async () => {
+    setShowTour(false)
+    try {
+      const s = JSON.parse(localStorage.getItem('user_session') || '{}')
+      await fetch('/api/onboarding/tour-seen', {
+        method: 'PATCH',
+        headers: {
+          'x-user-id': s.userId || s.id || '',
+          'x-workspace-id': s.workspaceId || '',
+        },
+      })
+    } catch { /* non-critical */ }
+  }
 
   return (
     <div style={{
@@ -255,6 +286,8 @@ export default function DashboardLayout({ children }) {
 
         {children}
       </main>
+
+      {showTour && <ProductTour onDone={handleTourDone} />}
     </div>
   )
 }
