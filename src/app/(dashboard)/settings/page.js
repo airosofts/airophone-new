@@ -69,8 +69,7 @@ export default function SettingsPage() {
 
       {/* ── Sidebar / Mobile nav list ── */}
       <aside
-        style={{ display: mobileShowContent ? 'none' : 'flex' }}
-        className="md:flex flex-col w-full md:w-56 shrink-0 bg-[#FFFFFF] border-r border-[#E3E1DB] overflow-y-auto"
+        className={`${mobileShowContent ? 'hidden' : 'flex'} md:flex flex-col w-full md:w-56 shrink-0 bg-[#FFFFFF] border-r border-[#E3E1DB] overflow-y-auto`}
       >
         {/* Header */}
         <div className="px-4 pt-5 pb-3 border-b border-[#E3E1DB] md:px-5 md:pt-7 md:pb-5">
@@ -138,8 +137,7 @@ export default function SettingsPage() {
 
       {/* ── Content panel ── */}
       <div
-        style={{ display: mobileShowContent ? 'flex' : 'none' }}
-        className="md:flex flex-col flex-1 overflow-hidden"
+        className={`${mobileShowContent ? 'flex' : 'hidden'} md:flex flex-col flex-1 overflow-hidden`}
       >
         {/* Mobile top bar */}
         <div className="md:hidden flex items-center h-14 px-2 border-b border-[#E3E1DB] bg-[#FFFFFF] shrink-0">
