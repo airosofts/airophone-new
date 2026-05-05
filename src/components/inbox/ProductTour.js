@@ -57,7 +57,7 @@ const STEPS = [
     page: '/billing',
     target: null,
     title: 'Billing & Credits',
-    description: "Manage your subscription, view credit usage, and top up your balance. Credits are used for calls, messages, and phone number rentals.",
+    description: "Manage your subscription, view credit usage, and top up your balance. Credits are used for SMS and AI replies — calls are unlimited.",
     position: 'center',
   },
 ]

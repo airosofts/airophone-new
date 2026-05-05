@@ -82,7 +82,7 @@ const PLANS = [
   {
     id: 'starter', name: 'Starter', price: 9, credits: 200, overage: 0.04,
     priceId: 'price_1TLljUG8ztKaoxw1p9Taxc8W',
-    features: ['200 credits / month', 'All features included', 'Unified inbox & AI scenarios', 'Phone number provisioning', '24/7 support & analytics'],
+    features: ['200 credits / month', 'Unlimited calling', 'All features included', 'Unified inbox & AI scenarios', 'Phone number provisioning', '24/7 support & analytics'],
     featured: false,
   },
   {

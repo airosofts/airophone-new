@@ -27,10 +27,8 @@ export const MESSAGE_PRICING_TIERS = [
 
 export const MONTHLY_NUMBER_FEE = 3.00 // Rounded up to $3.00
 
-// Call pricing: 1 credit per minute (same credit unit as SMS)
-// Actual deduction is per-second: duration_seconds / 60 credits
-// Display is rounded to nearest whole credit
-export const CALL_CREDITS_PER_MINUTE = 1
+// Calls are unlimited — no credits deducted for calls
+export const CALL_CREDITS_PER_MINUTE = 0
 
 import { supabaseAdmin } from './supabase-server'
 

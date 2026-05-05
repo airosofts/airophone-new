@@ -260,10 +260,7 @@ async function handleCallHangup(supabase, payload) {
   await supabase.from('calls').update(updates).eq('id', call.id)
   console.log('[call-webhook] Hangup:', callControlId?.slice(0, 20), 'status:', finalStatus, 'duration:', updates.duration_seconds || 0)
 
-  // Deduct credits for completed calls (only if answered and has duration)
-  if (finalStatus === 'completed' && updates.duration_seconds > 0) {
-    await deductCallCredits(call.id, updates.duration_seconds, payload)
-  }
+  // Calls are unlimited — no credit deduction for calls
 }
 
 async function deductCallCredits(callId, durationSeconds, payload) {
