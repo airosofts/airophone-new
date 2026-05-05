@@ -422,6 +422,26 @@ export default function BillingPage() {
                   </div>
                 )}
               </div>
+              {/* What is a credit — visible breakdown so users never have to guess */}
+              <div className="px-4 md:px-5 py-3 bg-[#F7F6F3] border-t border-[#E3E1DB] flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                <span className="text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">1 credit =</span>
+                <span className="flex items-center gap-1.5 text-[12px] text-[#5C5A55]">
+                  <svg width="12" height="12" viewBox="0 0 20 20" fill="none"><rect x="2" y="4" width="16" height="10" rx="2.5" stroke="#D63B1F" strokeWidth="1.5"/><path d="M6 9h8M6 12h4" stroke="#D63B1F" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                  <span className="font-medium text-[#131210]">1 SMS</span>
+                  <span className="text-[#D4D1C9]">(160 chars)</span>
+                </span>
+                <span className="text-[#D4D1C9] hidden sm:inline">·</span>
+                <span className="flex items-center gap-1.5 text-[12px] text-[#5C5A55]">
+                  <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor" className="text-[#D63B1F]"><path d="M3.34459 3.76868C4.23952 2.87405 5.69 2.87484 6.58482 3.76965L7.56236 4.74719C8.31673 5.5017 8.27235 6.68841 7.49205 7.46887L6.80552 8.15442C7.26201 9.18598 7.95142 10.2114 8.86998 11.13C9.78885 12.0489 10.8148 12.7378 11.8456 13.1935L12.6014 12.4376C13.3333 11.7045 14.5216 11.7054 15.2538 12.4376L16.2313 13.4152L16.3885 13.589C17.1224 14.4894 17.0703 15.8172 16.2313 16.6564L15.6883 17.1993C14.9161 17.9714 13.8128 18.2818 12.7391 18.0792C10.4215 17.6411 7.92727 16.3064 5.81041 14.1896C3.69372 12.0729 2.35899 9.57932 1.92076 7.26184V7.26086C1.71826 6.18712 2.02938 5.08388 2.80162 4.31165L3.34459 3.76868Z"/></svg>
+                  <span className="font-medium text-[#131210]">1 min call</span>
+                </span>
+                <span className="text-[#D4D1C9] hidden sm:inline">·</span>
+                <span className="flex items-center gap-1.5 text-[12px] text-[#5C5A55]">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#D63B1F" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/></svg>
+                  <span className="font-medium text-[#131210]">2 credits</span>
+                  <span className="text-[#D4D1C9]">per AI reply</span>
+                </span>
+              </div>
             </div>
 
             {/* Auto-recharge */}
