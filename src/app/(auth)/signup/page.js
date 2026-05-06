@@ -110,10 +110,11 @@ function SignupForm() {
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Signup failed'); return }
+      if (!data.session) { setError('Signup succeeded but no session was returned — please try logging in'); return }
       localStorage.setItem('user_session', JSON.stringify(data.session))
       router.push(data.session.isInvited ? '/inbox' : '/onboarding')
-    } catch {
-      setError('An unexpected error occurred')
+    } catch (err) {
+      setError(err?.message || 'An unexpected error occurred')
     } finally {
       setLoading(false)
     }

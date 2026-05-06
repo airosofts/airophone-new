@@ -98,7 +98,8 @@ function generateReferralCode() {
 
 export async function POST(request) {
   try {
-    const { email, password, name, inviteWorkspaceId, inviteRole, referralCode } = await request.json()
+    const body = await request.json()
+    const { email, password, name, inviteWorkspaceId, inviteRole, referralCode } = body
 
     if (!email || !password || !name) {
       return NextResponse.json({ error: 'Email, password, and name are required' }, { status: 400 })
@@ -110,11 +111,16 @@ export async function POST(request) {
     const normalizedEmail = email.toLowerCase().trim()
 
     // Check if email already exists
-    const { data: existingUser } = await supabaseAdmin
+    const { data: existingUser, error: lookupError } = await supabaseAdmin
       .from('users')
       .select('id')
       .eq('email', normalizedEmail)
-      .single()
+      .maybeSingle()
+
+    if (lookupError) {
+      console.error('[signup] Email lookup error:', lookupError)
+      return NextResponse.json({ error: 'Failed to check account' }, { status: 500 })
+    }
 
     if (existingUser) {
       return NextResponse.json({ error: 'An account with this email already exists' }, { status: 409 })
@@ -134,7 +140,7 @@ export async function POST(request) {
       .single()
 
     if (userError) {
-      console.error('Error creating user:', userError)
+      console.error('[signup] Error creating user:', userError)
       return NextResponse.json({ error: 'Failed to create account' }, { status: 500 })
     }
 
@@ -274,37 +280,42 @@ export async function POST(request) {
         .update({ default_workspace_id: newWorkspace.id })
         .eq('id', newUser.id)
 
-      await supabaseAdmin
+      const { error: walletError } = await supabaseAdmin
         .from('wallets')
         .insert({ user_id: newUser.id, workspace_id: newWorkspace.id, credits: 0, balance: 0, currency: 'USD' })
+      if (walletError) console.warn('[signup] Wallet create error (non-fatal):', walletError.message)
 
-      // Generate unique referral code for this workspace
-      let refCode = generateReferralCode()
-      let codeSet = false
-      for (let attempt = 0; attempt < 5; attempt++) {
-        const { error: codeErr } = await supabaseAdmin
-          .from('workspaces')
-          .update({ referral_code: refCode })
-          .eq('id', newWorkspace.id)
-        if (!codeErr) { codeSet = true; break }
-        refCode = generateReferralCode()
-      }
-
-      // Track referral if a valid ref code was provided
-      if (codeSet && referralCode) {
-        const { data: referrerWs } = await supabaseAdmin
-          .from('workspaces')
-          .select('id')
-          .eq('referral_code', referralCode.toUpperCase())
-          .single()
-        if (referrerWs && referrerWs.id !== newWorkspace.id) {
-          await supabaseAdmin.from('referrals').insert({
-            referrer_workspace_id: referrerWs.id,
-            referred_workspace_id: newWorkspace.id,
-            referred_email: normalizedEmail,
-            status: 'pending',
-          }).catch(err => console.warn('[signup] Referral tracking failed:', err.message))
+      // Referral setup — non-critical, never block signup if migration not yet run
+      try {
+        let refCode = generateReferralCode()
+        let codeSet = false
+        for (let attempt = 0; attempt < 5; attempt++) {
+          const { error: codeErr } = await supabaseAdmin
+            .from('workspaces')
+            .update({ referral_code: refCode })
+            .eq('id', newWorkspace.id)
+          if (!codeErr) { codeSet = true; break }
+          refCode = generateReferralCode()
         }
+
+        if (referralCode) {
+          const { data: referrerWs } = await supabaseAdmin
+            .from('workspaces')
+            .select('id')
+            .eq('referral_code', referralCode.toUpperCase())
+            .maybeSingle()
+          if (referrerWs && referrerWs.id !== newWorkspace.id) {
+            const { error: refInsertErr } = await supabaseAdmin.from('referrals').insert({
+              referrer_workspace_id: referrerWs.id,
+              referred_workspace_id: newWorkspace.id,
+              referred_email: normalizedEmail,
+              status: 'pending',
+            })
+            if (refInsertErr) console.warn('[signup] Referral insert error (non-fatal):', refInsertErr.message)
+          }
+        }
+      } catch (refErr) {
+        console.warn('[signup] Referral setup skipped:', refErr.message)
       }
 
       workspaceId = newWorkspace.id
@@ -341,19 +352,25 @@ export async function POST(request) {
       loginTime: new Date().toISOString(),
     }
 
-    const token = await signToken({
-      userId: session.userId,
-      email: session.email,
-      workspaceId: session.workspaceId,
-      workspaceRole: session.workspaceRole,
-      messagingProfileId: session.messagingProfileId,
-    })
+    let token
+    try {
+      token = await signToken({
+        userId: session.userId,
+        email: session.email,
+        workspaceId: session.workspaceId,
+        workspaceRole: session.workspaceRole,
+        messagingProfileId: session.messagingProfileId,
+      })
+    } catch (tokenErr) {
+      console.error('[signup] Token sign failed:', tokenErr)
+      return NextResponse.json({ error: 'Failed to create session token' }, { status: 500 })
+    }
 
     const response = NextResponse.json({ success: true, session })
     response.headers.set('Set-Cookie', buildSessionCookie(token))
     return response
   } catch (error) {
-    console.error('Signup error:', error)
-    return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })
+    console.error('[signup] Unhandled error:', error?.message || error)
+    return NextResponse.json({ error: error?.message || 'An unexpected error occurred' }, { status: 500 })
   }
 }
