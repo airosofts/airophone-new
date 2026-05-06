@@ -249,6 +249,15 @@ export default function InboxPage() {
     return () => window.removeEventListener('notification-navigate', handleNotificationNavigate)
   }, [conversations])
 
+  // Keep sidebar unread badges in sync with conversations state
+  useEffect(() => {
+    if (!selectedPhoneNumber?.phoneNumber || !conversations.length) return
+    const count = conversations.filter(c => c.unreadCount > 0).length
+    window.dispatchEvent(new CustomEvent('inbox-unread-update', {
+      detail: { phoneNumber: selectedPhoneNumber.phoneNumber, count }
+    }))
+  }, [conversations, selectedPhoneNumber?.phoneNumber])
+
   // Play notification sound on new inbound messages (any conversation)
   const lastConvTimestampRef = useRef(null)
   useEffect(() => {
@@ -268,7 +277,7 @@ export default function InboxPage() {
       lastConvTimestampRef.current = newestInbound
       return
     }
-    // Play sound if there's a newer inbound message
+    // Play sound and show toast if there's a newer inbound message
     if (newestInbound > lastConvTimestampRef.current) {
       lastConvTimestampRef.current = newestInbound
       if (audioRef.current) {

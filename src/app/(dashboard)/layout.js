@@ -143,19 +143,31 @@ export default function DashboardLayout({ children }) {
 
       setUser(currentUser)
 
-      // Check if user has seen the inbox product tour
-      try {
-        const tourRes = await fetch('/api/onboarding/tour-seen', {
-          headers: {
-            'x-user-id': currentUser.userId,
-            'x-workspace-id': currentUser.workspaceId,
-          },
-        })
-        if (tourRes.ok) {
-          const { seen } = await tourRes.json()
-          if (!seen) setShowTour(true)
-        }
-      } catch { /* non-critical */ }
+      // Check if user has seen the inbox product tour.
+      // Use localStorage as a fast cache so hard reloads don't re-show the tour
+      // for users who already dismissed it. Fall back to DB for first-time checks.
+      const tourCacheKey = `airo_tour_seen_${currentUser.userId}`
+      if (localStorage.getItem(tourCacheKey) === '1') {
+        // Already confirmed seen — skip API call
+      } else {
+        try {
+          const tourRes = await fetch('/api/onboarding/tour-seen', {
+            headers: {
+              'x-user-id': currentUser.userId,
+              'x-workspace-id': currentUser.workspaceId,
+            },
+          })
+          if (tourRes.ok) {
+            const { seen } = await tourRes.json()
+            if (seen) {
+              // Cache it so we never have to ask again
+              localStorage.setItem(tourCacheKey, '1')
+            } else {
+              setShowTour(true)
+            }
+          }
+        } catch { /* non-critical */ }
+      }
 
       setLoading(false)
     }
@@ -196,10 +208,12 @@ export default function DashboardLayout({ children }) {
     setShowTour(false)
     try {
       const s = JSON.parse(localStorage.getItem('user_session') || '{}')
+      const uid = s.userId || s.id || ''
+      if (uid) localStorage.setItem(`airo_tour_seen_${uid}`, '1')
       await fetch('/api/onboarding/tour-seen', {
         method: 'PATCH',
         headers: {
-          'x-user-id': s.userId || s.id || '',
+          'x-user-id': uid,
           'x-workspace-id': s.workspaceId || '',
         },
       })

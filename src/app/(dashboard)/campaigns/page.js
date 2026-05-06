@@ -712,7 +712,7 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
               />
               <div className="flex flex-wrap items-center gap-2 mt-3">
                 <span className="text-xs text-[#9B9890] font-medium">Insert placeholder:</span>
-                {['{first_name}', '{last_name}', '{business_name}'].map(tag => (
+                {['{first_name}', '{last_name}', '{business_name}', '{email}', '{phone}', '{city}', '{state}', '{country}'].map(tag => (
                   <button
                     key={tag}
                     type="button"
@@ -756,9 +756,7 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
                 options={phoneNumberOptions}
                 placeholder="Select a number"
                 error={errors.phoneNumberId}
-                renderSelected={(o) => (
-                  <span>{o.name ? `${o.name} — ` : ''}{o.number}</span>
-                )}
+                renderSelected={(o) => o.name ? `${o.name} — ${o.number}` : o.number}
                 renderOption={(o) => (
                   <div>
                     {o.name && <p className="text-sm font-medium text-[#131210]">{o.name}</p>}

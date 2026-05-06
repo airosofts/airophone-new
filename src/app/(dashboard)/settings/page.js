@@ -8,6 +8,7 @@ import Blocklist from '@/components/settings/Blocklist'
 import AiSettings from '@/components/settings/AiSettings'
 import CallForwarding from '@/components/settings/CallForwarding'
 import WorkspaceMembers from '@/components/settings/WorkspaceMembers'
+import Referrals from '@/components/settings/Referrals'
 
 const sections = [
   {
@@ -20,6 +21,7 @@ const sections = [
       { id: 'blocklist',  name: 'Blocklist',          icon: 'fa-ban',         desc: 'Blocked numbers' },
       { id: 'ai',         name: 'AI Settings',        icon: 'fa-robot',       desc: 'Reply delay and behavior' },
       { id: 'forwarding', name: 'Call Forwarding',    icon: 'fa-phone-alt',   desc: 'Forward incoming calls' },
+      { id: 'referrals',  name: 'Referrals',          icon: 'fa-gift',        desc: 'Earn cash for referrals' },
     ],
   },
   {
@@ -40,16 +42,17 @@ const placeholders = {
 
 // Icon background colors per section item
 const iconColors = {
-  numbers:    { bg: 'bg-blue-50',   text: 'text-blue-600' },
-  members:    { bg: 'bg-purple-50', text: 'text-purple-600' },
-  templates:  { bg: 'bg-green-50',  text: 'text-green-600' },
-  apikeys:    { bg: 'bg-orange-50', text: 'text-orange-600' },
-  blocklist:  { bg: 'bg-red-50',    text: 'text-red-600' },
-  ai:         { bg: 'bg-sky-50',    text: 'text-sky-600' },
-  forwarding: { bg: 'bg-teal-50',   text: 'text-teal-600' },
-  profile:    { bg: 'bg-[rgba(214,59,31,0.08)]', text: 'text-[#D63B1F]' },
-  notifications: { bg: 'bg-yellow-50', text: 'text-yellow-600' },
-  security:   { bg: 'bg-slate-100', text: 'text-slate-600' },
+  numbers:       { bg: 'bg-[rgba(214,59,31,0.08)]', text: 'text-[#D63B1F]' },
+  members:       { bg: 'bg-[rgba(214,59,31,0.08)]', text: 'text-[#D63B1F]' },
+  templates:     { bg: 'bg-[rgba(214,59,31,0.08)]', text: 'text-[#D63B1F]' },
+  apikeys:       { bg: 'bg-[rgba(214,59,31,0.08)]', text: 'text-[#D63B1F]' },
+  blocklist:     { bg: 'bg-[rgba(214,59,31,0.08)]', text: 'text-[#D63B1F]' },
+  ai:            { bg: 'bg-[rgba(214,59,31,0.08)]', text: 'text-[#D63B1F]' },
+  forwarding:    { bg: 'bg-[rgba(214,59,31,0.08)]', text: 'text-[#D63B1F]' },
+  referrals:     { bg: 'bg-[rgba(214,59,31,0.08)]', text: 'text-[#D63B1F]' },
+  profile:       { bg: 'bg-[rgba(214,59,31,0.08)]', text: 'text-[#D63B1F]' },
+  notifications: { bg: 'bg-[rgba(214,59,31,0.08)]', text: 'text-[#D63B1F]' },
+  security:      { bg: 'bg-[rgba(214,59,31,0.08)]', text: 'text-[#D63B1F]' },
 }
 
 export default function SettingsPage() {
@@ -161,6 +164,7 @@ export default function SettingsPage() {
           {activeTab === 'blocklist'  && <Blocklist />}
           {activeTab === 'ai'         && <AiSettings />}
           {activeTab === 'forwarding' && <CallForwarding />}
+          {activeTab === 'referrals'  && <Referrals />}
 
           {['profile', 'notifications', 'security'].includes(activeTab) && (
             <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-xl">

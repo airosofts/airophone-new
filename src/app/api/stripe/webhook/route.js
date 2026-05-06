@@ -60,6 +60,57 @@ export async function POST(request) {
         await supabaseAdmin.from('workspaces')
           .update({ plan_name: planName, plan_status: sub.status, updated_at: new Date().toISOString() })
           .eq('id', sc.workspace_id)
+
+        // Qualify referral when workspace first becomes a paid subscriber
+        if (sub.status === 'active') {
+          const { data: referral } = await supabaseAdmin
+            .from('referrals')
+            .select('id, referrer_workspace_id')
+            .eq('referred_workspace_id', sc.workspace_id)
+            .eq('status', 'pending')
+            .single()
+
+          if (referral) {
+            const { data: settings } = await supabaseAdmin
+              .from('referral_settings')
+              .select('enabled, commission_type, commission_value')
+              .single()
+
+            const commission = settings?.enabled ? Number(settings.commission_value) : 0
+
+            if (commission > 0) {
+              await supabaseAdmin.from('referrals').update({
+                status: 'qualified',
+                commission_amount: commission,
+                stripe_subscription_id: sub.id,
+                qualified_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              }).eq('id', referral.id)
+
+              // Upsert referrer balance
+              const { data: bal } = await supabaseAdmin
+                .from('referral_balances')
+                .select('id, balance, lifetime_earned')
+                .eq('workspace_id', referral.referrer_workspace_id)
+                .single()
+
+              if (bal) {
+                await supabaseAdmin.from('referral_balances').update({
+                  balance: Number(bal.balance) + commission,
+                  lifetime_earned: Number(bal.lifetime_earned) + commission,
+                  updated_at: new Date().toISOString(),
+                }).eq('id', bal.id)
+              } else {
+                await supabaseAdmin.from('referral_balances').insert({
+                  workspace_id: referral.referrer_workspace_id,
+                  balance: commission,
+                  lifetime_earned: commission,
+                  lifetime_withdrawn: 0,
+                })
+              }
+            }
+          }
+        }
         break
       }
 

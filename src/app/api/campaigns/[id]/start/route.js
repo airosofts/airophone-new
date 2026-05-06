@@ -155,6 +155,8 @@ async function processCampaignMessages(campaign, contacts, userId, workspaceId, 
 
       // Replace tags in message template
       let personalizedMessage = campaign.message_template
+      personalizedMessage = personalizedMessage.replace(/{first_name}/g, contact.first_name || '')
+      personalizedMessage = personalizedMessage.replace(/{last_name}/g, contact.last_name || '')
       personalizedMessage = personalizedMessage.replace(/{business_name}/g, contact.business_name || '')
       personalizedMessage = personalizedMessage.replace(/{phone}/g, contact.phone_number || '')
       personalizedMessage = personalizedMessage.replace(/{email}/g, contact.email || '')
@@ -162,51 +164,38 @@ async function processCampaignMessages(campaign, contacts, userId, workspaceId, 
       personalizedMessage = personalizedMessage.replace(/{state}/g, contact.state || '')
       personalizedMessage = personalizedMessage.replace(/{country}/g, contact.country || '')
 
-      // Get or create conversation
+      // Get or create conversation — must match BOTH phone_number and from_number
+      // so messages always appear under the correct sending line in the inbox.
       let conversation = null
 
-      // First try to find existing conversation with matching phone_number
       const { data: existingConversation } = await supabaseAdmin
         .from('conversations')
         .select('*')
         .eq('phone_number', normalizedContactNumber)
-        .single()
+        .eq('from_number', normalizedSenderNumber)
+        .maybeSingle()
 
       if (existingConversation) {
-        // Update from_number if different
-        if (existingConversation.from_number !== normalizedSenderNumber) {
-          const { data: updatedConversation } = await supabaseAdmin
-            .from('conversations')
-            .update({
-              from_number: normalizedSenderNumber
-            })
-            .eq('id', existingConversation.id)
-            .select()
-            .single()
-
-          conversation = updatedConversation || existingConversation
-        } else {
-          conversation = existingConversation
-        }
+        conversation = existingConversation
       } else {
-        // Create new conversation only if none exists
         const { data: newConversation, error: conversationError } = await supabaseAdmin
           .from('conversations')
           .insert({
             phone_number: normalizedContactNumber,
-            name: contact.business_name,
+            name: contact.business_name || null,
             from_number: normalizedSenderNumber,
             created_by: userId
           })
           .select()
           .single()
 
-        // If duplicate key error (race condition), fetch existing
+        // Race condition: another campaign message beat us to it
         if (conversationError && conversationError.code === '23505') {
           const { data: fallbackConversation } = await supabaseAdmin
             .from('conversations')
             .select('*')
             .eq('phone_number', normalizedContactNumber)
+            .eq('from_number', normalizedSenderNumber)
             .single()
 
           conversation = fallbackConversation

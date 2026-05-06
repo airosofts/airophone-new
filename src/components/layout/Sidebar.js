@@ -1,7 +1,7 @@
 // components/Sidebar.jsx
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { logout } from '@/lib/auth'
@@ -61,6 +61,8 @@ const NAV_ICONS = {
 export default function Sidebar({ user, currentPath, onClose, onNotificationNavigate }) {
   const [phoneNumbers, setPhoneNumbers] = useState([])
   const [loading, setLoading] = useState(true)
+  const [unreadCounts, setUnreadCounts] = useState({})
+  const unreadChannelRef = useRef(null)
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -122,6 +124,54 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
       setLoading(false)
     }
   }
+
+  const fetchUnreadCounts = useCallback(async () => {
+    try {
+      const res = await apiGet('/api/conversations/unread-counts')
+      const data = await res.json()
+      if (data.counts) setUnreadCounts(data.counts)
+    } catch (e) {}
+  }, [])
+
+  useEffect(() => {
+    fetchUnreadCounts()
+  }, [fetchUnreadCounts])
+
+  // Subscribe to conversations UPDATE — webhook sets last_message_at on every inbound message.
+  // Refetch unread counts so badges update in real-time alongside the notification sound.
+  // Also listen for inbox-unread-update events (dispatched by inbox page when conversations
+  // state changes, e.g. after mark-as-read) to update counts immediately.
+  useEffect(() => {
+    const workspaceId = user?.workspaceId
+    if (!workspaceId) return
+
+    if (unreadChannelRef.current) supabase.removeChannel(unreadChannelRef.current)
+
+    unreadChannelRef.current = supabase
+      .channel(`sidebar_unread_${workspaceId}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'conversations', filter: `workspace_id=eq.${workspaceId}` },
+        () => fetchUnreadCounts()
+      )
+      .subscribe()
+
+    const handleInboxUpdate = (e) => {
+      const { phoneNumber, count } = e.detail || {}
+      if (phoneNumber != null && count != null) {
+        setUnreadCounts(prev => ({ ...prev, [phoneNumber]: count }))
+      }
+    }
+    window.addEventListener('inbox-unread-update', handleInboxUpdate)
+
+    return () => {
+      if (unreadChannelRef.current) {
+        supabase.removeChannel(unreadChannelRef.current)
+        unreadChannelRef.current = null
+      }
+      window.removeEventListener('inbox-unread-update', handleInboxUpdate)
+    }
+  }, [user?.workspaceId, fetchUnreadCounts])
 
   const formatPhoneNumber = (phone) => {
     if (!phone) return phone
@@ -276,6 +326,17 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
                     </div>
                   )}
                 </div>
+                {(unreadCounts[phone.phoneNumber] || 0) > 0 && (
+                  <span style={{
+                    minWidth: 17, height: 17, borderRadius: 9,
+                    background: '#D63B1F', color: '#fff',
+                    fontSize: 9, fontWeight: 700, flexShrink: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: '0 3px',
+                  }}>
+                    {unreadCounts[phone.phoneNumber] > 9 ? '9+' : unreadCounts[phone.phoneNumber]}
+                  </span>
+                )}
               </button>
             )
           })}

@@ -92,9 +92,13 @@ function generateSlug(name) {
   return `${base}-${suffix}`
 }
 
+function generateReferralCode() {
+  return Math.random().toString(36).substring(2, 10).toUpperCase()
+}
+
 export async function POST(request) {
   try {
-    const { email, password, name, inviteWorkspaceId, inviteRole } = await request.json()
+    const { email, password, name, inviteWorkspaceId, inviteRole, referralCode } = await request.json()
 
     if (!email || !password || !name) {
       return NextResponse.json({ error: 'Email, password, and name are required' }, { status: 400 })
@@ -273,6 +277,35 @@ export async function POST(request) {
       await supabaseAdmin
         .from('wallets')
         .insert({ user_id: newUser.id, workspace_id: newWorkspace.id, credits: 0, balance: 0, currency: 'USD' })
+
+      // Generate unique referral code for this workspace
+      let refCode = generateReferralCode()
+      let codeSet = false
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const { error: codeErr } = await supabaseAdmin
+          .from('workspaces')
+          .update({ referral_code: refCode })
+          .eq('id', newWorkspace.id)
+        if (!codeErr) { codeSet = true; break }
+        refCode = generateReferralCode()
+      }
+
+      // Track referral if a valid ref code was provided
+      if (codeSet && referralCode) {
+        const { data: referrerWs } = await supabaseAdmin
+          .from('workspaces')
+          .select('id')
+          .eq('referral_code', referralCode.toUpperCase())
+          .single()
+        if (referrerWs && referrerWs.id !== newWorkspace.id) {
+          await supabaseAdmin.from('referrals').insert({
+            referrer_workspace_id: referrerWs.id,
+            referred_workspace_id: newWorkspace.id,
+            referred_email: normalizedEmail,
+            status: 'pending',
+          }).catch(err => console.warn('[signup] Referral tracking failed:', err.message))
+        }
+      }
 
       workspaceId = newWorkspace.id
       workspaceName = newWorkspace.name

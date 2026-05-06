@@ -55,6 +55,7 @@ function SignupForm() {
   const inviteEmail = searchParams.get('invite') || ''
   const inviteWid = searchParams.get('wid') || ''
   const inviteRoleParam = searchParams.get('role') || 'member'
+  const refCode = searchParams.get('ref') || ''
 
   const [mode, setMode] = useState('choose')
   const [email, setEmail] = useState(inviteEmail)
@@ -71,10 +72,13 @@ function SignupForm() {
   }, [inviteEmail])
 
   const handleGoogleSignup = () => {
-    // Preserve invite params through Google OAuth round-trip
+    // Preserve invite and referral params through Google OAuth round-trip
     if (inviteWid) {
       sessionStorage.setItem('invite_wid', inviteWid)
       sessionStorage.setItem('invite_role', inviteRoleParam)
+    }
+    if (refCode) {
+      sessionStorage.setItem('referral_code', refCode)
     }
     const clientId = '167172022831-j9bjjeq43m4o2urp1ec3ovks5jvlaguk.apps.googleusercontent.com'
     const redirectUri = `${window.location.origin}/auth/callback`
@@ -101,6 +105,7 @@ function SignupForm() {
           password,
           name: email.split('@')[0],
           ...(inviteWid && { inviteWorkspaceId: inviteWid, inviteRole: inviteRoleParam }),
+          ...(refCode && { referralCode: refCode }),
         }),
       })
       const data = await res.json()

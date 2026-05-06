@@ -242,31 +242,25 @@ export async function POST(request) {
 
         if (error) {
           console.error('Database error inserting batch:', error)
-          
-          // Handle duplicate phone numbers
-          if (error.code === '23505') {
-            duplicateCount += batch.length
-            console.log('Duplicate phone numbers in batch')
-          } else {
-            console.error('Other database error:', error.message)
-            // Try individual inserts to see which ones work
-            for (const contact of batch) {
-              try {
-                const { data: singleData, error: singleError } = await supabaseAdmin
-                  .from('contacts')
-                  .insert([contact])
-                  .select('id')
-                
-                if (!singleError) {
-                  importedCount++
-                } else if (singleError.code === '23505') {
-                  duplicateCount++
-                } else {
-                  console.error('Error inserting single contact:', singleError)
-                }
-              } catch (singleInsertError) {
-                console.error('Single insert error:', singleInsertError)
+          // Whether it's a duplicate conflict (23505) or any other error,
+          // fall back to individual inserts so only the conflicting rows are
+          // skipped and the rest are imported successfully.
+          for (const contact of batch) {
+            try {
+              const { data: singleData, error: singleError } = await supabaseAdmin
+                .from('contacts')
+                .insert([contact])
+                .select('id')
+
+              if (!singleError) {
+                importedCount++
+              } else if (singleError.code === '23505') {
+                duplicateCount++
+              } else {
+                console.error('Error inserting single contact:', singleError)
               }
+            } catch (singleInsertError) {
+              console.error('Single insert error:', singleInsertError)
             }
           }
         } else {
