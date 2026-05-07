@@ -5,10 +5,20 @@ import { supabaseAdmin } from '@/lib/supabase-server'
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
 
 const PLAN_CREDITS = { starter: 200, growth: 500, enterprise: 1000 }
+const PLAN_PRICES  = { starter: 9,   growth: 29,  enterprise: 59   }
 const PRICE_TO_PLAN = {
   [process.env.STRIPE_STARTER_PRICE_ID]: 'starter',
   [process.env.STRIPE_GROWTH_PRICE_ID]: 'growth',
   [process.env.STRIPE_ENTERPRISE_PRICE_ID]: 'enterprise',
+}
+
+function calcCommission(settings, planName) {
+  if (!settings?.enabled) return 0
+  const val = Number(settings.commission_value)
+  if (settings.commission_type === 'percent') {
+    return (PLAN_PRICES[planName] || 29) * val / 100
+  }
+  return val
 }
 
 export async function POST(request) {
@@ -76,7 +86,7 @@ export async function POST(request) {
               .select('enabled, commission_type, commission_value')
               .single()
 
-            const commission = settings?.enabled ? Number(settings.commission_value) : 0
+            const commission = calcCommission(settings, planName)
 
             if (commission > 0) {
               await supabaseAdmin.from('referrals').update({
