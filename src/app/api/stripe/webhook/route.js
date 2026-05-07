@@ -191,6 +191,37 @@ export async function POST(request) {
           description: 'Credits zeroed — subscription canceled',
           status: 'completed',
         })
+
+        // Queue workspace phone numbers for recycling (quarantine for 30 days)
+        const quarantineUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+        const { data: wsNumbers } = await supabaseAdmin
+          .from('phone_numbers')
+          .select('phone_number, messaging_profile_id')
+          .eq('workspace_id', sc.workspace_id)
+          .eq('is_active', true)
+
+        if (wsNumbers?.length) {
+          // Delete Telnyx messaging profile
+          const profileId = wsNumbers[0]?.messaging_profile_id
+          if (profileId) {
+            await fetch(`https://api.telnyx.com/v2/messaging_profiles/${profileId}`, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${process.env.TELNYX_API_KEY}` },
+            }).catch(() => {})
+          }
+
+          for (const n of wsNumbers) {
+            await supabaseAdmin.from('recycled_numbers').upsert({
+              phone_number: n.phone_number,
+              original_workspace_id: sc.workspace_id,
+              telnyx_messaging_profile_id: n.messaging_profile_id,
+              status: 'quarantine',
+              quarantine_until: quarantineUntil,
+              entered_cycle_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }, { onConflict: 'phone_number', ignoreDuplicates: false })
+          }
+        }
         break
       }
 
@@ -217,6 +248,28 @@ export async function POST(request) {
         await supabaseAdmin.from('wallets')
           .update({ credits: 0, updated_at: new Date().toISOString() })
           .eq('workspace_id', sc.workspace_id)
+
+        // Track phone numbers as pending recycling (user still has 7 days to fix payment)
+        const { data: pendingNumbers } = await supabaseAdmin
+          .from('phone_numbers')
+          .select('phone_number, messaging_profile_id')
+          .eq('workspace_id', sc.workspace_id)
+          .eq('is_active', true)
+
+        if (pendingNumbers?.length) {
+          for (const n of pendingNumbers) {
+            // Only insert if not already in a more advanced state
+            await supabaseAdmin.from('recycled_numbers').upsert({
+              phone_number: n.phone_number,
+              original_workspace_id: sc.workspace_id,
+              telnyx_messaging_profile_id: n.messaging_profile_id,
+              status: 'pending',
+              failed_payment_at: new Date().toISOString(),
+              entered_cycle_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }, { onConflict: 'phone_number', ignoreDuplicates: true }) // don't downgrade quarantine→pending
+          }
+        }
         break
       }
     }

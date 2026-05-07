@@ -29,17 +29,18 @@ export async function GET(request) {
 
     const { data } = await supabaseAdmin
       .from('onboarding_profiles')
-      .select('onboarding_completed')
+      .select('onboarding_completed, selected_phone_number')
       .eq('user_id', userId)
       .single()
 
-    // If no profile exists, user hasn't started onboarding (existing users before this feature)
-    // Return completed = true so they aren't blocked
     if (!data) {
       return NextResponse.json({ onboarding_completed: true })
     }
 
-    return NextResponse.json({ onboarding_completed: data.onboarding_completed })
+    return NextResponse.json({
+      onboarding_completed: data.onboarding_completed,
+      selected_phone_number: data.selected_phone_number || null,
+    })
   } catch (error) {
     console.error('Onboarding status error:', error)
     return NextResponse.json({ onboarding_completed: true }) // fail open

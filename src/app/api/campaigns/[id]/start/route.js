@@ -173,6 +173,7 @@ async function processCampaignMessages(campaign, contacts, userId, workspaceId, 
         .select('*')
         .eq('phone_number', normalizedContactNumber)
         .eq('from_number', normalizedSenderNumber)
+        .eq('workspace_id', workspaceId)
         .maybeSingle()
 
       if (existingConversation) {
@@ -184,6 +185,7 @@ async function processCampaignMessages(campaign, contacts, userId, workspaceId, 
             phone_number: normalizedContactNumber,
             name: contact.business_name || null,
             from_number: normalizedSenderNumber,
+            workspace_id: workspaceId,
             created_by: userId
           })
           .select()
@@ -196,6 +198,7 @@ async function processCampaignMessages(campaign, contacts, userId, workspaceId, 
             .select('*')
             .eq('phone_number', normalizedContactNumber)
             .eq('from_number', normalizedSenderNumber)
+            .eq('workspace_id', workspaceId)
             .single()
 
           conversation = fallbackConversation

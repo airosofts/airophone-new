@@ -22,8 +22,49 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Plan name and price ID are required' }, { status: 400 })
     }
 
+    // ── Idempotency guard ──────────────────────────────────────────────────
+    // If onboarding already completed (double-click, retry), return success
+    // immediately without creating duplicate Stripe subscriptions or credits.
+    const { data: existingProfile } = await supabaseAdmin
+      .from('onboarding_profiles')
+      .select('onboarding_completed, selected_plan')
+      .eq('user_id', userId)
+      .single()
+
+    if (existingProfile?.onboarding_completed) {
+      return NextResponse.json({
+        success: true,
+        alreadyCompleted: true,
+        plan_name: existingProfile.selected_plan || plan_name,
+      })
+    }
+
+    // Also guard against duplicate subscription in DB (race condition between
+    // two concurrent requests that both pass the profile check above).
+    const { data: existingSub } = await supabaseAdmin
+      .from('subscriptions')
+      .select('stripe_subscription_id, plan_name')
+      .eq('workspace_id', workspaceId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (existingSub) {
+      return NextResponse.json({
+        success: true,
+        alreadyCompleted: true,
+        subscription_id: existingSub.stripe_subscription_id,
+        plan_name: existingSub.plan_name,
+      })
+    }
+    // ──────────────────────────────────────────────────────────────────────
+
     // Get user info
-    const { data: userData } = await supabaseAdmin.from('users').select('email, name').eq('id', userId).single()
+    const { data: userData } = await supabaseAdmin
+      .from('users')
+      .select('email, name')
+      .eq('id', userId)
+      .single()
 
     // Get or create Stripe customer
     let stripeCustomerId
@@ -31,7 +72,7 @@ export async function POST(request) {
       .from('stripe_customers')
       .select('stripe_customer_id')
       .eq('user_id', userId)
-      .single()
+      .maybeSingle()
 
     if (existingCustomer) {
       stripeCustomerId = existingCustomer.stripe_customer_id
@@ -69,6 +110,7 @@ export async function POST(request) {
 
     await supabaseAdmin.from('payment_methods').insert({
       user_id: userId,
+      workspace_id: workspaceId,
       stripe_payment_method_id: payment_method_id,
       stripe_customer_id: stripeCustomerId,
       type: 'card',
@@ -93,16 +135,16 @@ export async function POST(request) {
 
       if (coupon) {
         couponRecord = coupon
-        // Create a one-time Stripe coupon from our coupon data
         const stripeCouponParams = {
           duration: 'once',
           name: coupon.description || coupon.code,
           metadata: { coupon_id: coupon.id, code: coupon.code },
         }
         if (coupon.discount_type === 'percent') {
-          stripeCouponParams.percent_off = coupon.discount_value
+          // Clamp to valid Stripe range
+          stripeCouponParams.percent_off = Math.min(100, Math.max(1, coupon.discount_value))
         } else {
-          stripeCouponParams.amount_off = Math.round(coupon.discount_value * 100) // cents
+          stripeCouponParams.amount_off = Math.max(1, Math.round(coupon.discount_value * 100))
           stripeCouponParams.currency = 'usd'
         }
         const stripeCoupon = await stripe.coupons.create(stripeCouponParams)
@@ -140,16 +182,15 @@ export async function POST(request) {
       })
 
       await supabaseAdmin.rpc('increment_coupon_uses', { coupon_id_param: couponRecord.id })
-        .catch(() => {
-          // Fallback: manual increment if RPC doesn't exist
-          return supabaseAdmin
+        .catch(() =>
+          supabaseAdmin
             .from('coupons')
             .update({ uses_count: (couponRecord.uses_count || 0) + 1 })
             .eq('id', couponRecord.id)
-        })
+        )
     }
 
-    // Save subscription to subscriptions table
+    // Save subscription record
     await supabaseAdmin.from('subscriptions').insert({
       user_id: userId,
       workspace_id: workspaceId,
@@ -159,47 +200,62 @@ export async function POST(request) {
       price_id,
       status: subscription.status,
       trial_end: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
-      current_period_start: subscription.current_period_start ? new Date(subscription.current_period_start * 1000).toISOString() : null,
-      current_period_end: subscription.current_period_end ? new Date(subscription.current_period_end * 1000).toISOString() : null,
+      current_period_start: subscription.current_period_start
+        ? new Date(subscription.current_period_start * 1000).toISOString() : null,
+      current_period_end: subscription.current_period_end
+        ? new Date(subscription.current_period_end * 1000).toISOString() : null,
     })
 
-    // Add plan's included credits to wallet
+    // ── Wallet: add plan credits ───────────────────────────────────────────
     const planCredits = PLAN_CREDITS[plan_name] ?? 0
 
-    const { data: wallet } = await supabaseAdmin
+    let { data: wallet } = await supabaseAdmin
       .from('wallets')
       .select('id, credits')
       .eq('workspace_id', workspaceId)
-      .single()
+      .maybeSingle()
 
-    if (wallet) {
-      await supabaseAdmin
+    if (!wallet) {
+      // Wallet missing (edge case) — create it so credits are never lost
+      const { data: newWallet } = await supabaseAdmin
         .from('wallets')
-        .update({ credits: wallet.credits + planCredits, updated_at: new Date().toISOString() })
-        .eq('id', wallet.id)
-
-      await supabaseAdmin.from('transactions').insert({
-        workspace_id: workspaceId,
-        type: 'topup',
-        credits: planCredits,
-        amount: 0,
-        currency: 'USD',
-        description: `Plan credits — ${plan_name} trial`,
-        status: 'completed',
-      })
+        .insert({ user_id: userId, workspace_id: workspaceId, credits: 0 })
+        .select('id, credits')
+        .single()
+      wallet = newWallet
     }
 
-    // Update workspace with plan info
+    if (wallet) {
+      const creditsBefore = wallet.credits
+      const creditsAfter = creditsBefore + planCredits
+
+      await supabaseAdmin
+        .from('wallets')
+        .update({ credits: creditsAfter, updated_at: new Date().toISOString() })
+        .eq('id', wallet.id)
+
+      // transactions table requires user_id, wallet_id, balance_before, balance_after
+      await supabaseAdmin.from('transactions').insert({
+        user_id: userId,
+        wallet_id: wallet.id,
+        type: 'topup',
+        amount: 0,
+        balance_before: creditsBefore,
+        balance_after: creditsAfter,
+        description: `Plan credits — ${plan_name} trial`,
+        status: 'completed',
+        metadata: { plan_name, credits_added: planCredits },
+      })
+    }
+    // ──────────────────────────────────────────────────────────────────────
+
+    // Update workspace
     await supabaseAdmin
       .from('workspaces')
-      .update({
-        plan_name,
-        plan_status: 'trialing',
-        updated_at: new Date().toISOString(),
-      })
+      .update({ plan_name, plan_status: 'trialing', updated_at: new Date().toISOString() })
       .eq('id', workspaceId)
 
-    // Mark onboarding as completed
+    // Mark onboarding complete (must be last — acts as the commit flag)
     await supabaseAdmin
       .from('onboarding_profiles')
       .update({
