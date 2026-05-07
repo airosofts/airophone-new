@@ -63,7 +63,7 @@ export async function findMatchingScenario(recipientNumber, senderNumber) {
         .eq('scenario_id', scenario.id)
         .eq('recipient_phone', senderNumber)
         .limit(1)
-        .single()
+        .maybeSingle()
 
       if (explicitMatch) {
         return scenario
@@ -83,7 +83,7 @@ export async function findMatchingScenario(recipientNumber, senderNumber) {
           .eq('phone_number', senderNumber)
           .in('contact_list_id', listIds)
           .limit(1)
-          .single()
+          .maybeSingle()
 
         if (contactInList) {
           return scenario

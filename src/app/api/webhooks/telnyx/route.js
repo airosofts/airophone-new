@@ -27,23 +27,36 @@ async function getOrCreateConversation(fromNumber, toNumber) {
 
   try {
     // Strict exact match on both contact number AND our business number
-    // Never fall back to updating an existing conversation's from_number,
-    // as that would move messages from one phone line's inbox to another.
     const { data: conversation, error } = await supabaseAdmin
       .from('conversations')
       .select('*')
       .eq('phone_number', normalizedFrom)
       .eq('from_number', normalizedTo)
-      .single()
+      .maybeSingle()
 
-    if (!error && conversation) return conversation
+    if (conversation) {
+      // Backfill workspace_id if missing
+      if (!conversation.workspace_id) {
+        const workspaceId = await getWorkspaceIdForNumber(normalizedTo)
+        if (workspaceId) {
+          await supabaseAdmin
+            .from('conversations')
+            .update({ workspace_id: workspaceId })
+            .eq('id', conversation.id)
+          conversation.workspace_id = workspaceId
+        }
+      }
+      return conversation
+    }
+
+    // Resolve workspace from the receiving phone number
+    const workspaceId = await getWorkspaceIdForNumber(normalizedTo)
 
     // No exact match — create a new conversation for this line+contact pair.
-    // Upsert handles race conditions without overwriting existing records.
     const { data: newConversation, error: createError } = await supabaseAdmin
       .from('conversations')
       .upsert(
-        { phone_number: normalizedFrom, from_number: normalizedTo, name: null },
+        { phone_number: normalizedFrom, from_number: normalizedTo, name: null, workspace_id: workspaceId },
         { onConflict: 'phone_number,from_number', ignoreDuplicates: false }
       )
       .select()
@@ -55,6 +68,22 @@ async function getOrCreateConversation(fromNumber, toNumber) {
   } catch (error) {
     console.error('Error in getOrCreateConversation:', error)
     throw error
+  }
+}
+
+async function getWorkspaceIdForNumber(normalizedNumber) {
+  try {
+    const digits = normalizedNumber?.replace(/\D/g, '').slice(-10)
+    if (!digits) return null
+    const { data } = await supabaseAdmin
+      .from('phone_numbers')
+      .select('workspace_id')
+      .like('phone_number', `%${digits}`)
+      .limit(1)
+      .maybeSingle()
+    return data?.workspace_id || null
+  } catch {
+    return null
   }
 }
 
