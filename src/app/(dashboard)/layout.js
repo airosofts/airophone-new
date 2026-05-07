@@ -8,8 +8,58 @@ import ProductTour from '@/components/inbox/ProductTour'
 
 const BLOCKED_STATUSES = ['canceled', 'past_due']
 
-function SubscriptionBlockedBanner({ planStatus, onGoToBilling }) {
+function SubscriptionBlockedBanner({ planStatus, numbersQuarantined, trialExpired, trialExpiredDaysAgo, onGoToBilling }) {
   const isCanceled = planStatus === 'canceled'
+  const isQuarantined = numbersQuarantined
+  const daysUntilQuarantine = Math.max(0, 7 - (trialExpiredDaysAgo || 0))
+
+  let icon, iconColor, iconBg, title, message, buttonLabel
+
+  if (isCanceled) {
+    iconColor = '#D63B1F'; iconBg = 'rgba(214,59,31,0.08)'
+    title = 'Subscription Ended'
+    message = 'Your subscription has been canceled. Reactivate to continue using AiroPhone — your data is safe and ready.'
+    buttonLabel = 'Reactivate Subscription'
+    icon = (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#D63B1F" strokeWidth="2" strokeLinecap="round">
+        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+      </svg>
+    )
+  } else if (isQuarantined) {
+    iconColor = '#b45309'; iconBg = 'rgba(180,83,9,0.08)'
+    title = 'Phone Number Quarantined'
+    message = trialExpired
+      ? `Your free trial ended ${trialExpiredDaysAgo} days ago without an active subscription. Your phone number has been quarantined and will be permanently released in 30 days. Activate now to recover it.`
+      : 'Your payment has been failing for 7+ days. Your phone number has been quarantined and will be permanently released in 30 days. Update your payment method now to restore access.'
+    buttonLabel = trialExpired ? 'Activate Subscription' : 'Update Payment Method'
+    icon = (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#b45309" strokeWidth="2" strokeLinecap="round">
+        <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+        <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+    )
+  } else if (trialExpired) {
+    iconColor = '#D63B1F'; iconBg = 'rgba(214,59,31,0.08)'
+    title = 'Free Trial Ended'
+    message = `Your free trial ended ${trialExpiredDaysAgo} day${trialExpiredDaysAgo !== 1 ? 's' : ''} ago. Activate your subscription within ${daysUntilQuarantine} day${daysUntilQuarantine !== 1 ? 's' : ''} to keep your phone number — after that it will be quarantined.`
+    buttonLabel = 'Activate Subscription'
+    icon = (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#D63B1F" strokeWidth="2" strokeLinecap="round">
+        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+      </svg>
+    )
+  } else {
+    iconColor = '#D63B1F'; iconBg = 'rgba(214,59,31,0.08)'
+    title = 'Payment Failed'
+    message = 'We could not process your payment. Update your payment method within 7 days — after that, your phone number will be quarantined and eventually released.'
+    buttonLabel = 'Update Payment Method'
+    icon = (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#D63B1F" strokeWidth="2" strokeLinecap="round">
+        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+      </svg>
+    )
+  }
+
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 9999,
@@ -25,34 +75,28 @@ function SubscriptionBlockedBanner({ planStatus, onGoToBilling }) {
       }}>
         <div style={{
           width: 56, height: 56, borderRadius: '50%',
-          background: 'rgba(214,59,31,0.08)', border: '1px solid rgba(214,59,31,0.2)',
+          background: iconBg, border: `1px solid ${iconColor}33`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           margin: '0 auto 20px',
         }}>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#D63B1F" strokeWidth="2" strokeLinecap="round">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="8" x2="12" y2="12"/>
-            <line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
+          {icon}
         </div>
         <h2 style={{ fontSize: 20, fontWeight: 700, color: '#131210', margin: '0 0 10px', letterSpacing: '-0.02em' }}>
-          {isCanceled ? 'Subscription Ended' : 'Payment Failed'}
+          {title}
         </h2>
         <p style={{ fontSize: 14, color: '#5C5A55', lineHeight: 1.6, margin: '0 0 28px' }}>
-          {isCanceled
-            ? 'Your subscription has been canceled. Reactivate to continue using AiroPhone — your data is safe and ready.'
-            : 'We could not process your payment. Please update your payment method to restore access.'}
+          {message}
         </p>
         <button
           onClick={onGoToBilling}
           style={{
             width: '100%', height: 44, borderRadius: 10,
-            background: '#D63B1F', color: '#FFFFFF',
+            background: iconColor, color: '#FFFFFF',
             border: 'none', cursor: 'pointer',
             fontSize: 14, fontWeight: 600, letterSpacing: '-0.01em',
           }}
         >
-          {isCanceled ? 'Reactivate Subscription' : 'Update Payment Method'}
+          {buttonLabel}
         </button>
       </div>
     </div>
@@ -64,6 +108,9 @@ export default function DashboardLayout({ children }) {
   const [loading, setLoading] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [planStatus, setPlanStatus] = useState(null)
+  const [numbersQuarantined, setNumbersQuarantined] = useState(false)
+  const [trialExpired, setTrialExpired] = useState(false)
+  const [trialExpiredDaysAgo, setTrialExpiredDaysAgo] = useState(0)
   const [showTour, setShowTour] = useState(false)
   const router = useRouter()
   const pathname = usePathname()
@@ -136,6 +183,11 @@ export default function DashboardLayout({ children }) {
           if (status && BLOCKED_STATUSES.includes(status)) {
             setPlanStatus(status)
           }
+          if (subData.numbersQuarantined) setNumbersQuarantined(true)
+          if (subData.trialExpired) {
+            setTrialExpired(true)
+            setTrialExpiredDaysAgo(subData.trialExpiredDaysAgo || 0)
+          }
         }
       } catch (e) {
         console.warn('Subscription check failed:', e)
@@ -202,7 +254,9 @@ export default function DashboardLayout({ children }) {
     )
   }
 
-  const isBlocked = planStatus && BLOCKED_STATUSES.includes(planStatus) && pathname !== '/billing'
+  const isBlocked = pathname !== '/billing' && (
+    (planStatus && BLOCKED_STATUSES.includes(planStatus)) || trialExpired
+  )
 
   const handleTourDone = async () => {
     setShowTour(false)
@@ -229,6 +283,9 @@ export default function DashboardLayout({ children }) {
       {isBlocked && (
         <SubscriptionBlockedBanner
           planStatus={planStatus}
+          numbersQuarantined={numbersQuarantined}
+          trialExpired={trialExpired}
+          trialExpiredDaysAgo={trialExpiredDaysAgo}
           onGoToBilling={() => router.push('/billing')}
         />
       )}

@@ -277,24 +277,28 @@ export async function POST(request) {
           .update({ credits: 0, updated_at: new Date().toISOString() })
           .eq('workspace_id', sc.workspace_id)
 
-        // Track phone numbers as pending recycling (user still has 7 days to fix payment)
-        const { data: pendingNumbers } = await supabaseAdmin
+        // Track/escalate phone numbers based on how long payment has been failing
+        const { data: wsNumbers } = await supabaseAdmin
           .from('phone_numbers')
           .select('phone_number, messaging_profile_id')
           .eq('workspace_id', sc.workspace_id)
           .eq('is_active', true)
 
-        if (pendingNumbers?.length) {
-          for (const n of pendingNumbers) {
-            // Only insert if not already tracked (don't downgrade quarantine → pending)
+        if (wsNumbers?.length) {
+          const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+          const quarantineUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+          const profileIdsToDelete = new Set()
+
+          for (const n of wsNumbers) {
             const { data: existing } = await supabaseAdmin
               .from('recycled_numbers')
-              .select('id, status')
+              .select('id, status, failed_payment_at')
               .eq('phone_number', n.phone_number)
               .not('status', 'eq', 'assigned')
               .maybeSingle()
 
             if (!existing) {
+              // First payment failure — track as pending, give user 7 days
               await supabaseAdmin.from('recycled_numbers').insert({
                 phone_number: n.phone_number,
                 original_workspace_id: sc.workspace_id,
@@ -304,7 +308,30 @@ export async function POST(request) {
                 entered_cycle_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
               })
+            } else if (existing.status === 'pending' && existing.failed_payment_at < sevenDaysAgo) {
+              // 7+ days of failed payment — escalate to quarantine
+              await supabaseAdmin.from('recycled_numbers').update({
+                status: 'quarantine',
+                quarantine_until: quarantineUntil,
+                updated_at: new Date().toISOString(),
+              }).eq('id', existing.id)
+
+              // Deactivate the number — it's no longer usable
+              await supabaseAdmin.from('phone_numbers')
+                .update({ is_active: false, updated_at: new Date().toISOString() })
+                .eq('phone_number', n.phone_number)
+                .eq('workspace_id', sc.workspace_id)
+
+              if (n.messaging_profile_id) profileIdsToDelete.add(n.messaging_profile_id)
             }
+          }
+
+          // Delete Telnyx messaging profiles for newly quarantined numbers
+          for (const profileId of profileIdsToDelete) {
+            await fetch(`https://api.telnyx.com/v2/messaging_profiles/${profileId}`, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${process.env.TELNYX_API_KEY}` },
+            }).catch(() => {})
           }
         }
         break
