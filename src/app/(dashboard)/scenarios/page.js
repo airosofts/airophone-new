@@ -39,6 +39,17 @@ export default function ScenariosPage() {
   }, [])
 
   useEffect(() => {
+    const open = () => setShowCreateModal(true)
+    const close = () => setShowCreateModal(false)
+    window.addEventListener('tour:open-scenario-modal', open)
+    window.addEventListener('tour:close-scenario-modal', close)
+    return () => {
+      window.removeEventListener('tour:open-scenario-modal', open)
+      window.removeEventListener('tour:close-scenario-modal', close)
+    }
+  }, [])
+
+  useEffect(() => {
     const fetchData = async () => {
       try {
         const [phoneRes] = await Promise.all([
@@ -670,7 +681,7 @@ function CreateScenarioModal({ phoneNumbers, onClose, onSuccess }) {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 overflow-y-auto">
       <div className="bg-[#FFFFFF] rounded-xl shadow-xl w-full max-w-4xl my-8">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#E3E1DB] sticky top-0 bg-[#FFFFFF] z-10 rounded-t-xl">
+        <div data-tour="scenario-modal-header" className="flex items-center justify-between px-6 py-4 border-b border-[#E3E1DB] sticky top-0 bg-[#FFFFFF] z-10 rounded-t-xl">
           <h3 className="text-sm font-semibold text-[#131210]">New Scenario</h3>
           <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1">
             <i className="fas fa-times text-sm"></i>
@@ -681,7 +692,7 @@ function CreateScenarioModal({ phoneNumbers, onClose, onSuccess }) {
           <div className="grid grid-cols-2 gap-x-6 gap-y-4">
             {/* ── LEFT COLUMN ── */}
             <div className="space-y-4">
-              <div>
+              <div data-tour="scenario-modal-name">
                 <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Scenario Name *</label>
                 <input type="text" value={formData.name}
                   onChange={e => toggle('name', e.target.value)}
@@ -698,7 +709,7 @@ function CreateScenarioModal({ phoneNumbers, onClose, onSuccess }) {
                   className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]" />
               </div>
 
-              <div>
+              <div data-tour="scenario-modal-instructions">
                 <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">AI Instructions *</label>
                 <textarea id="create-instructions" value={formData.instructions}
                   onChange={e => toggle('instructions', e.target.value)}
@@ -709,7 +720,7 @@ function CreateScenarioModal({ phoneNumbers, onClose, onSuccess }) {
                 {errors.instructions && <p className="text-[#D63B1F] text-xs mt-1">{errors.instructions}</p>}
               </div>
 
-              <div>
+              <div data-tour="scenario-modal-phone">
                 <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Assign Phone Numbers</label>
                 <div className="space-y-1.5 max-h-32 overflow-y-auto border border-[#E3E1DB] rounded-md p-2">
                   {phoneNumbers.length === 0

@@ -495,6 +495,14 @@ export default function OnboardingPage() {
     if (step === 3 && isGoogleUser) setStep(4)
   }, [step, isGoogleUser])
 
+  // If user navigates back to the phone step and it's already verified, auto-advance
+  useEffect(() => {
+    if (step === 4 && whatsappVerified) {
+      const t = setTimeout(() => setStep(5), 800)
+      return () => clearTimeout(t)
+    }
+  }, [step, whatsappVerified])
+
   // Load suggested (recycled) numbers when entering step 5, auto-select the first one
   useEffect(() => {
     if (step !== 5) return
@@ -1044,7 +1052,17 @@ export default function OnboardingPage() {
                     )}
                   </>
                 ) : (
-                  <SuccessBanner title="Phone verified" subtitle="Redirecting to next step..." />
+                  <>
+                    <SuccessBanner title="Phone verified" subtitle="Redirecting to next step..." />
+                    <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+                      <button onClick={() => { setStep(isGoogleUser ? 2 : 3); setError('') }} style={btnSecondary}>
+                        <ArrowLeft /> Back
+                      </button>
+                      <button onClick={() => setStep(5)} style={{ ...btnPrimary, flex: 1 }}>
+                        Continue <ArrowRight />
+                      </button>
+                    </div>
+                  </>
                 )}
               </div>
             </>

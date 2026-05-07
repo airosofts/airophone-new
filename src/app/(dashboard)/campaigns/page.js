@@ -54,6 +54,17 @@ export default function CampaignsPage() {
   }, [fetchCampaigns])
 
   useEffect(() => {
+    const open = () => setShowCreateCampaign(true)
+    const close = () => setShowCreateCampaign(false)
+    window.addEventListener('tour:open-campaign-modal', open)
+    window.addEventListener('tour:close-campaign-modal', close)
+    return () => {
+      window.removeEventListener('tour:open-campaign-modal', open)
+      window.removeEventListener('tour:close-campaign-modal', close)
+    }
+  }, [])
+
+  useEffect(() => {
     const fetchData = async () => {
       try {
         const user = getCurrentUser()
@@ -678,7 +689,7 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-6">
       <div className="bg-[#FFFFFF] rounded-xl shadow-2xl flex flex-col" style={{ width: '90vw', maxWidth: '1100px', height: '88vh' }}>
         {/* Header */}
-        <div className="flex items-center justify-between px-8 py-5 border-b border-[#E3E1DB] flex-shrink-0">
+        <div data-tour="campaign-modal-header" className="flex items-center justify-between px-8 py-5 border-b border-[#E3E1DB] flex-shrink-0">
           <h3 className="text-lg font-semibold text-[#131210]">New Campaign</h3>
           <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1.5 hover:bg-[#F7F6F3] rounded-md transition-colors">
             <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
@@ -691,7 +702,7 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
         <form onSubmit={handleSubmit} className="flex flex-1 min-h-0">
           {/* Left column */}
           <div className="flex-1 flex flex-col px-8 py-6 border-r border-[#E3E1DB] overflow-y-auto space-y-5">
-            <div>
+            <div data-tour="campaign-modal-name">
               <label className="block text-sm font-medium text-[#5C5A55] mb-2">Campaign Name *</label>
               <input
                 type="text"
@@ -703,7 +714,7 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
               {errors.name && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.name}</p>}
             </div>
 
-            <div className="flex-1 flex flex-col">
+            <div data-tour="campaign-modal-message" className="flex-1 flex flex-col">
               <label className="block text-sm font-medium text-[#5C5A55] mb-2">Message *</label>
               <textarea
                 value={formData.message}
@@ -729,7 +740,7 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
           </div>
 
           {/* Right column */}
-          <div className="w-96 flex flex-col px-8 py-6 overflow-y-auto space-y-5 flex-shrink-0">
+          <div data-tour="campaign-modal-settings" className="w-96 flex flex-col px-8 py-6 overflow-y-auto space-y-5 flex-shrink-0">
             <div>
               <label className="block text-sm font-medium text-[#5C5A55] mb-2">Contact List *</label>
               <SearchableDropdown

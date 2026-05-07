@@ -68,7 +68,7 @@ export async function POST(request) {
             .select('id, referrer_workspace_id')
             .eq('referred_workspace_id', sc.workspace_id)
             .eq('status', 'pending')
-            .single()
+            .maybeSingle()
 
           if (referral) {
             const { data: settings } = await supabaseAdmin

@@ -9,7 +9,7 @@ const STEPS = [
     page: '/inbox',
     target: null,
     title: 'Welcome to AiroPhone! 👋',
-    body: "You're all set. Let's walk through the key features so you can hit the ground running. This only takes about 2 minutes.",
+    body: "You're all set. Let's walk through the key features so you can hit the ground running. This takes about 2 minutes.",
     tip: null,
   },
 
@@ -32,14 +32,14 @@ const STEPS = [
     page: '/inbox',
     target: '[data-tour="chat-window"]',
     title: 'The Chat Window',
-    body: 'Click any conversation on the left to open it here. You can read the full thread, send a reply, use a saved template, or start a call directly from this panel.',
+    body: 'Click any conversation on the left to open it here. Read the full thread, send a reply, use a saved template, or start a call directly from this panel.',
     tip: null,
   },
   {
     page: '/inbox',
     target: '[data-tour="contact-panel"]',
     title: 'Contact & AI Sidebar',
-    body: "On the right you'll see the contact's full details, your notes, tags, and which AI scenario is currently active for this conversation. You can switch scenarios or turn AI off from here.",
+    body: "On the right you'll see the contact's details, notes, tags, and which AI scenario is active. Switch scenarios or turn AI off from here.",
     tip: null,
   },
 
@@ -48,61 +48,101 @@ const STEPS = [
     page: '/contacts',
     target: null,
     title: 'Contacts',
-    body: "This is your contact database. Every person you've messaged or called shows up here. You can add contacts manually, import a CSV, and organize them into lists for campaigns.",
+    body: "This is your contact database. Every person you've messaged or called shows up here. Add contacts manually, import a CSV, or organize them into lists.",
     tip: null,
   },
   {
     page: '/contacts',
     target: '[data-tour="contacts-header"]',
     title: 'Add & Import Contacts',
-    body: 'Click "Add Contact" to add someone manually, or "Import CSV" to upload a spreadsheet. You can also create Contact Lists here — which you\'ll need before sending a campaign.',
-    tip: '💡 Tip: Import your existing customer list as a CSV to get started fast.',
+    body: 'Click "Add Contact" to add someone manually, or "Import CSV" to upload a spreadsheet. Create Contact Lists here too — required before sending a campaign.',
+    tip: '💡 Import your existing customer list as a CSV to get started fast.',
   },
 
-  // ── Campaigns ────────────────────────────────────────────────────────
+  // ── Campaigns — page overview ────────────────────────────────────────
   {
     page: '/campaigns',
     target: null,
     title: 'SMS Campaigns',
-    body: "Campaigns let you send a bulk SMS to an entire contact list at once — great for promotions, reminders, or announcements. Each campaign tracks delivery rates and responses.",
+    body: "Campaigns let you send a bulk SMS to an entire contact list at once — perfect for promotions, reminders, or announcements. Each campaign tracks delivery and responses.",
+    tip: null,
+  },
+  // ── Campaigns — open builder ─────────────────────────────────────────
+  {
+    page: '/campaigns',
+    target: '[data-tour="campaign-modal-header"]',
+    openModal: 'campaign',
+    title: 'Inside the Campaign Builder',
+    body: "We've opened the campaign builder for you. It has two sections: your message on the left and settings on the right. Let's walk through each.",
     tip: null,
   },
   {
     page: '/campaigns',
-    target: '[data-tour="campaigns-header"]',
-    title: 'Creating a Campaign',
-    body: 'To send a campaign: click "New Campaign", give it a name, select a Contact List, write your message, and choose to send it now or schedule it for later.',
+    target: '[data-tour="campaign-modal-name"]',
+    modal: 'campaign',
+    title: 'Campaign Name',
+    body: 'Give your campaign a clear name like "May Promo" or "Appointment Reminders" so you can find it later.',
     tip: null,
   },
   {
     page: '/campaigns',
-    target: '[data-tour="new-campaign-btn"]',
-    title: 'Try It — Click "New Campaign"',
-    body: 'This button opens the campaign builder. You\'ll set a name, pick your contact list, write the SMS message (with optional merge tags like {{first_name}}), then schedule or send immediately.',
-    tip: '💡 Tip: Always add an opt-out line like "Reply STOP to unsubscribe" to stay compliant.',
+    target: '[data-tour="campaign-modal-message"]',
+    modal: 'campaign',
+    title: 'SMS Message',
+    body: "Write the message your contacts will receive. Click a placeholder tag below the box — like {first_name} — to personalize each message automatically.",
+    tip: '💡 Always add "Reply STOP to unsubscribe" somewhere in your message to stay compliant.',
+  },
+  {
+    page: '/campaigns',
+    target: '[data-tour="campaign-modal-settings"]',
+    modal: 'campaign',
+    closeModalOnLeave: 'campaign',
+    title: 'Contact List & Sending',
+    body: "Choose which contact list to send to, which of your phone numbers to send from, and whether to send now or schedule for a specific date and time.",
+    tip: null,
   },
 
-  // ── Scenarios ────────────────────────────────────────────────────────
+  // ── Scenarios — page overview ────────────────────────────────────────
   {
     page: '/scenarios',
     target: null,
     title: 'AI Scenarios',
-    body: "Scenarios are AI-powered automation flows that respond to incoming messages on your behalf — 24/7. You write the instructions and the AI follows them for every conversation it's assigned to.",
+    body: "Scenarios are AI-powered automation flows that respond to incoming messages on your behalf — 24/7. Write the instructions once and the AI handles every conversation.",
+    tip: null,
+  },
+  // ── Scenarios — open builder ─────────────────────────────────────────
+  {
+    page: '/scenarios',
+    target: '[data-tour="scenario-modal-header"]',
+    openModal: 'scenario',
+    title: 'Inside the Scenario Builder',
+    body: "We've opened the scenario builder. Left side: name and AI instructions. Right side: phone numbers, contact assignments, and advanced options.",
     tip: null,
   },
   {
     page: '/scenarios',
-    target: '[data-tour="scenarios-header"]',
-    title: 'How Scenarios Work',
-    body: "Create a scenario with a name and custom AI instructions (e.g. 'You are a sales rep for X company. Answer questions about pricing and book demos.'). Then assign it to specific contacts from the inbox sidebar.",
+    target: '[data-tour="scenario-modal-name"]',
+    modal: 'scenario',
+    title: 'Scenario Name',
+    body: 'Give it a clear name that describes what this AI does — e.g. "Real Estate Lead Follow-up" or "Support Auto-Reply".',
     tip: null,
   },
   {
     page: '/scenarios',
-    target: '[data-tour="new-scenario-btn"]',
-    title: 'Try It — Click "New Scenario"',
-    body: 'This opens the scenario builder. Name it, write detailed instructions for the AI, choose which phone number it uses, and set follow-up actions. Once saved, assign it to any conversation.',
-    tip: '💡 Tip: The more specific your instructions, the better the AI performs.',
+    target: '[data-tour="scenario-modal-instructions"]',
+    modal: 'scenario',
+    title: 'AI Instructions',
+    body: "This is the most important field. Write detailed instructions for the AI — who it is, what topics it handles, and how to respond. Think of it as writing a script for a very smart assistant.",
+    tip: '💡 The more specific your instructions, the better the AI performs.',
+  },
+  {
+    page: '/scenarios',
+    target: '[data-tour="scenario-modal-phone"]',
+    modal: 'scenario',
+    closeModalOnLeave: 'scenario',
+    title: 'Phone Numbers & Contacts',
+    body: "Assign which of your phone numbers this scenario monitors. You can also pre-assign specific contacts or contact lists so the AI starts working on them immediately.",
+    tip: null,
   },
 
   // ── Analytics ────────────────────────────────────────────────────────
@@ -110,7 +150,7 @@ const STEPS = [
     page: '/analytics',
     target: null,
     title: 'Analytics',
-    body: "Get a full picture of your team's activity — messages sent and received, calls made, campaign delivery rates, and credit usage over time. Use this to understand what's working.",
+    body: "Get a full picture of your team's activity — messages sent and received, calls made, campaign delivery rates, and credit usage over time.",
     tip: null,
   },
 
@@ -119,8 +159,8 @@ const STEPS = [
     page: '/billing',
     target: null,
     title: 'Billing & Credits',
-    body: "Credits power SMS and AI replies. Your plan includes a monthly credit allowance that resets each billing period. You can top up at any time or enable auto-recharge so you never run out mid-campaign.",
-    tip: '💡 Tip: Calls are unlimited and don\'t use credits — only SMS and AI responses do.',
+    body: "Credits power SMS and AI replies. Your plan includes a monthly credit allowance that resets each billing period. Top up anytime or enable auto-recharge so you never run out mid-campaign.",
+    tip: "💡 Calls are unlimited and don't use credits — only SMS and AI responses do.",
   },
 ]
 
@@ -131,7 +171,6 @@ export default function ProductTour({ onDone }) {
   const [navigating, setNavigating] = useState(false)
   const router = useRouter()
   const pathname = usePathname()
-  const measureRef = useRef(null)
 
   useEffect(() => {
     const t = setTimeout(() => setMounted(true), 300)
@@ -145,13 +184,12 @@ export default function ProductTour({ onDone }) {
     setRect(el ? el.getBoundingClientRect() : null)
   }, [step])
 
-  // Re-measure after navigation settles
+  // Re-measure after navigation / step change settles
   useEffect(() => {
     if (!mounted) return
     setNavigating(false)
-    // Two passes: quick first, then again in case of slow render
     const t1 = setTimeout(measureTarget, 80)
-    const t2 = setTimeout(measureTarget, 400)
+    const t2 = setTimeout(measureTarget, 450)
     return () => { clearTimeout(t1); clearTimeout(t2) }
   }, [mounted, step, pathname, measureTarget])
 
@@ -161,16 +199,47 @@ export default function ProductTour({ onDone }) {
     return () => window.removeEventListener('resize', measureTarget)
   }, [mounted, measureTarget])
 
-  const dismiss = useCallback(() => onDone?.(), [onDone])
+  // Open modal when entering a step that requires it, then re-measure
+  useEffect(() => {
+    if (!mounted) return
+    const current = STEPS[step]
+    if (!current?.openModal) return
+    const t = setTimeout(() => {
+      window.dispatchEvent(new CustomEvent(`tour:open-${current.openModal}-modal`))
+      // Extra measurement passes after modal renders
+      setTimeout(measureTarget, 200)
+      setTimeout(measureTarget, 500)
+    }, 300)
+    return () => clearTimeout(t)
+  }, [step, mounted, measureTarget])
+
+  const dismiss = useCallback(() => {
+    // Close any open modal before dismissing
+    const current = STEPS[step]
+    if (current?.modal || current?.openModal) {
+      const modalName = current.modal || current.openModal
+      window.dispatchEvent(new CustomEvent(`tour:close-${modalName}-modal`))
+    }
+    onDone?.()
+  }, [onDone, step])
 
   const goToStep = useCallback((nextStep) => {
-    const nextPage = STEPS[nextStep]?.page
+    const currentData = STEPS[step]
+    const nextData = STEPS[nextStep]
+
+    // Close current modal if we're leaving it
+    const currentModal = currentData?.closeModalOnLeave || (currentData?.modal && !nextData?.modal ? currentData.modal : null)
+    if (currentModal) {
+      window.dispatchEvent(new CustomEvent(`tour:close-${currentModal}-modal`))
+    }
+
+    const nextPage = nextData?.page
     if (nextPage && nextPage !== pathname) {
       setNavigating(true)
       router.push(nextPage)
     }
     setStep(nextStep)
-  }, [pathname, router])
+  }, [pathname, router, step])
 
   const next = useCallback(() => {
     if (step < STEPS.length - 1) goToStep(step + 1)
@@ -190,11 +259,8 @@ export default function ProductTour({ onDone }) {
   const showSpotlight = rect && !navigating
 
   // ── Tooltip position ────────────────────────────────────────────────
-  // Always fixed bottom-center unless the target element sits in the lower third
-  // of the screen — in that case show it above the spotlight instead.
   let tooltipStyle
   if (!showSpotlight) {
-    // No spotlight → center on screen
     tooltipStyle = {
       position: 'fixed',
       top: '50%',
@@ -205,13 +271,11 @@ export default function ProductTour({ onDone }) {
     const vh = window.innerHeight
     const elementBottom = rect.bottom + PAD
     const elementTop = rect.top - PAD
-
-    const tooltipHeight = 220 // approximate
+    const tooltipHeight = 240
     const BOTTOM_MARGIN = 24
     const TOP_MARGIN = 24
 
     if (elementBottom + tooltipHeight + BOTTOM_MARGIN < vh) {
-      // Enough room below the element
       tooltipStyle = {
         position: 'fixed',
         top: elementBottom + 12,
@@ -219,7 +283,6 @@ export default function ProductTour({ onDone }) {
         transform: 'translateX(-50%)',
       }
     } else if (elementTop - tooltipHeight - TOP_MARGIN > 0) {
-      // Show above the element
       tooltipStyle = {
         position: 'fixed',
         top: elementTop - tooltipHeight - 12,
@@ -227,7 +290,6 @@ export default function ProductTour({ onDone }) {
         transform: 'translateX(-50%)',
       }
     } else {
-      // Fall back: fixed bottom-center of screen
       tooltipStyle = {
         position: 'fixed',
         bottom: 28,
@@ -265,7 +327,7 @@ export default function ProductTour({ onDone }) {
         width: showSpotlight ? rect.width + PAD * 2 : 0,
         height: showSpotlight ? rect.height + PAD * 2 : 0,
         borderRadius: 10,
-        boxShadow: showSpotlight ? '0 0 0 9999px rgba(0,0,0,0.45)' : 'none',
+        boxShadow: showSpotlight ? '0 0 0 9999px rgba(0,0,0,0.55)' : 'none',
         border: showSpotlight ? '2px solid rgba(214,59,31,0.8)' : 'none',
         zIndex: 9997,
         pointerEvents: 'none',
@@ -303,7 +365,6 @@ export default function ProductTour({ onDone }) {
 
         {/* Body */}
         <div style={{ padding: '13px 18px 16px' }}>
-          {/* Section badge on page change */}
           {isNewPage && (
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: 5,
