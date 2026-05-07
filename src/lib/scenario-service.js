@@ -31,30 +31,42 @@ export async function findMatchingScenario(recipientNumber, senderNumber) {
       .from('scenario_phone_numbers')
       .select(`
         scenario_id,
-        scenarios!inner (
+        scenarios (
           id,
           workspace_id,
           name,
           instructions,
           is_active,
+          enable_followups,
+          max_followup_attempts,
+          enable_business_hours,
+          business_hours_start,
+          business_hours_end,
+          business_hours_timezone,
+          auto_stop_keywords,
           restrict_to_contact_lists
         )
       `)
       .in('phone_number_id', phoneIds)
-      .eq('scenarios.is_active', true)
 
     if (phoneError) {
       console.error('Error finding scenarios:', phoneError)
       return null
     }
 
-    if (!scenarioPhoneNumbers || scenarioPhoneNumbers.length === 0) {
+    // Filter active scenarios in JS — avoids issues with PostgREST embedded table filters
+    const active = (scenarioPhoneNumbers || []).filter(item => item.scenarios?.is_active === true)
+
+    if (active.length === 0) {
       console.log(`No active scenarios found for phone ${recipientNumber}`)
       return null
     }
 
+    // Replace scenarioPhoneNumbers with active-only list
+    const filteredScenarios = active
+
     // Priority 1: Explicit individual contact assignment
-    for (const item of scenarioPhoneNumbers) {
+    for (const item of filteredScenarios) {
       const scenario = item.scenarios
 
       const { data: explicitMatch } = await supabaseAdmin
@@ -71,7 +83,7 @@ export async function findMatchingScenario(recipientNumber, senderNumber) {
     }
 
     // Priority 2: Contact list restriction — sender must be in one of the allowed lists
-    for (const item of scenarioPhoneNumbers) {
+    for (const item of filteredScenarios) {
       const scenario = item.scenarios
       const listIds = scenario.restrict_to_contact_lists
 

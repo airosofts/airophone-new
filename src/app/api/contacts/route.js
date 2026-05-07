@@ -4,6 +4,15 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
 import { getUserFromRequest, getWorkspaceFromRequest } from '@/lib/session-helper'
 
+function normalizePhone(phone) {
+  if (!phone) return phone
+  const digits = String(phone).replace(/\D/g, '')
+  if (digits.length === 10) return `+1${digits}`
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`
+  if (String(phone).startsWith('+')) return phone
+  return `+1${digits}`
+}
+
 // GET - Fetch contacts
 export async function GET(request) {
   try {
@@ -97,7 +106,7 @@ export async function POST(request) {
       first_name: first_name?.trim() || null,
       last_name: last_name?.trim() || null,
       business_name: business_name?.trim() || null,
-      phone_number: phone_number.trim(),
+      phone_number: normalizePhone(phone_number.trim()),
       email: email?.trim() || null,
       role: role?.trim() || null,
       custom_fields: custom_fields ?? null,
@@ -166,7 +175,7 @@ export async function PUT(request) {
     if (first_name !== undefined) updateData.first_name = first_name?.trim() || null
     if (last_name !== undefined) updateData.last_name = last_name?.trim() || null
     if (business_name !== undefined) updateData.business_name = business_name?.trim() || null
-    if (phone_number !== undefined) updateData.phone_number = phone_number.trim()
+    if (phone_number !== undefined) updateData.phone_number = normalizePhone(phone_number.trim())
     if (email !== undefined) updateData.email = email?.trim() || null
     if (role !== undefined) updateData.role = role?.trim() || null
     if (custom_fields !== undefined) updateData.custom_fields = custom_fields
