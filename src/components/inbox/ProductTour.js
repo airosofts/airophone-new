@@ -32,14 +32,7 @@ const STEPS = [
     page: '/inbox',
     target: '[data-tour="chat-window"]',
     title: 'The Chat Window',
-    body: 'Click any conversation on the left to open it here. Read the full thread, send a reply, use a saved template, or start a call directly from this panel.',
-    tip: null,
-  },
-  {
-    page: '/inbox',
-    target: '[data-tour="contact-panel"]',
-    title: 'Contact & AI Sidebar',
-    body: "On the right you'll see the contact's details, notes, tags, and which AI scenario is active. Switch scenarios or turn AI off from here.",
+    body: 'Click any conversation on the left to open it here. Read the full thread, reply, use a saved template, or start a call. A sidebar on the right shows the contact\'s details, notes, tags, and lets you assign or disable an AI scenario for that conversation.',
     tip: null,
   },
 
