@@ -252,7 +252,7 @@ export default function CampaignsPage() {
         {/* Main Card */}
         <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg overflow-hidden">
           {/* Card Header */}
-          <div className="px-4 py-3 border-b border-[#E3E1DB] space-y-2.5 md:space-y-0 md:flex md:items-center md:justify-between md:gap-4 md:px-5 md:py-3.5">
+          <div data-tour="campaigns-header" className="px-4 py-3 border-b border-[#E3E1DB] space-y-2.5 md:space-y-0 md:flex md:items-center md:justify-between md:gap-4 md:px-5 md:py-3.5">
             {/* Row 1: title + new button */}
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 min-w-0">
@@ -260,6 +260,7 @@ export default function CampaignsPage() {
                 <span className="hidden sm:inline text-[10px] font-medium text-[#9B9890] bg-[#F7F6F3] border border-[#E3E1DB] px-1.5 py-0.5 rounded whitespace-nowrap">Bulk SMS to contact lists</span>
               </div>
               <button
+                data-tour="new-campaign-btn"
                 onClick={() => setShowCreateCampaign(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-[#D63B1F] hover:bg-[#c23119] text-white text-sm font-medium rounded-md transition-colors whitespace-nowrap shrink-0"
               >

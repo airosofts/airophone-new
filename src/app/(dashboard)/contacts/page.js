@@ -394,7 +394,7 @@ export default function ContactsPage() {
         {tab === 'all' && (
           <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg overflow-hidden">
             {/* Header */}
-            <div className="px-4 md:px-5 py-3 md:py-3.5 border-b border-[#E3E1DB]">
+            <div data-tour="contacts-header" className="px-4 md:px-5 py-3 md:py-3.5 border-b border-[#E3E1DB]">
               {/* Mobile: two rows */}
               <div className="md:hidden space-y-2.5">
                 <div className="flex items-center justify-between gap-2">
