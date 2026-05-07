@@ -181,13 +181,14 @@ export async function POST(request) {
         redeemed_at: new Date().toISOString(),
       })
 
-      await supabaseAdmin.rpc('increment_coupon_uses', { coupon_id_param: couponRecord.id })
-        .catch(() =>
-          supabaseAdmin
-            .from('coupons')
-            .update({ uses_count: (couponRecord.uses_count || 0) + 1 })
-            .eq('id', couponRecord.id)
-        )
+      try {
+        await supabaseAdmin.rpc('increment_coupon_uses', { coupon_id_param: couponRecord.id })
+      } catch {
+        await supabaseAdmin
+          .from('coupons')
+          .update({ uses_count: (couponRecord.uses_count || 0) + 1 })
+          .eq('id', couponRecord.id)
+      }
     }
 
     // Save subscription record
