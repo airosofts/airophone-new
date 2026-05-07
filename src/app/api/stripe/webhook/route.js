@@ -211,15 +211,33 @@ export async function POST(request) {
           }
 
           for (const n of wsNumbers) {
-            await supabaseAdmin.from('recycled_numbers').upsert({
-              phone_number: n.phone_number,
-              original_workspace_id: sc.workspace_id,
-              telnyx_messaging_profile_id: n.messaging_profile_id,
-              status: 'quarantine',
-              quarantine_until: quarantineUntil,
-              entered_cycle_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            }, { onConflict: 'phone_number', ignoreDuplicates: false })
+            // Check if already in pool; update or insert to avoid partial-index upsert conflict
+            const { data: existing } = await supabaseAdmin
+              .from('recycled_numbers')
+              .select('id')
+              .eq('phone_number', n.phone_number)
+              .not('status', 'eq', 'assigned')
+              .maybeSingle()
+
+            if (existing) {
+              await supabaseAdmin.from('recycled_numbers').update({
+                status: 'quarantine',
+                quarantine_until: quarantineUntil,
+                original_workspace_id: sc.workspace_id,
+                telnyx_messaging_profile_id: n.messaging_profile_id,
+                updated_at: new Date().toISOString(),
+              }).eq('id', existing.id)
+            } else {
+              await supabaseAdmin.from('recycled_numbers').insert({
+                phone_number: n.phone_number,
+                original_workspace_id: sc.workspace_id,
+                telnyx_messaging_profile_id: n.messaging_profile_id,
+                status: 'quarantine',
+                quarantine_until: quarantineUntil,
+                entered_cycle_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              })
+            }
           }
         }
         break
@@ -258,16 +276,25 @@ export async function POST(request) {
 
         if (pendingNumbers?.length) {
           for (const n of pendingNumbers) {
-            // Only insert if not already in a more advanced state
-            await supabaseAdmin.from('recycled_numbers').upsert({
-              phone_number: n.phone_number,
-              original_workspace_id: sc.workspace_id,
-              telnyx_messaging_profile_id: n.messaging_profile_id,
-              status: 'pending',
-              failed_payment_at: new Date().toISOString(),
-              entered_cycle_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            }, { onConflict: 'phone_number', ignoreDuplicates: true }) // don't downgrade quarantine→pending
+            // Only insert if not already tracked (don't downgrade quarantine → pending)
+            const { data: existing } = await supabaseAdmin
+              .from('recycled_numbers')
+              .select('id, status')
+              .eq('phone_number', n.phone_number)
+              .not('status', 'eq', 'assigned')
+              .maybeSingle()
+
+            if (!existing) {
+              await supabaseAdmin.from('recycled_numbers').insert({
+                phone_number: n.phone_number,
+                original_workspace_id: sc.workspace_id,
+                telnyx_messaging_profile_id: n.messaging_profile_id,
+                status: 'pending',
+                failed_payment_at: new Date().toISOString(),
+                entered_cycle_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              })
+            }
           }
         }
         break

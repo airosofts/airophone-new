@@ -83,7 +83,7 @@ export default function Referrals() {
   useEffect(() => { load() }, [load])
 
   const referralLink = stats?.referral_code
-    ? `https://airophone.com/signup?ref=${stats.referral_code}`
+    ? `${typeof window !== 'undefined' ? window.location.origin : 'https://app.airophone.com'}/signup?ref=${stats.referral_code}`
     : null
 
   const handleCopy = () => {

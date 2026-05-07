@@ -155,9 +155,16 @@ export async function scheduleNextFollowup(conversationId, scenarioId) {
       return { success: true, scheduled: false, reason: 'no_more_stages' }
     }
 
-    // Calculate next follow-up time
+    // Calculate next follow-up time (respect wait_unit: minutes / hours / days)
     const nextFollowupAt = new Date()
-    nextFollowupAt.setMinutes(nextFollowupAt.getMinutes() + followupStage.wait_duration)
+    const unit = (followupStage.wait_unit || 'minutes').toLowerCase()
+    if (unit === 'days') {
+      nextFollowupAt.setDate(nextFollowupAt.getDate() + followupStage.wait_duration)
+    } else if (unit === 'hours') {
+      nextFollowupAt.setHours(nextFollowupAt.getHours() + followupStage.wait_duration)
+    } else {
+      nextFollowupAt.setMinutes(nextFollowupAt.getMinutes() + followupStage.wait_duration)
+    }
 
     // Update state with next follow-up time
     await supabaseAdmin

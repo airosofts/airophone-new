@@ -23,8 +23,15 @@ function AuthCallbackInner() {
 
   useEffect(() => {
     const code = searchParams.get('code')
+    const ref = searchParams.get('ref')
 
     if (!code) {
+      // Referral link was misconfigured to point here instead of /signup
+      // Recover by sending the user to signup with the ref code intact
+      if (ref) {
+        router.replace(`/signup?ref=${encodeURIComponent(ref)}`)
+        return
+      }
       setError('No authorization code found. Please try signing in again.')
       return
     }
