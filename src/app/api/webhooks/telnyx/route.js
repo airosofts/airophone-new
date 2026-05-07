@@ -403,6 +403,51 @@ async function handleMessageFinalized(event) {
 
     console.log(`Message finalized: ${telnyxMessageId}`)
 
+    // Simulate inbound when an outbound message lands on another workspace number.
+    // Telnyx never fires message.received for same-account deliveries.
+    if (payload.direction === 'outbound' && payload.to?.[0]?.status === 'delivered') {
+      const toNumber = normalizePhoneNumber(payload.to[0].phone_number)
+      const fromNumber = normalizePhoneNumber(payload.from?.phone_number)
+      const messageText = payload.text
+
+      if (!toNumber || !fromNumber || !messageText) return
+
+      // Check if the destination is a workspace phone number
+      const { data: destPhone } = await supabaseAdmin
+        .from('phone_numbers')
+        .select('id')
+        .like('phone_number', `%${toNumber.replace(/\D/g, '').slice(-10)}`)
+        .limit(1)
+        .maybeSingle()
+
+      if (!destPhone) return // Not a workspace number — real Telnyx inbound will fire
+
+      // Look up the originating message to check if it was AI-generated.
+      // AI messages have tokens_used > 0 and no sent_by — skip those to prevent loops.
+      const { data: origMsg } = await supabaseAdmin
+        .from('messages')
+        .select('sent_by, tokens_used, is_followup')
+        .eq('telnyx_message_id', telnyxMessageId)
+        .maybeSingle()
+
+      const isAiGenerated = origMsg && !origMsg.sent_by && (origMsg.tokens_used > 0 || origMsg.is_followup)
+      if (isAiGenerated) return
+
+      console.log(`[finalized] Simulating inbound: ${fromNumber} → ${toNumber}`)
+
+      // Simulate as if toNumber received a message from fromNumber
+      await handleIncomingMessage({
+        payload: {
+          from: { phone_number: fromNumber },
+          to: [{ phone_number: toNumber }],
+          text: messageText,
+          id: `sim_${telnyxMessageId}`
+        },
+        occurredAt: event.occurredAt,
+        messageId: `sim_${event.messageId}`
+      })
+    }
+
   } catch (error) {
     console.error('Error handling message finalized:', error)
   }
