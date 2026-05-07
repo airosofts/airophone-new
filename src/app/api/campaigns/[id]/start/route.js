@@ -173,10 +173,17 @@ async function processCampaignMessages(campaign, contacts, userId, workspaceId, 
         .select('*')
         .eq('phone_number', normalizedContactNumber)
         .eq('from_number', normalizedSenderNumber)
-        .eq('workspace_id', workspaceId)
         .maybeSingle()
 
       if (existingConversation) {
+        // Backfill workspace_id if missing (old conversations created before this field was set)
+        if (!existingConversation.workspace_id) {
+          await supabaseAdmin
+            .from('conversations')
+            .update({ workspace_id: workspaceId })
+            .eq('id', existingConversation.id)
+          existingConversation.workspace_id = workspaceId
+        }
         conversation = existingConversation
       } else {
         const { data: newConversation, error: conversationError } = await supabaseAdmin
@@ -198,7 +205,6 @@ async function processCampaignMessages(campaign, contacts, userId, workspaceId, 
             .select('*')
             .eq('phone_number', normalizedContactNumber)
             .eq('from_number', normalizedSenderNumber)
-            .eq('workspace_id', workspaceId)
             .single()
 
           conversation = fallbackConversation

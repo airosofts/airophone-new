@@ -72,27 +72,20 @@ export async function POST(request) {
     const csvText = await file.text()
     console.log('CSV content length:', csvText.length)
     console.log('CSV preview (first 200 chars):', csvText.substring(0, 200))
-    
-    // Split lines and filter out empty ones
-    const lines = csvText
-      .split(/\r?\n/)
-      .map(line => line.trim())
-      .filter(line => line.length > 0)
 
-    console.log('Total lines:', lines.length)
+    // Parse the entire CSV at once (handles quoted fields with embedded commas/newlines)
+    const rows = parseCSV(csvText).filter(row => row.some(cell => cell.length > 0))
 
-    if (lines.length < 2) {
+    console.log('Total rows:', rows.length)
+
+    if (rows.length < 2) {
       return NextResponse.json(
         { error: 'CSV must have at least a header row and one data row' },
         { status: 400 }
       )
     }
 
-    // Parse header line
-    const headerLine = lines[0]
-    console.log('Header line:', headerLine)
-    
-    const headers = parseCSVLine(headerLine).map(h => h.toLowerCase().trim())
+    const headers = rows[0].map(h => h.toLowerCase().trim())
     console.log('Parsed headers:', headers)
 
     // Build field mapping: header index -> field assignment
@@ -103,7 +96,7 @@ export async function POST(request) {
     const headerFieldMap = headers.map((h, i) => {
       if (columnMapping) {
         // Use provided mapping (keyed by original header)
-        const originalHeader = parseCSVLine(lines[0])[i]?.trim() || h
+        const originalHeader = rows[0][i]?.trim() || h
         return columnMapping[originalHeader] || 'skip'
       }
       // Auto-detect
@@ -142,9 +135,9 @@ export async function POST(request) {
     const contacts = []
     const errors = []
 
-    for (let i = 1; i < lines.length; i++) {
+    for (let i = 1; i < rows.length; i++) {
       try {
-        const values = parseCSVLine(lines[i])
+        const values = rows[i]
         console.log(`Row ${i}:`, values)
 
         const standard = {}
@@ -305,31 +298,61 @@ export async function POST(request) {
   }
 }
 
-// Helper function to parse CSV line handling quotes and commas
-function parseCSVLine(line) {
-  const result = []
-  let current = ''
+// RFC 4180-compliant CSV parser — handles quoted fields with embedded commas and newlines
+function parseCSV(text) {
+  const rows = []
+  let row = []
+  let cell = ''
   let inQuotes = false
-  
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i]
-    const nextChar = line[i + 1]
-    
-    if (char === '"') {
-      if (inQuotes && nextChar === '"') {
-        current += '"'
-        i++ // Skip next quote
+  let i = 0
+
+  while (i < text.length) {
+    const ch = text[i]
+    const next = text[i + 1]
+
+    if (inQuotes) {
+      if (ch === '"' && next === '"') {
+        cell += '"'
+        i += 2
+      } else if (ch === '"') {
+        inQuotes = false
+        i++
       } else {
-        inQuotes = !inQuotes
+        cell += ch
+        i++
       }
-    } else if (char === ',' && !inQuotes) {
-      result.push(current.trim())
-      current = ''
     } else {
-      current += char
+      if (ch === '"') {
+        inQuotes = true
+        i++
+      } else if (ch === ',') {
+        row.push(cell.trim())
+        cell = ''
+        i++
+      } else if (ch === '\r' && next === '\n') {
+        row.push(cell.trim())
+        rows.push(row)
+        row = []
+        cell = ''
+        i += 2
+      } else if (ch === '\n' || ch === '\r') {
+        row.push(cell.trim())
+        rows.push(row)
+        row = []
+        cell = ''
+        i++
+      } else {
+        cell += ch
+        i++
+      }
     }
   }
-  
-  result.push(current.trim())
-  return result
+
+  // Push last cell/row
+  if (cell.length > 0 || row.length > 0) {
+    row.push(cell.trim())
+    rows.push(row)
+  }
+
+  return rows
 }
