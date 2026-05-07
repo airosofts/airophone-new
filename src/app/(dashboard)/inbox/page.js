@@ -58,7 +58,12 @@ export default function InboxPage() {
   const [selectedConversation, setSelectedConversation] = useState(null)
   const [isCreatingNewConversation, setIsCreatingNewConversation] = useState(false)
 
-  const [filter, setFilter] = useState('all')
+  const [filter, setFilter] = useState(() => {
+    if (typeof window === 'undefined') return 'all'
+    return localStorage.getItem('inbox_filter') || 'all'
+  })
+  const restoredConvRef = useRef(false)
+  const lastConvIdRef = useRef(typeof window !== 'undefined' ? localStorage.getItem('inbox_last_conv') : null)
   const [searchQuery, setSearchQuery] = useState('')
   const [mobileView, setMobileView] = useState('list') // 'list' | 'chat' | 'contact'
   const [assignScenarioModal, setAssignScenarioModal] = useState(null) // { conversationId, phoneNumber }
@@ -249,6 +254,18 @@ export default function InboxPage() {
     return () => window.removeEventListener('notification-navigate', handleNotificationNavigate)
   }, [conversations])
 
+  // Restore last selected conversation after conversations load (once per mount)
+  useEffect(() => {
+    if (restoredConvRef.current || !conversations.length || !lastConvIdRef.current) return
+    const conv = conversations.find(c => c.id === lastConvIdRef.current)
+    if (conv) {
+      restoredConvRef.current = true
+      setSelectedConversation(conv)
+      setActiveConversation(conv.id)
+      // On mobile stay on list so user can see the highlighted item; on desktop the panel opens automatically
+    }
+  }, [conversations])
+
   // Keep sidebar unread badges in sync with conversations state
   useEffect(() => {
     if (!selectedPhoneNumber?.phoneNumber || !conversations.length) return
@@ -292,8 +309,8 @@ export default function InboxPage() {
     setActiveConversation(conversation.id)
     setSelectedConversation(conversation)
     setIsCreatingNewConversation(false)
-    setMobileView('chat') // Switch to chat view on mobile
-    // Refresh conversation names from contacts (in background, no reorder)
+    setMobileView('chat')
+    localStorage.setItem('inbox_last_conv', conversation.id)
     refetch(false)
   }
 
@@ -324,7 +341,8 @@ export default function InboxPage() {
     setActiveConversation(null)
     setSelectedConversation(null)
     setIsCreatingNewConversation(false)
-    setMobileView('list') // Go back to list on mobile
+    setMobileView('list')
+    localStorage.removeItem('inbox_last_conv')
   }
 
   const handleNewConversationCreated = (conversation) => {
@@ -882,7 +900,7 @@ export default function InboxPage() {
           {inboxTab === 'chats' && (
             <>
               <div style={{ padding: '8px 12px', borderBottom: '1px solid #E3E1DB' }}>
-                <FilterTabs currentFilter={filter} onFilterChange={setFilter} conversations={filteredConversations} />
+                <FilterTabs currentFilter={filter} onFilterChange={(f) => { setFilter(f); localStorage.setItem('inbox_filter', f) }} conversations={filteredConversations} />
               </div>
               <div style={{ padding: '8px 12px', borderBottom: '1px solid #E3E1DB' }}>
                 <input
