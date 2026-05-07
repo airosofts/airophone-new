@@ -452,9 +452,9 @@ export default function OnboardingPage() {
   const [searchingNumbers, setSearchingNumbers] = useState(false)
   const [purchasingNumber, setPurchasingNumber] = useState(null)
   const [selectedPhoneNumber, setSelectedPhoneNumber] = useState(null)
-  const [numberTab, setNumberTab] = useState('search')
   const [suggestedNumbers, setSuggestedNumbers] = useState([])
   const [loadingSuggested, setLoadingSuggested] = useState(false)
+  const [showSearch, setShowSearch] = useState(false)
 
   useEffect(() => {
     const u = getCurrentUser()
@@ -495,15 +495,24 @@ export default function OnboardingPage() {
     if (step === 3 && isGoogleUser) setStep(4)
   }, [step, isGoogleUser])
 
-  // Load suggested (recycled) numbers when entering step 5
+  // Load suggested (recycled) numbers when entering step 5, auto-select the first one
   useEffect(() => {
     if (step !== 5) return
     setLoadingSuggested(true)
+    setShowSearch(false)
     fetch('/api/recycled-numbers/available')
       .then(r => r.json())
-      .then(d => setSuggestedNumbers(d.numbers || []))
+      .then(d => {
+        const nums = d.numbers || []
+        setSuggestedNumbers(nums)
+        // Auto-select the first suggested number
+        if (nums.length > 0 && !selectedPhoneNumber) {
+          setSelectedPhoneNumber({ phone_number: nums[0].phone_number, is_recycled: true, recycled_id: nums[0].id })
+        }
+      })
       .catch(() => {})
       .finally(() => setLoadingSuggested(false))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step])
 
   const userName = user?.name?.split(' ')[0] || 'there'
@@ -1044,302 +1053,274 @@ export default function OnboardingPage() {
           {/* ════════════════════════════════════
              STEP 5: Get a Phone Number
           ════════════════════════════════════ */}
-          {step === 5 && (
-            <>
-              <StepHeader
-                kicker={`Step ${isGoogleUser ? 4 : 5} of ${totalSteps}`}
-                title="Get your phone number"
-                subtitle="Choose a new number or pick from our suggested pool — included free in your plan."
-                isMobile={isMobile}
-              />
+          {step === 5 && (() => {
+            const hasSuggested = !loadingSuggested && suggestedNumbers.length > 0
+            const sugNum = suggestedNumbers[0]
+            const fmtNum = (phone) => {
+              if (!phone) return ''
+              const d = phone.replace(/\D/g, '')
+              const l = d.startsWith('1') ? d.slice(1) : d
+              return l.length === 10 ? `(${l.slice(0,3)}) ${l.slice(3,6)}-${l.slice(6)}` : phone
+            }
+            return (
+              <>
+                <StepHeader
+                  kicker={`Step ${isGoogleUser ? 4 : 5} of ${totalSteps}`}
+                  title="Get your phone number"
+                  subtitle="Your number is included free in every plan. This is the number you'll use for calls and messages."
+                  isMobile={isMobile}
+                />
 
-              {/* Tabs — only show Suggested tab when there are recycled numbers */}
-              {suggestedNumbers.length > 0 && (
-                <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: `1px solid ${C.border}` }}>
-                  {[
-                    { key: 'search', label: 'Search Numbers' },
-                    { key: 'suggested', label: `Suggested (${suggestedNumbers.length})` },
-                  ].map(tab => (
-                    <button
-                      key={tab.key}
-                      onClick={() => { setNumberTab(tab.key); setError('') }}
-                      style={{
-                        padding: '10px 18px', border: 'none', background: 'none', cursor: 'pointer',
-                        fontSize: 13, fontWeight: numberTab === tab.key ? 600 : 400,
-                        color: numberTab === tab.key ? C.red : C.text2,
-                        borderBottom: `2px solid ${numberTab === tab.key ? C.red : 'transparent'}`,
-                        marginBottom: -1, fontFamily: C.sans, transition: 'color 0.15s',
-                      }}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* ── Search tab ── */}
-              {numberTab === 'search' && (
-                <>
+                {/* ── Suggested number hero (shown when available) ── */}
+                {loadingSuggested && (
                   <div style={{
                     background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14,
-                    padding: isMobile ? 20 : 28,
+                    padding: isMobile ? '28px 20px' : '36px 32px', textAlign: 'center',
                   }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14, marginBottom: 16 }}>
-                      <div>
-                        <label style={labelStyle}>State</label>
-                        <select value={searchState} onChange={e => setSearchState(e.target.value)} style={selectStyle}>
-                          <option value="">All States</option>
-                          {US_STATES.map(([val, name]) => <option key={val} value={val}>{name}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label style={labelStyle}>City <span style={{ color: C.text3, fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span></label>
-                        <input value={searchCity} onChange={e => setSearchCity(e.target.value)} placeholder="e.g. Dallas" style={inputStyle} onFocus={focusHandler} onBlur={blurHandler} />
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={async () => {
-                        setSearchingNumbers(true); setError(''); setAvailableNumbers([])
-                        try {
-                          const params = new URLSearchParams()
-                          params.set('country_code', 'US')
-                          if (searchState) params.set('administrative_area', searchState)
-                          if (searchCity) params.set('locality', searchCity)
-                          const res = await fetch(`/api/telnyx/search-numbers?${params}`)
-                          const data = await res.json()
-                          if (data.success && data.numbers?.length > 0) {
-                            setAvailableNumbers(data.numbers)
-                          } else {
-                            setAvailableNumbers([])
-                            setError('No numbers found. Try a different state or city.')
-                          }
-                        } catch { setError('Failed to search numbers') }
-                        finally { setSearchingNumbers(false) }
-                      }}
-                      disabled={searchingNumbers}
-                      style={{ ...btnPrimary, marginBottom: 18, opacity: searchingNumbers ? 0.6 : 1, cursor: searchingNumbers ? 'not-allowed' : 'pointer' }}
-                      onMouseEnter={e => { if (!searchingNumbers) e.currentTarget.style.opacity = '0.88' }}
-                      onMouseLeave={e => { if (!searchingNumbers) e.currentTarget.style.opacity = '1' }}
-                    >
-                      {searchingNumbers ? 'Searching...' : (
-                        <>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                          Search available numbers
-                        </>
-                      )}
-                    </button>
-
-                    <ErrorBanner error={error} />
+                    <div style={{ fontSize: 13, color: C.text3 }}>Finding your number...</div>
                   </div>
+                )}
 
-                  {availableNumbers.length > 0 && (
-                    <div style={{ marginTop: 20 }}>
-                      <div style={{
-                        fontFamily: C.mono, fontSize: 10.5, color: C.text3,
-                        letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 12,
-                      }}>
-                        {availableNumbers.length} numbers available — pick one to continue
-                      </div>
-                      <div style={{
-                        border: `1px solid ${C.border}`, borderRadius: 12,
-                        overflow: 'hidden', background: C.surface,
-                      }}>
-                        <div style={{ maxHeight: 400, overflowY: 'auto' }}>
-                          {availableNumbers.slice(0, 25).map((num, i) => {
-                            const phone = num.phone_number
-                            const digits = phone.replace(/\D/g, '')
-                            const local = digits.startsWith('1') ? digits.slice(1) : digits
-                            const formatted = local.length === 10 ? `(${local.slice(0,3)}) ${local.slice(3,6)}-${local.slice(6)}` : phone
-                            const isChosen = selectedPhoneNumber?.phone_number === phone
-                            const features = []
-                            if (num.features?.find(f => f.name === 'sms')) features.push('SMS')
-                            if (num.features?.find(f => f.name === 'voice')) features.push('Voice')
-                            if (num.features?.find(f => f.name === 'mms')) features.push('MMS')
-
-                            return (
-                              <div key={i} style={{
-                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                padding: '14px 18px',
-                                borderBottom: i < Math.min(availableNumbers.length, 25) - 1 ? `1px solid ${C.border}` : 'none',
-                                background: isChosen ? C.redBg : C.surface,
-                                transition: 'background 0.1s',
-                              }}
-                                onMouseEnter={e => { if (!isChosen) e.currentTarget.style.background = C.bg }}
-                                onMouseLeave={e => { e.currentTarget.style.background = isChosen ? C.redBg : C.surface }}
-                              >
-                                <div>
-                                  <div style={{ fontSize: 15, fontWeight: 600, color: isChosen ? C.red : C.text, fontFamily: C.mono, letterSpacing: '0.01em' }}>
-                                    {formatted}
-                                  </div>
-                                  <div style={{ display: 'flex', gap: 6, marginTop: 5, alignItems: 'center' }}>
-                                    {num.locality && <span style={{ fontSize: 12, color: C.text3, fontWeight: 300 }}>{num.locality}{num.administrative_area ? `, ${num.administrative_area}` : ''}</span>}
-                                    {features.map(f => (
-                                      <span key={f} style={{
-                                        fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 4,
-                                        fontFamily: C.mono, textTransform: 'uppercase', letterSpacing: '0.05em',
-                                        background: f === 'SMS' ? C.redBg : f === 'Voice' ? C.greenBg : C.bg2,
-                                        color: f === 'SMS' ? C.red : f === 'Voice' ? C.greenText : C.text3,
-                                      }}>{f}</span>
-                                    ))}
-                                  </div>
-                                </div>
-                                <button
-                                  onClick={() => { setSelectedPhoneNumber(num); setError('') }}
-                                  style={{
-                                    padding: '8px 20px', borderRadius: 8, flexShrink: 0,
-                                    background: isChosen ? C.red : C.text,
-                                    color: '#fff', border: 'none', fontSize: 13, fontWeight: 500,
-                                    cursor: 'pointer', fontFamily: C.sans, transition: 'opacity 0.15s',
-                                    letterSpacing: '-0.01em',
-                                  }}
-                                >
-                                  {isChosen ? 'Selected' : 'Select'}
-                                </button>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </div>
-
-                      {selectedPhoneNumber && !selectedPhoneNumber.is_recycled && (() => {
-                        const d = selectedPhoneNumber.phone_number.replace(/\D/g, '')
-                        const loc = d.startsWith('1') ? d.slice(1) : d
-                        const fmt = loc.length === 10 ? `(${loc.slice(0,3)}) ${loc.slice(3,6)}-${loc.slice(6)}` : selectedPhoneNumber.phone_number
-                        return (
-                          <div style={{
-                            borderTop: `1px solid ${C.redDim}`, background: C.redBg,
-                            padding: '12px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
-                          }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <div style={{ width: 8, height: 8, borderRadius: '50%', background: C.red, flexShrink: 0 }} />
-                              <span style={{ fontSize: 13, fontWeight: 600, color: C.red, fontFamily: C.mono }}>{fmt}</span>
-                              <span style={{ fontSize: 12, color: C.text2 }}>selected</span>
-                            </div>
-                            <span style={{ fontSize: 12, color: C.red, fontWeight: 500 }}>✓ Ready to continue</span>
-                          </div>
-                        )
-                      })()}
-
-                      <p style={{ fontSize: 12, color: C.text3, marginTop: 10, lineHeight: 1.5, fontWeight: 300 }}>
-                        Your first number is included in your plan. Pick one, then continue to billing.
-                      </p>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {/* ── Suggested tab ── */}
-              {numberTab === 'suggested' && (
-                <div style={{ marginTop: 4 }}>
+                {hasSuggested && !showSearch && (
                   <div style={{
-                    padding: '10px 14px', background: 'rgba(59,130,246,0.06)',
-                    border: '1px solid rgba(59,130,246,0.15)', borderRadius: 10,
-                    fontSize: 12.5, color: '#1d4ed8', marginBottom: 16, lineHeight: 1.5,
+                    background: C.surface, border: `2px solid ${C.red}`,
+                    borderRadius: 14, padding: isMobile ? '28px 20px' : '36px 32px',
+                    textAlign: 'center', boxShadow: `0 0 0 4px ${C.redBg}`,
                   }}>
-                    These numbers were previously used on AiroPhone and are ready for a new account. No carrier wait — you can start sending right away.
-                  </div>
-
-                  {loadingSuggested ? (
-                    <div style={{ textAlign: 'center', padding: 32, color: C.text3, fontSize: 13 }}>Loading suggestions...</div>
-                  ) : (
-                    <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, overflow: 'hidden', background: C.surface }}>
-                      {suggestedNumbers.map((num, i) => {
-                        const digits = num.phone_number.replace(/\D/g, '')
-                        const local = digits.startsWith('1') ? digits.slice(1) : digits
-                        const formatted = local.length === 10 ? `(${local.slice(0,3)}) ${local.slice(3,6)}-${local.slice(6)}` : num.phone_number
-                        const isChosen = selectedPhoneNumber?.phone_number === num.phone_number
-                        return (
-                          <div key={num.id} style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                            padding: '14px 18px',
-                            borderBottom: i < suggestedNumbers.length - 1 ? `1px solid ${C.border}` : 'none',
-                            background: isChosen ? C.redBg : C.surface, transition: 'background 0.1s',
-                          }}
-                            onMouseEnter={e => { if (!isChosen) e.currentTarget.style.background = C.bg }}
-                            onMouseLeave={e => { e.currentTarget.style.background = isChosen ? C.redBg : C.surface }}
-                          >
-                            <div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <span style={{ fontSize: 15, fontWeight: 600, color: isChosen ? C.red : C.text, fontFamily: C.mono }}>{formatted}</span>
-                                <span style={{
-                                  fontSize: 9, fontWeight: 600, padding: '2px 7px', borderRadius: 4,
-                                  fontFamily: C.mono, textTransform: 'uppercase', letterSpacing: '0.05em',
-                                  background: 'rgba(59,130,246,0.1)', color: '#1d4ed8',
-                                }}>Recycled</span>
-                              </div>
-                              <div style={{ fontSize: 12, color: C.text3, marginTop: 4, fontWeight: 300 }}>SMS · Voice · No purchase cost</div>
-                            </div>
-                            <button
-                              onClick={() => {
-                                setSelectedPhoneNumber({ phone_number: num.phone_number, is_recycled: true, recycled_id: num.id })
-                                setError('')
-                              }}
-                              style={{
-                                padding: '8px 20px', borderRadius: 8, flexShrink: 0,
-                                background: isChosen ? C.red : C.text,
-                                color: '#fff', border: 'none', fontSize: 13, fontWeight: 500,
-                                cursor: 'pointer', fontFamily: C.sans, transition: 'opacity 0.15s',
-                              }}
-                            >
-                              {isChosen ? 'Selected' : 'Select'}
-                            </button>
-                          </div>
-                        )
-                      })}
+                    <div style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      background: C.redBg, border: `1px solid ${C.redDim}`,
+                      borderRadius: 6, padding: '4px 12px', marginBottom: 20,
+                    }}>
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill={C.red}><circle cx="12" cy="12" r="10"/></svg>
+                      <span style={{ fontSize: 10.5, fontWeight: 600, color: C.red, fontFamily: C.mono, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                        Ready for you
+                      </span>
                     </div>
-                  )}
 
-                  {selectedPhoneNumber?.is_recycled && (() => {
-                    const d = selectedPhoneNumber.phone_number.replace(/\D/g, '')
-                    const loc = d.startsWith('1') ? d.slice(1) : d
-                    const fmt = loc.length === 10 ? `(${loc.slice(0,3)}) ${loc.slice(3,6)}-${loc.slice(6)}` : selectedPhoneNumber.phone_number
-                    return (
+                    <div style={{
+                      fontSize: isMobile ? 32 : 42, fontWeight: 700, color: C.text,
+                      fontFamily: C.mono, letterSpacing: '0.02em', marginBottom: 12,
+                    }}>
+                      {fmtNum(sugNum.phone_number)}
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 20 }}>
+                      {['SMS', 'Voice', 'MMS'].map(f => (
+                        <span key={f} style={{
+                          fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 4,
+                          fontFamily: C.mono, textTransform: 'uppercase', letterSpacing: '0.05em',
+                          background: C.bg2, color: C.text3,
+                        }}>{f}</span>
+                      ))}
+                    </div>
+
+                    <div style={{ fontSize: 13, color: C.text2, marginBottom: 6, fontWeight: 300 }}>
+                      US local number · included free · no additional purchase needed
+                    </div>
+
+                    {selectedPhoneNumber?.phone_number === sugNum.phone_number && (
                       <div style={{
-                        marginTop: 12, borderRadius: 10, background: C.redBg, border: `1px solid ${C.redDim}`,
-                        padding: '12px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                        display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8,
+                        fontSize: 12, color: C.greenText, fontWeight: 500,
                       }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: C.red, flexShrink: 0 }} />
-                          <span style={{ fontSize: 13, fontWeight: 600, color: C.red, fontFamily: C.mono }}>{fmt}</span>
-                          <span style={{ fontSize: 12, color: C.text2 }}>selected</span>
-                        </div>
-                        <span style={{ fontSize: 12, color: C.red, fontWeight: 500 }}>✓ Ready to continue</span>
+                        <CheckIcon size={12} color={C.greenText} />
+                        Selected — ready to continue
                       </div>
-                    )
-                  })()}
+                    )}
+                  </div>
+                )}
 
-                  <p style={{ fontSize: 12, color: C.text3, marginTop: 10, lineHeight: 1.5, fontWeight: 300 }}>
-                    Recycled numbers are included free. Pick one, then continue to billing.
-                  </p>
+                {/* ── "Choose a different number" expand ── */}
+                {!loadingSuggested && (
+                  <div style={{ marginTop: hasSuggested && !showSearch ? 16 : 0 }}>
+                    {hasSuggested && !showSearch ? (
+                      <button
+                        onClick={() => { setShowSearch(true); setSelectedPhoneNumber(null) }}
+                        style={{
+                          width: '100%', background: 'none', border: 'none', cursor: 'pointer',
+                          fontSize: 13, color: C.text3, fontFamily: C.sans, padding: '10px 0',
+                          textDecoration: 'underline', textUnderlineOffset: 3,
+                        }}
+                      >
+                        I want to choose a different number →
+                      </button>
+                    ) : (
+                      /* ── Search UI (default if no suggestions, or after clicking "different number") ── */
+                      <div>
+                        {hasSuggested && showSearch && (
+                          <button
+                            onClick={() => {
+                              setShowSearch(false)
+                              setAvailableNumbers([])
+                              setSelectedPhoneNumber({ phone_number: sugNum.phone_number, is_recycled: true, recycled_id: sugNum.id })
+                            }}
+                            style={{
+                              background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 16px',
+                              fontSize: 13, color: C.text3, fontFamily: C.sans, display: 'flex', alignItems: 'center', gap: 4,
+                            }}
+                          >
+                            <ArrowLeft /> Use suggested number instead
+                          </button>
+                        )}
+
+                        <div style={{
+                          background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14,
+                          padding: isMobile ? 20 : 28,
+                        }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14, marginBottom: 16 }}>
+                            <div>
+                              <label style={labelStyle}>State</label>
+                              <select value={searchState} onChange={e => setSearchState(e.target.value)} style={selectStyle}>
+                                <option value="">All States</option>
+                                {US_STATES.map(([val, name]) => <option key={val} value={val}>{name}</option>)}
+                              </select>
+                            </div>
+                            <div>
+                              <label style={labelStyle}>City <span style={{ color: C.text3, fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span></label>
+                              <input value={searchCity} onChange={e => setSearchCity(e.target.value)} placeholder="e.g. Dallas" style={inputStyle} onFocus={focusHandler} onBlur={blurHandler} />
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={async () => {
+                              setSearchingNumbers(true); setError(''); setAvailableNumbers([])
+                              try {
+                                const params = new URLSearchParams()
+                                params.set('country_code', 'US')
+                                if (searchState) params.set('administrative_area', searchState)
+                                if (searchCity) params.set('locality', searchCity)
+                                const res = await fetch(`/api/telnyx/search-numbers?${params}`)
+                                const data = await res.json()
+                                if (data.success && data.numbers?.length > 0) {
+                                  setAvailableNumbers(data.numbers)
+                                } else {
+                                  setAvailableNumbers([])
+                                  setError('No numbers found. Try a different state or city.')
+                                }
+                              } catch { setError('Failed to search numbers') }
+                              finally { setSearchingNumbers(false) }
+                            }}
+                            disabled={searchingNumbers}
+                            style={{ ...btnPrimary, marginBottom: availableNumbers.length || error ? 18 : 0, opacity: searchingNumbers ? 0.6 : 1, cursor: searchingNumbers ? 'not-allowed' : 'pointer' }}
+                            onMouseEnter={e => { if (!searchingNumbers) e.currentTarget.style.opacity = '0.88' }}
+                            onMouseLeave={e => { if (!searchingNumbers) e.currentTarget.style.opacity = '1' }}
+                          >
+                            {searchingNumbers ? 'Searching...' : (
+                              <>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                Search available numbers
+                              </>
+                            )}
+                          </button>
+
+                          <ErrorBanner error={error} />
+                        </div>
+
+                        {availableNumbers.length > 0 && (
+                          <div style={{ marginTop: 16 }}>
+                            <div style={{
+                              fontFamily: C.mono, fontSize: 10.5, color: C.text3,
+                              letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 10,
+                            }}>
+                              {availableNumbers.length} numbers found — pick one
+                            </div>
+                            <div style={{ border: `1px solid ${C.border}`, borderRadius: 12, overflow: 'hidden', background: C.surface }}>
+                              <div style={{ maxHeight: 340, overflowY: 'auto' }}>
+                                {availableNumbers.slice(0, 25).map((num, i) => {
+                                  const phone = num.phone_number
+                                  const isChosen = selectedPhoneNumber?.phone_number === phone
+                                  const digits = phone.replace(/\D/g, '')
+                                  const local = digits.startsWith('1') ? digits.slice(1) : digits
+                                  const formatted = local.length === 10 ? `(${local.slice(0,3)}) ${local.slice(3,6)}-${local.slice(6)}` : phone
+                                  const features = []
+                                  if (num.features?.find(f => f.name === 'sms')) features.push('SMS')
+                                  if (num.features?.find(f => f.name === 'voice')) features.push('Voice')
+                                  if (num.features?.find(f => f.name === 'mms')) features.push('MMS')
+                                  return (
+                                    <div key={i} style={{
+                                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                      padding: '13px 18px',
+                                      borderBottom: i < Math.min(availableNumbers.length, 25) - 1 ? `1px solid ${C.border}` : 'none',
+                                      background: isChosen ? C.redBg : C.surface, transition: 'background 0.1s',
+                                    }}
+                                      onMouseEnter={e => { if (!isChosen) e.currentTarget.style.background = C.bg }}
+                                      onMouseLeave={e => { e.currentTarget.style.background = isChosen ? C.redBg : C.surface }}
+                                    >
+                                      <div>
+                                        <div style={{ fontSize: 15, fontWeight: 600, color: isChosen ? C.red : C.text, fontFamily: C.mono }}>{formatted}</div>
+                                        <div style={{ display: 'flex', gap: 6, marginTop: 4, alignItems: 'center' }}>
+                                          {num.locality && <span style={{ fontSize: 12, color: C.text3, fontWeight: 300 }}>{num.locality}{num.administrative_area ? `, ${num.administrative_area}` : ''}</span>}
+                                          {features.map(f => (
+                                            <span key={f} style={{
+                                              fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 4,
+                                              fontFamily: C.mono, textTransform: 'uppercase', letterSpacing: '0.05em',
+                                              background: f === 'SMS' ? C.redBg : f === 'Voice' ? C.greenBg : C.bg2,
+                                              color: f === 'SMS' ? C.red : f === 'Voice' ? C.greenText : C.text3,
+                                            }}>{f}</span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                      <button
+                                        onClick={() => { setSelectedPhoneNumber(num); setError('') }}
+                                        style={{
+                                          padding: '7px 18px', borderRadius: 8, flexShrink: 0,
+                                          background: isChosen ? C.red : C.text, color: '#fff',
+                                          border: 'none', fontSize: 13, fontWeight: 500,
+                                          cursor: 'pointer', fontFamily: C.sans,
+                                        }}
+                                      >
+                                        {isChosen ? 'Selected' : 'Select'}
+                                      </button>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+
+                              {selectedPhoneNumber && !selectedPhoneNumber.is_recycled && (
+                                <div style={{
+                                  borderTop: `1px solid ${C.redDim}`, background: C.redBg,
+                                  padding: '11px 18px', display: 'flex', alignItems: 'center', gap: 8,
+                                }}>
+                                  <div style={{ width: 7, height: 7, borderRadius: '50%', background: C.red, flexShrink: 0 }} />
+                                  <span style={{ fontSize: 13, fontWeight: 600, color: C.red, fontFamily: C.mono }}>{fmtNum(selectedPhoneNumber.phone_number)}</span>
+                                  <span style={{ fontSize: 12, color: C.text2 }}>selected</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Continue to billing */}
+                <div style={{ display: 'flex', gap: 10, marginTop: 28 }}>
+                  <button onClick={() => setStep(4)} style={btnSecondary}>
+                    <ArrowLeft /> Back
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!selectedPhoneNumber) return
+                      await fetch('/api/onboarding/save', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'x-user-id': user.userId, 'x-workspace-id': user.workspaceId },
+                        body: JSON.stringify({ selected_phone_number: selectedPhoneNumber.phone_number }),
+                      }).catch(() => {})
+                      setStep(6)
+                    }}
+                    disabled={!selectedPhoneNumber}
+                    style={{ ...btnPrimary, flex: 1, opacity: selectedPhoneNumber ? 1 : 0.4, cursor: selectedPhoneNumber ? 'pointer' : 'not-allowed' }}
+                    onMouseEnter={e => { if (selectedPhoneNumber) e.currentTarget.style.opacity = '0.88' }}
+                    onMouseLeave={e => { e.currentTarget.style.opacity = selectedPhoneNumber ? '1' : '0.4' }}
+                  >
+                    Continue to billing <ArrowRight />
+                  </button>
                 </div>
-              )}
-
-              {/* Continue to billing */}
-              <div style={{ display: 'flex', gap: 10, marginTop: 24 }}>
-                <button onClick={() => setStep(4)} style={btnSecondary}>
-                  <ArrowLeft /> Back
-                </button>
-                <button
-                  onClick={async () => {
-                    if (!selectedPhoneNumber) return
-                    await fetch('/api/onboarding/save', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json', 'x-user-id': user.userId, 'x-workspace-id': user.workspaceId },
-                      body: JSON.stringify({ selected_phone_number: selectedPhoneNumber.phone_number }),
-                    }).catch(() => {})
-                    setStep(6)
-                  }}
-                  disabled={!selectedPhoneNumber}
-                  style={{ ...btnPrimary, flex: 1, opacity: selectedPhoneNumber ? 1 : 0.4, cursor: selectedPhoneNumber ? 'pointer' : 'not-allowed' }}
-                  onMouseEnter={e => { if (selectedPhoneNumber) e.currentTarget.style.opacity = '0.88' }}
-                  onMouseLeave={e => { e.currentTarget.style.opacity = selectedPhoneNumber ? '1' : '0.4' }}
-                >
-                  Continue to billing <ArrowRight />
-                </button>
-              </div>
-            </>
-          )}
+              </>
+            )
+          })()}
 
           {/* ════════════════════════════════════
              STEP 6: Plan & Payment
