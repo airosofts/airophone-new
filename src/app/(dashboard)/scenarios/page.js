@@ -25,7 +25,12 @@ export default function ScenariosPage() {
     try {
       const response = await apiGet('/api/scenarios')
       const data = await response.json()
-      if (data.success) setScenarios(data.scenarios || [])
+      if (data.success) {
+        const updated = data.scenarios || []
+        setScenarios(updated)
+        // Keep selectedScenario in sync so modals don't show stale data after a save
+        setSelectedScenario(prev => prev ? (updated.find(s => s.id === prev.id) || prev) : null)
+      }
     } catch (error) {
       console.error('Error fetching scenarios:', error)
     } finally {

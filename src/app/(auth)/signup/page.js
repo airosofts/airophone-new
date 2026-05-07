@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
@@ -56,8 +56,10 @@ function SignupForm() {
   const inviteWid = searchParams.get('wid') || ''
   const inviteRoleParam = searchParams.get('role') || 'member'
   const refCode = searchParams.get('ref') || ''
+  const method = searchParams.get('method') || ''
 
-  const [mode, setMode] = useState('choose')
+  const [mode, setMode] = useState(method === 'email' ? 'email' : 'choose')
+  const autoGoogleFired = useRef(false)
   const [email, setEmail] = useState(inviteEmail)
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -70,6 +72,14 @@ function SignupForm() {
   useEffect(() => {
     if (inviteEmail) setEmail(inviteEmail)
   }, [inviteEmail])
+
+  useEffect(() => {
+    if (method === 'google' && !autoGoogleFired.current) {
+      autoGoogleFired.current = true
+      handleGoogleSignup()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleGoogleSignup = () => {
     // Preserve invite and referral params through Google OAuth round-trip

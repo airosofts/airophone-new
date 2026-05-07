@@ -247,9 +247,10 @@ async function processCampaignMessages(campaign, contacts, userId, workspaceId, 
         )
 
         if (deductionError || !deductionResult?.success) {
-          console.error('Error deducting from wallet:', deductionError || deductionResult)
-          // If wallet deduction fails (e.g., insufficient balance mid-campaign), mark as failed
-          throw new Error(deductionResult?.message || 'Wallet deduction failed')
+          // Message is already sent — log the billing issue but do NOT throw.
+          // Throwing here causes the catch block to mark the message as "failed"
+          // even though Telnyx accepted and delivered it.
+          console.warn('[campaign] Wallet deduction issue (non-fatal — message was sent):', deductionError?.message || deductionResult?.message)
         }
 
         // Update conversation timestamp - IMPORTANT for inbox ordering

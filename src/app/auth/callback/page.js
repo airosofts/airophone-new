@@ -36,11 +36,13 @@ function AuthCallbackInner() {
     try {
       setStatus('Setting up your account...')
 
-      // Read any pending invite params stored before Google OAuth redirect
+      // Read any pending params stored before Google OAuth redirect
       const inviteWorkspaceId = sessionStorage.getItem('invite_wid') || null
       const inviteRole = sessionStorage.getItem('invite_role') || null
+      const referralCode = sessionStorage.getItem('referral_code') || null
       sessionStorage.removeItem('invite_wid')
       sessionStorage.removeItem('invite_role')
+      sessionStorage.removeItem('referral_code')
 
       const res = await fetch('/api/auth/google', {
         method: 'POST',
@@ -49,6 +51,7 @@ function AuthCallbackInner() {
           code,
           redirect_uri: `${window.location.origin}/auth/callback`,
           ...(inviteWorkspaceId && { inviteWorkspaceId, inviteRole }),
+          ...(referralCode && { referralCode }),
         }),
       })
 
