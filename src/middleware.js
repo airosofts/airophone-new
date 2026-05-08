@@ -8,6 +8,7 @@ const PUBLIC_API_ROUTES = [
   '/api/auth/signup',
   '/api/auth/google',
   '/api/webhooks',   // Telnyx webhooks — no session, verified by signature
+  '/api/external',   // External API key endpoints — Bearer-token auth handled in route
 ]
 
 export async function middleware(request) {
