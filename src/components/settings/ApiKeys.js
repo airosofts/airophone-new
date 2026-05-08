@@ -255,7 +255,7 @@ export default function ApiKeys() {
               <span className="ml-auto text-[10px] text-[#9B9890] font-mono truncate">POST /api/external/sms/send</span>
             </div>
             <div className="overflow-x-auto">
-              <pre className="px-4 py-4 text-xs font-mono text-[#D4D1C9] leading-relaxed min-w-0">{`POST https://ap.airosofts.com/api/external/sms/send
+              <pre className="px-4 py-4 text-xs font-mono text-[#D4D1C9] leading-relaxed min-w-0">{`POST https://app.airophone.com/api/external/sms/send
 Authorization: Bearer airo_live_<your-key>
 Content-Type: application/json
 

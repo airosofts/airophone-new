@@ -5,7 +5,7 @@ const TELNYX_HEADERS = {
   'Content-Type': 'application/json'
 }
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://ap.airosofts.com'
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://app.airophone.com'
 const WEBHOOK_URL = `${APP_URL}/api/webhooks/telnyx/call`
 
 // POST /api/call-forwarding/setup-webhook
