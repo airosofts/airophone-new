@@ -70,6 +70,11 @@ function AuthCallbackInner() {
       }
 
       localStorage.setItem('user_session', JSON.stringify(data.session))
+      try {
+        const { identifyUser, trackEvent } = await import('@/lib/analytics')
+        identifyUser(data.session)
+        trackEvent(data.isNewUser ? 'user_signed_up' : 'user_logged_in', { method: 'google' })
+      } catch {}
       setStatus('Redirecting...')
       // Invited users go to inbox; brand-new users (no invite) go to onboarding
       router.push(data.isNewUser ? '/onboarding' : '/inbox')

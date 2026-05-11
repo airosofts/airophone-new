@@ -63,7 +63,7 @@ export async function POST(request, { params }) {
     }
 
     // Get contacts from selected lists (workspace-filtered)
-    const { data: contacts, error: contactsError } = await supabaseAdmin
+    const { data: rawContacts, error: contactsError } = await supabaseAdmin
       .from('contacts')
       .select('*')
       .eq('workspace_id', workspace.workspaceId)
@@ -75,6 +75,16 @@ export async function POST(request, { params }) {
         { error: 'Failed to fetch contacts' },
         { status: 500 }
       )
+    }
+
+    // Dedupe by normalized phone number — same contact may appear in multiple selected lists
+    const seenPhones = new Set()
+    const contacts = []
+    for (const c of (rawContacts || [])) {
+      const normalized = normalizePhoneNumber(c.phone_number)
+      if (!normalized || seenPhones.has(normalized)) continue
+      seenPhones.add(normalized)
+      contacts.push(c)
     }
 
     // Get current message rate for this workspace based on tiered pricing
@@ -115,14 +125,28 @@ export async function POST(request, { params }) {
       )
     }
 
-    // Update campaign status
-    await supabaseAdmin
+    // Atomically claim the campaign — only proceed if it's still in draft.
+    // This prevents a double-click / concurrent request from spawning two senders.
+    const { data: claimed, error: claimError } = await supabaseAdmin
       .from('campaigns')
-      .update({
-        status: 'running',
-        started_at: new Date().toISOString()
-      })
+      .update({ status: 'running', started_at: new Date().toISOString() })
       .eq('id', campaignId)
+      .eq('status', 'draft')
+      .select('id')
+      .maybeSingle()
+
+    if (claimError) {
+      console.error('Error claiming campaign:', claimError)
+      return NextResponse.json({ error: 'Failed to start campaign' }, { status: 500 })
+    }
+
+    if (!claimed) {
+      // Another request already moved it out of draft — abort silently
+      return NextResponse.json(
+        { error: 'Campaign is already running or has finished' },
+        { status: 409 }
+      )
+    }
 
     // Start sending messages in background
     processCampaignMessages(campaign, contacts, user.userId, workspace.workspaceId, messageRate)

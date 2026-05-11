@@ -57,23 +57,32 @@ export default function Referrals() {
 
   const [showWithdrawModal, setShowWithdrawModal] = useState(false)
   const [showHistoryModal, setShowHistoryModal] = useState(false)
+  const [showConvertModal, setShowConvertModal] = useState(false)
 
   const [wForm, setWForm] = useState({ method: 'paypal', email: '', bank_name: '', account_number: '', routing_number: '' })
-  const [wAmount, setWAmount] = useState('')
   const [wSubmitting, setWSubmitting] = useState(false)
   const [wError, setWError] = useState('')
+
+  const [cSubmitting, setCSubmitting] = useState(false)
+  const [cError, setCError] = useState('')
+  const [creditRate, setCreditRate] = useState(0.03)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [sRes, wRes] = await Promise.all([
+      const [sRes, wRes, mrRes] = await Promise.all([
         fetch('/api/referral/stats'),
         fetch('/api/referral/withdrawals'),
+        fetch('/api/wallet').catch(() => null),
       ])
       if (sRes.ok) setStats(await sRes.json())
       if (wRes.ok) {
         const d = await wRes.json()
         setWithdrawals(d.withdrawals || [])
+      }
+      if (mrRes?.ok) {
+        const w = await mrRes.json()
+        if (w?.messageRate) setCreditRate(Number(w.messageRate))
       }
     } finally {
       setLoading(false)
@@ -81,6 +90,20 @@ export default function Referrals() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  // Pre-fill withdraw form from the most recent payout method so users don't re-enter every time
+  useEffect(() => {
+    if (!withdrawals.length) return
+    const last = withdrawals[0]
+    if (!last?.payout_details) return
+    setWForm({
+      method: last.method || 'paypal',
+      email: last.payout_details.email || '',
+      bank_name: last.payout_details.bank_name || '',
+      account_number: last.payout_details.account_number || '',
+      routing_number: last.payout_details.routing_number || '',
+    })
+  }, [withdrawals])
 
   const referralLink = stats?.referral_code
     ? `${typeof window !== 'undefined' ? window.location.origin : 'https://app.airophone.com'}/signup?ref=${stats.referral_code}`
@@ -95,9 +118,17 @@ export default function Referrals() {
 
   const handleWithdraw = async () => {
     setWError('')
-    const amt = parseFloat(wAmount)
-    if (!wAmount || isNaN(amt) || amt <= 0) { setWError('Enter a valid amount'); return }
-    if (amt > (stats?.balance || 0)) { setWError('Amount exceeds available balance'); return }
+    const amt = Number(stats?.balance || 0)
+    if (amt <= 0) { setWError('No balance available'); return }
+
+    if (wForm.method === 'paypal' && !wForm.email) {
+      setWError('Enter your PayPal email')
+      return
+    }
+    if (wForm.method === 'bank' && (!wForm.bank_name || !wForm.account_number || !wForm.routing_number)) {
+      setWError('Fill in all bank fields')
+      return
+    }
 
     const payout_details = wForm.method === 'paypal'
       ? { email: wForm.email }
@@ -114,13 +145,35 @@ export default function Referrals() {
       if (!res.ok) { setWError(data.error || 'Failed to submit request'); return }
 
       setShowWithdrawModal(false)
-      setWAmount('')
-      setWForm({ method: 'paypal', email: '', bank_name: '', account_number: '', routing_number: '' })
       await load()
     } finally {
       setWSubmitting(false)
     }
   }
+
+  const handleConvert = async () => {
+    setCError('')
+    const amt = Number(stats?.balance || 0)
+    if (amt < 5) { setCError('Need at least $5 balance to convert'); return }
+    setCSubmitting(true)
+    try {
+      const res = await fetch('/api/referral/convert-to-credits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: amt }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setCError(data.error || 'Failed to convert'); return }
+      setShowConvertModal(false)
+      await load()
+    } finally {
+      setCSubmitting(false)
+    }
+  }
+
+  const pendingWithdrawal = withdrawals.find(w => w.status === 'pending' || w.status === 'processing')
+  const balance = Number(stats?.balance || 0)
+  const estimatedCredits = Math.floor(balance / creditRate)
 
   if (loading) {
     return (
@@ -143,20 +196,65 @@ export default function Referrals() {
         </p>
       </div>
 
-      {/* Balance cards */}
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          { label: 'Available Balance',  value: fmt(stats?.balance),           highlight: true },
-          { label: 'Lifetime Earned',    value: fmt(stats?.lifetime_earned),    highlight: false },
-          { label: 'Total Withdrawn',    value: fmt(stats?.lifetime_withdrawn), highlight: false },
-        ].map(card => (
-          <div key={card.label} className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-xl px-4 py-4">
-            <p className="text-[11px] font-medium text-[#9B9890] uppercase tracking-widest mb-1.5">{card.label}</p>
-            <p className={`text-[22px] font-semibold tracking-tight ${card.highlight ? 'text-[#D63B1F]' : 'text-[#131210]'}`}>
-              {card.value}
-            </p>
+      {/* Your Referrals Wallet — credit-card-style balance + one-tap action */}
+      <div>
+        <h4 className="text-[13px] font-semibold text-[#131210] mb-2">Your Referrals Wallet</h4>
+        <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-2xl overflow-hidden">
+        <div className="px-6 py-5">
+          <div className="flex items-start justify-between mb-1">
+            <p className="text-[12px] font-medium text-[#9B9890] uppercase tracking-widest">Available balance</p>
+            {withdrawals.length > 0 && (
+              <button
+                onClick={() => setShowHistoryModal(true)}
+                className="text-[12px] text-[#9B9890] hover:text-[#131210] transition-colors"
+              >
+                History →
+              </button>
+            )}
           </div>
-        ))}
+          <p className="text-[34px] font-semibold tracking-tight text-[#131210] leading-none">
+            {fmt(balance)}
+          </p>
+          <p className="text-[12.5px] text-[#9B9890] mt-2">
+            Lifetime earned <span className="text-[#131210] font-medium">{fmt(stats?.lifetime_earned)}</span>
+            <span className="mx-2 text-[#D4D1C9]">·</span>
+            Withdrawn <span className="text-[#131210] font-medium">{fmt(stats?.lifetime_withdrawn)}</span>
+          </p>
+
+          {/* Pending withdrawal — show inline like the bank-app screenshot */}
+          {pendingWithdrawal && (
+            <div className="mt-4 flex items-center gap-2.5 px-3.5 py-2.5 bg-[#F7F6F3] border border-[#E3E1DB] rounded-lg">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9B9890" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+              </svg>
+              <div className="flex-1 min-w-0">
+                <p className="text-[12.5px] text-[#131210]">
+                  <span className="font-medium capitalize">{pendingWithdrawal.method}</span> payout {pendingWithdrawal.status}
+                </p>
+                <p className="text-[11.5px] text-[#9B9890]">{fmt(pendingWithdrawal.amount)} · {fmtDate(pendingWithdrawal.created_at)}</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Action row — single primary button (uses full balance) + secondary */}
+        <div className="px-6 pb-6 pt-1 flex flex-col sm:flex-row gap-2">
+          <button
+            onClick={() => { setShowWithdrawModal(true); setWError('') }}
+            disabled={balance <= 0 || !!pendingWithdrawal}
+            className="flex-1 py-3 rounded-xl bg-[#131210] text-white text-[14px] font-semibold tracking-tight hover:bg-[#3a3833] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Cash out {balance > 0 ? fmt(balance) : ''}
+          </button>
+          <button
+            onClick={() => { setShowConvertModal(true); setCError('') }}
+            disabled={balance < 5 || !!pendingWithdrawal}
+            className="flex-1 sm:flex-none px-4 py-3 rounded-xl border border-[#E3E1DB] bg-[#FFFFFF] text-[13.5px] font-medium text-[#131210] hover:bg-[#F7F6F3] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Convert to credits
+          </button>
+        </div>
+        </div>
       </div>
 
       {/* Referral link */}
@@ -289,25 +387,6 @@ export default function Referrals() {
         </div>
       )}
 
-      {/* Actions */}
-      <div className="flex gap-2">
-        <button
-          onClick={() => { setShowWithdrawModal(true); setWError('') }}
-          disabled={!stats?.balance || stats.balance <= 0}
-          className="px-4 py-2.5 rounded-lg bg-[#D63B1F] text-white text-[13px] font-medium hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          Request Payout
-        </button>
-        {withdrawals.length > 0 && (
-          <button
-            onClick={() => setShowHistoryModal(true)}
-            className="px-4 py-2.5 rounded-lg border border-[#E3E1DB] bg-[#FFFFFF] text-[13px] text-[#5C5A55] hover:bg-[#F7F6F3] transition-colors"
-          >
-            Payout History
-          </button>
-        )}
-      </div>
-
       {/* Referrals table */}
       <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-xl overflow-hidden">
         <div className="px-5 py-4 border-b border-[#E3E1DB]">
@@ -374,18 +453,10 @@ export default function Referrals() {
               </button>
             </div>
             <div className="px-6 py-5 space-y-4">
-              <div>
-                <p className="text-[12px] text-[#9B9890] mb-1.5">Available: <span className="font-semibold text-[#131210]">{fmt(stats?.balance)}</span></p>
-                <label className="block text-[12.5px] font-medium text-[#131210] mb-1">Amount (USD)</label>
-                <input
-                  type="number"
-                  min="1"
-                  step="0.01"
-                  value={wAmount}
-                  onChange={e => setWAmount(e.target.value)}
-                  placeholder="e.g. 25.00"
-                  className="w-full text-[13px] border border-[#E3E1DB] rounded-lg px-3 py-2.5 text-[#131210] focus:outline-none focus:border-[#D63B1F] bg-[#FFFFFF]"
-                />
+              {/* Amount summary — fixed to full balance */}
+              <div className="bg-[#F7F6F3] border border-[#E3E1DB] rounded-xl px-4 py-3.5 flex items-center justify-between">
+                <p className="text-[12.5px] text-[#9B9890]">You&rsquo;ll receive</p>
+                <p className="text-[18px] font-semibold tracking-tight text-[#131210]">{fmt(balance)}</p>
               </div>
 
               <div>
@@ -451,14 +522,63 @@ export default function Referrals() {
 
               <button
                 onClick={handleWithdraw}
-                disabled={wSubmitting}
-                className="w-full py-2.5 rounded-lg bg-[#D63B1F] text-white text-[13px] font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+                disabled={wSubmitting || balance <= 0}
+                className="w-full py-3 rounded-xl bg-[#131210] text-white text-[14px] font-semibold tracking-tight hover:bg-[#3a3833] transition-colors disabled:opacity-50"
               >
-                {wSubmitting ? 'Submitting…' : 'Submit Request'}
+                {wSubmitting ? 'Submitting…' : `Cash out ${fmt(balance)}`}
               </button>
               <p className="text-[12px] text-[#9B9890] text-center">
                 Payouts are processed manually within 3–5 business days.
               </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Convert-to-credits modal */}
+      {showConvertModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(19,18,16,0.5)' }}>
+          <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-2xl w-full max-w-md shadow-xl">
+            <div className="px-6 py-5 border-b border-[#E3E1DB] flex items-center justify-between">
+              <h3 className="text-[15px] font-semibold text-[#131210]">Convert to Credits</h3>
+              <button onClick={() => setShowConvertModal(false)} className="text-[#9B9890] hover:text-[#131210] transition-colors">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div className="bg-[#F7F6F3] border border-[#E3E1DB] rounded-xl px-4 py-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-[12.5px] text-[#9B9890]">Convert</p>
+                  <p className="text-[15px] font-semibold text-[#131210]">{fmt(balance)}</p>
+                </div>
+                <div className="border-t border-[#E3E1DB] -mx-4 mb-3" />
+                <div className="flex items-center justify-between">
+                  <p className="text-[12.5px] text-[#9B9890]">You&rsquo;ll get</p>
+                  <p className="text-[20px] font-semibold tracking-tight text-[#D63B1F]">
+                    {estimatedCredits.toLocaleString()} credits
+                  </p>
+                </div>
+                <p className="text-[11.5px] text-[#9B9890] mt-1 text-right">
+                  at ${creditRate}/credit (your current rate)
+                </p>
+              </div>
+
+              <p className="text-[12.5px] text-[#5C5A55] leading-[1.55]">
+                Credits are added to your wallet immediately and can be used for SMS sends. This action cannot be reversed.
+              </p>
+
+              {cError && <p className="text-[12.5px] text-[#D63B1F]">{cError}</p>}
+
+              <button
+                onClick={handleConvert}
+                disabled={cSubmitting || balance < 5}
+                className="w-full py-3 rounded-xl bg-[#D63B1F] text-white text-[14px] font-semibold tracking-tight hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {cSubmitting ? 'Converting…' : `Add ${estimatedCredits.toLocaleString()} credits to wallet`}
+              </button>
+              {balance < 5 && (
+                <p className="text-[12px] text-[#9B9890] text-center">Minimum $5 balance required.</p>
+              )}
             </div>
           </div>
         </div>

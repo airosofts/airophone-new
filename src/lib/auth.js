@@ -234,5 +234,9 @@ export async function logout() {
   }
 
   localStorage.removeItem('user_session')
+  try {
+    const { resetIdentity } = await import('./analytics')
+    resetIdentity()
+  } catch {}
   window.location.href = '/login'
 }

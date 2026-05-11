@@ -87,6 +87,11 @@ function LoginForm() {
       }
 
       localStorage.setItem('user_session', JSON.stringify(data.session))
+      try {
+        const { identifyUser, trackEvent } = await import('@/lib/analytics')
+        identifyUser(data.session)
+        trackEvent('user_logged_in', { method: 'email' })
+      } catch {}
       router.push('/inbox')
     } catch (err) {
       setError(err.message)

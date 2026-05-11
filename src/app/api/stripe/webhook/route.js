@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { supabaseAdmin } from '@/lib/supabase-server'
+import { getQuarantineUntilIso } from '@/lib/quarantine'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
 
@@ -202,8 +203,8 @@ export async function POST(request) {
           status: 'completed',
         })
 
-        // Queue workspace phone numbers for recycling (quarantine for 30 days)
-        const quarantineUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+        // Queue workspace phone numbers for recycling (quarantine period varies by tenure)
+        const quarantineUntil = await getQuarantineUntilIso(sc.workspace_id)
         const { data: wsNumbers } = await supabaseAdmin
           .from('phone_numbers')
           .select('phone_number, messaging_profile_id')
@@ -286,7 +287,7 @@ export async function POST(request) {
 
         if (wsNumbers?.length) {
           const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-          const quarantineUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+          const quarantineUntil = await getQuarantineUntilIso(sc.workspace_id)
           const profileIdsToDelete = new Set()
 
           for (const n of wsNumbers) {

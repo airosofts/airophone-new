@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
+import { getQuarantineUntilIso } from '@/lib/quarantine'
 
 export async function GET(request) {
   try {
@@ -47,7 +48,7 @@ export async function GET(request) {
       // Trial expired 7+ days ago but quarantine not yet triggered — do it now
       if (trialExpired && trialExpiredDaysAgo >= 7 && !numbersQuarantined) {
         try {
-          const quarantineUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+          const quarantineUntil = await getQuarantineUntilIso(workspaceId)
           const { data: wsNumbers } = await supabaseAdmin
             .from('phone_numbers')
             .select('phone_number, messaging_profile_id')

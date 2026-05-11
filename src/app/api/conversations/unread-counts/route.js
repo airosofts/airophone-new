@@ -18,32 +18,49 @@ export async function GET(request) {
 
     const wsPhones = (phoneRows || []).map(p => p.phone_number)
     if (!wsPhones.length) return NextResponse.json({ counts: {} })
+    const wsPhonesSet = new Set(wsPhones)
 
-    // Get all conversations for these phone numbers
-    const { data: convs } = await supabaseAdmin
-      .from('conversations')
-      .select('id, from_number')
-      .in('from_number', wsPhones)
+    // Fetch blocked phone numbers for this workspace (same logic as /api/conversations)
+    const { data: blockedRows } = await supabaseAdmin
+      .from('blocked_contacts')
+      .select('phone_number')
+      .eq('workspace_id', workspace.workspaceId)
 
-    if (!convs?.length) return NextResponse.json({ counts: {} })
+    const blockedNumbers = new Set((blockedRows || []).map(r => r.phone_number))
 
-    const convIds = convs.map(c => c.id)
-    const convPhoneMap = Object.fromEntries(convs.map(c => [c.id, c.from_number]))
-
-    // Get distinct conversation_ids that have at least one unread inbound message
-    const { data: unreadRows } = await supabaseAdmin
+    // Query unread inbound messages with their conversation joined.
+    // Starting from messages (filtered by read_at IS NULL) is much smaller
+    // than fetching every conversation, and avoids the PostgREST 1000-row
+    // limit that was truncating the conversations lookup and dropping
+    // unread badges for phones whose conversations fell outside the window.
+    const { data: unreadRows, error: unreadError } = await supabaseAdmin
       .from('messages')
-      .select('conversation_id')
-      .in('conversation_id', convIds)
+      .select('conversation_id, conversations!inner(from_number, phone_number)')
       .eq('direction', 'inbound')
       .is('read_at', null)
 
-    // Count unread conversations per workspace phone number
-    const unreadConvIds = new Set((unreadRows || []).map(r => r.conversation_id))
+    if (unreadError) {
+      console.error('unread-counts query error:', unreadError)
+      return NextResponse.json({ counts: {} })
+    }
+
+    if (!unreadRows?.length) return NextResponse.json({ counts: {} })
+
+    // Group by workspace phone, counting distinct conversations
+    const seenByPhone = {}
+    for (const row of unreadRows) {
+      const conv = row.conversations
+      if (!conv?.from_number) continue
+      if (!wsPhonesSet.has(conv.from_number)) continue
+      if (blockedNumbers.has(conv.phone_number)) continue
+
+      if (!seenByPhone[conv.from_number]) seenByPhone[conv.from_number] = new Set()
+      seenByPhone[conv.from_number].add(row.conversation_id)
+    }
+
     const counts = {}
-    for (const convId of unreadConvIds) {
-      const phone = convPhoneMap[convId]
-      if (phone) counts[phone] = (counts[phone] || 0) + 1
+    for (const [phone, set] of Object.entries(seenByPhone)) {
+      counts[phone] = set.size
     }
 
     return NextResponse.json({ counts })

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { getWorkspaceMessageRate } from '@/lib/pricing'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -58,15 +59,19 @@ export async function GET(request) {
       throw walletError
     }
 
+    // Current per-credit overage rate (also used for referral → credits conversion)
+    const messageRate = workspaceId ? await getWorkspaceMessageRate(workspaceId).catch(() => 0.03) : 0.03
+
     if (!wallet) {
-      return NextResponse.json({ success: true, balance: 0, credits: 0, currency: 'USD' })
+      return NextResponse.json({ success: true, balance: 0, credits: 0, currency: 'USD', messageRate })
     }
 
     return NextResponse.json({
       success: true,
       balance: parseFloat(wallet.credits || wallet.balance || 0),
       credits: parseFloat(wallet.credits || 0),
-      currency: wallet.currency
+      currency: wallet.currency,
+      messageRate,
     })
   } catch (error) {
     console.error('Error fetching wallet:', error)

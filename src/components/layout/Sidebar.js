@@ -134,8 +134,25 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
   }, [])
 
   useEffect(() => {
+    if (!user?.workspaceId) return
     fetchUnreadCounts()
-  }, [fetchUnreadCounts])
+
+    // Poll as a fallback in case realtime subscriptions miss events
+    // (Supabase realtime on the messages table can be unreliable across networks).
+    const pollInterval = setInterval(() => {
+      if (document.visibilityState === 'visible') fetchUnreadCounts()
+    }, 8000)
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') fetchUnreadCounts()
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    return () => {
+      clearInterval(pollInterval)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [fetchUnreadCounts, user?.workspaceId])
 
   // Subscribe to conversations UPDATE — webhook sets last_message_at on every inbound message.
   // Refetch unread counts so badges update in real-time alongside the notification sound.
@@ -154,14 +171,23 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
         { event: 'UPDATE', schema: 'public', table: 'conversations', filter: `workspace_id=eq.${workspaceId}` },
         () => fetchUnreadCounts()
       )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages' },
+        () => fetchUnreadCounts()
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'messages' },
+        () => fetchUnreadCounts()
+      )
       .subscribe()
 
-    const handleInboxUpdate = (e) => {
-      const { phoneNumber, count } = e.detail || {}
-      if (phoneNumber != null && count != null) {
-        setUnreadCounts(prev => ({ ...prev, [phoneNumber]: count }))
-      }
-    }
+    // Inbox dispatches this event whenever its conversations state changes.
+    // Just refetch from the API so badges across ALL phones stay in sync
+    // (don't trust the dispatched per-phone count — it can disagree with the
+    // API and cause badges to flicker/disappear when polling replaces state).
+    const handleInboxUpdate = () => fetchUnreadCounts()
     window.addEventListener('inbox-unread-update', handleInboxUpdate)
 
     return () => {
@@ -328,13 +354,14 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
                 </div>
                 {(unreadCounts[phone.phoneNumber] || 0) > 0 && (
                   <span style={{
-                    minWidth: 17, height: 17, borderRadius: 9,
+                    minWidth: 20, height: 20, borderRadius: 10,
                     background: '#D63B1F', color: '#fff',
-                    fontSize: 9, fontWeight: 700, flexShrink: 0,
+                    fontSize: 11, fontWeight: 600, flexShrink: 0,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    padding: '0 3px',
+                    padding: '0 6px', lineHeight: 1,
+                    fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
                   }}>
-                    {unreadCounts[phone.phoneNumber] > 9 ? '9+' : unreadCounts[phone.phoneNumber]}
+                    {unreadCounts[phone.phoneNumber] > 99 ? '99+' : unreadCounts[phone.phoneNumber]}
                   </span>
                 )}
               </button>

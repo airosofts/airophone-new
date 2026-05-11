@@ -3,6 +3,7 @@ import { Plus_Jakarta_Sans, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
 import AudioUnlock from '@/components/AudioUnlock'
 import PushSetup from '@/components/PushSetup'
+import AnalyticsProvider from '@/components/AnalyticsProvider'
 
 const jakarta = Plus_Jakarta_Sans({ subsets: ['latin'], weight: ['300', '400', '500', '600'], variable: '--font-sans' })
 const jetbrains = JetBrains_Mono({ subsets: ['latin'], weight: ['400', '500'], variable: '--font-mono' })
@@ -36,7 +37,7 @@ export default function RootLayout({ children }) {
       <body className={`${jakarta.variable} ${jetbrains.variable} ${jakarta.className}`}>
         <AudioUnlock />
         <PushSetup />
-        {children}
+        <AnalyticsProvider>{children}</AnalyticsProvider>
       </body>
     </html>
   )

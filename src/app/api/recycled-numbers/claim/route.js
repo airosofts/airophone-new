@@ -17,19 +17,32 @@ export async function POST(request) {
       return NextResponse.json({ error: 'recycled_number_id is required' }, { status: 400 })
     }
 
-    // Fetch the recycled number record
-    const { data: rec, error: recErr } = await supabaseAdmin
+    // Atomically claim the number — only succeeds if it's still available
+    // (or in expired quarantine). Prevents two users from grabbing the same number.
+    const nowIso = new Date().toISOString()
+    const { data: claimed, error: claimErr } = await supabaseAdmin
       .from('recycled_numbers')
-      .select('*')
+      .update({
+        status: 'assigned',
+        assigned_to_workspace_id: workspaceId,
+        assigned_at: nowIso,
+        updated_at: nowIso,
+      })
       .eq('id', recycled_number_id)
-      .or('status.eq.available,and(status.eq.quarantine,quarantine_until.lt.' + new Date().toISOString() + ')')
-      .single()
+      .or(`status.eq.available,and(status.eq.quarantine,quarantine_until.lt.${nowIso})`)
+      .select('*')
+      .maybeSingle()
 
-    if (recErr || !rec) {
-      return NextResponse.json({ error: 'Recycled number not found or not available' }, { status: 404 })
+    if (claimErr) {
+      console.error('[recycled-numbers/claim] Claim error:', claimErr)
+      return NextResponse.json({ error: 'Failed to claim number' }, { status: 500 })
     }
 
-    const phoneNumber = rec.phone_number
+    if (!claimed) {
+      return NextResponse.json({ error: 'Recycled number not found or already claimed' }, { status: 409 })
+    }
+
+    const phoneNumber = claimed.phone_number
 
     // Assign number to new messaging profile on Telnyx (best-effort)
     if (messagingProfileId && TELNYX_API_KEY) {
@@ -40,7 +53,7 @@ export async function POST(request) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ messaging_profile_id: messagingProfileId }),
-      }).catch(() => {})
+      }).catch((err) => console.warn('[recycled-numbers/claim] Telnyx profile assignment failed:', err.message))
     }
 
     // Upsert phone_numbers record for new workspace (reuse existing row or create fresh)
@@ -53,19 +66,8 @@ export async function POST(request) {
       purchased_by: userId,
       status: 'active',
       is_active: true,
-      updated_at: new Date().toISOString(),
+      updated_at: nowIso,
     }, { onConflict: 'phone_number' })
-
-    // Mark recycled number as assigned
-    await supabaseAdmin
-      .from('recycled_numbers')
-      .update({
-        status: 'assigned',
-        assigned_to_workspace_id: workspaceId,
-        assigned_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', recycled_number_id)
 
     // Delete old conversations and messages for this number (from prior workspace)
     // This is deferred until claim so the original owner could still read history during quarantine

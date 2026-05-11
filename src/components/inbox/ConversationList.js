@@ -292,7 +292,7 @@ export default function ConversationList({
                     padding: '0 3px',
                   }}>
                     <span style={{ fontSize: 9, fontWeight: 700, color: '#fff' }}>
-                      {conversation.unreadCount > 9 ? '9+' : conversation.unreadCount}
+                      {conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}
                     </span>
                   </div>
                 )}

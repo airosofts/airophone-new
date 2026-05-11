@@ -107,6 +107,10 @@ function SignupForm() {
     if (password.length < 6) { setError('Password must be at least 6 characters'); setLoading(false); return }
 
     try {
+      // Pull first-touch attribution captured on the landing page
+      let attribution = null
+      try { attribution = JSON.parse(localStorage.getItem('airo_attribution') || 'null') } catch {}
+
       const res = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -116,12 +120,18 @@ function SignupForm() {
           name: email.split('@')[0],
           ...(inviteWid && { inviteWorkspaceId: inviteWid, inviteRole: inviteRoleParam }),
           ...(refCode && { referralCode: refCode }),
+          ...(attribution && { attribution }),
         }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Signup failed'); return }
       if (!data.session) { setError('Signup succeeded but no session was returned — please try logging in'); return }
       localStorage.setItem('user_session', JSON.stringify(data.session))
+      try {
+        const { identifyUser, trackEvent } = await import('@/lib/analytics')
+        identifyUser(data.session)
+        trackEvent('user_signed_up', { method: 'email', ...(attribution || {}) })
+      } catch {}
       router.push(data.session.isInvited ? '/inbox' : '/onboarding')
     } catch (err) {
       setError(err?.message || 'An unexpected error occurred')

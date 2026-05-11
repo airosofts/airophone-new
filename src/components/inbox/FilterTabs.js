@@ -37,7 +37,8 @@ export default function FilterTabs({ currentFilter, onFilterChange, conversation
   }
 
   const handleStatusSelect = (status) => {
-    onFilterChange(status)
+    // Clicking the already-active option clears the filter back to 'all'
+    onFilterChange(currentFilter === status ? 'all' : status)
     setShowStatusDropdown(false)
   }
 
@@ -104,7 +105,7 @@ export default function FilterTabs({ currentFilter, onFilterChange, conversation
 
       {/* Unread */}
       <button
-        onClick={() => onFilterChange('unread')}
+        onClick={() => onFilterChange(currentFilter === 'unread' ? 'all' : 'unread')}
         style={{
           ...tabBase,
           ...(currentFilter === 'unread' ? tabActive : tabInactive),
@@ -122,7 +123,7 @@ export default function FilterTabs({ currentFilter, onFilterChange, conversation
 
       {/* Unresponded */}
       <button
-        onClick={() => onFilterChange('unresponded')}
+        onClick={() => onFilterChange(currentFilter === 'unresponded' ? 'all' : 'unresponded')}
         style={{
           ...tabBase,
           ...(currentFilter === 'unresponded' ? tabActive : tabInactive),

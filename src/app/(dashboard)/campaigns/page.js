@@ -25,6 +25,7 @@ export default function CampaignsPage() {
 
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
+  const launchingIdsRef = useRef(new Set())
 
   const fetchCampaigns = useCallback(async () => {
     try {
@@ -125,6 +126,9 @@ export default function CampaignsPage() {
       setShowTrialUpsell(true)
       return
     }
+    // Prevent double-click / accidental re-submission while the start request is in flight
+    if (launchingIdsRef.current.has(campaignId)) return
+    launchingIdsRef.current.add(campaignId)
     try {
       const response = await apiPost(`/api/campaigns/${campaignId}/start`, {})
       const data = await response.json()
@@ -141,6 +145,8 @@ export default function CampaignsPage() {
       }
     } catch {
       setErrorModal({ title: 'Error', message: 'Failed to start campaign. Please try again.' })
+    } finally {
+      launchingIdsRef.current.delete(campaignId)
     }
   }
 

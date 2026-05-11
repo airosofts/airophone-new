@@ -128,12 +128,12 @@ export default function NotificationPanel({ onNavigateToConversation }) {
         {unreadCount > 0 && (
           <span style={{
             position: 'absolute', top: -2, right: -2,
-            width: 16, height: 16, borderRadius: '50%',
+            minWidth: 16, height: 16, borderRadius: 8,
             background: '#D63B1F', color: '#fff',
-            fontSize: 9, fontWeight: 700,
+            fontSize: 9, fontWeight: 700, padding: '0 4px',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
-            {unreadCount > 9 ? '9+' : unreadCount}
+            {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
       </button>
