@@ -4,39 +4,37 @@ import { useState } from 'react'
 import { formatInTimeZone } from 'date-fns-tz'
 import { format, differenceInHours, isToday, isYesterday, parseISO } from 'date-fns'
 
-// Telnyx delivery error codes → human-readable reasons.
-// Source: https://developers.telnyx.com/docs/messaging/troubleshooting/delivery-error-codes
-const TELNYX_ERRORS = {
-  '30001': 'Queue overflow',
+// Delivery error code → human-readable reason. SaaS-neutral language —
+// never mentions specific upstream providers (Telnyx, carrier, etc.) to the user.
+const ERROR_REASONS = {
+  '30001': 'Network queue overflow',
   '30002': 'Account suspended',
-  '30003': 'Handset unreachable',
-  '30004': 'Message blocked by recipient',
-  '30005': 'Unknown destination',
-  '30006': 'Landline or unreachable carrier',
-  '30007': 'Carrier filtered (likely spam-flagged)',
-  '30008': 'Carrier rejected the message',
-  '30009': 'Missing inbound segment',
+  '30003': 'Recipient phone unreachable',
+  '30004': 'Recipient blocked the message',
+  '30005': 'Recipient number unknown',
+  '30006': 'Recipient is a landline',
+  '30007': 'Network flagged as spam',
+  '30008': 'Delivery rejected by network',
+  '30009': 'Message segment missing',
   '40001': 'Invalid messaging profile',
-  '40002': 'Outbound profile is disabled',
-  '40003': 'Insufficient permissions for this number',
+  '40002': 'Sending profile disabled',
+  '40003': 'Number not permitted to send',
   '40010': 'Number not registered for messaging',
-  '40300': 'Number is not 10DLC-registered',
-  'sending_failed': 'Carrier rejected the message',
-  'delivery_failed': 'Could not be delivered to recipient',
-  'delivery_unconfirmed': 'Delivery could not be confirmed by carrier',
-  'telnyx_record_expired': 'Telnyx record expired (>10 days old)',
+  '40300': 'Number not registered for 10DLC',
+  'sending_failed': 'Message rejected by network',
+  'delivery_failed': 'Could not be delivered',
+  'delivery_unconfirmed': 'Delivery could not be confirmed',
+  'telnyx_record_expired': 'Delivery record expired',
 }
 
 function lookupErrorReason(code, fallback) {
-  if (!code) return fallback || 'Message could not be delivered'
+  if (!code) return fallback || 'Could not be delivered'
   const c = String(code).trim()
-  return TELNYX_ERRORS[c] || fallback || `Error code ${c}`
+  return ERROR_REASONS[c] || fallback || `Error code ${c}`
 }
 
 export default function MessageBubble({ message, user }) {
   const [showDeliveryDetails, setShowDeliveryDetails] = useState(false)
-  const [reconciling, setReconciling] = useState(false)
-  const [reconcileResult, setReconcileResult] = useState(null)
   const isOutbound = message.direction === 'outbound'
   const isOptimistic = message.isOptimistic
   const isFailed = isOutbound && (message.status === 'failed' || message.status === 'undelivered')
@@ -53,38 +51,18 @@ export default function MessageBubble({ message, user }) {
   const errorCode = message.error_code || errorParsed?.error_code || null
   const errorMessage = message.error_message || errorParsed?.error_message || null
   const reconciledAt = errorParsed?.reconciled_at || null
-  const isUnverifiable = isOutbound
-    && !isFailed
-    && message.status === 'sent'
-    && errorCode === 'telnyx_record_expired'
   const failureReason = isFailed
     ? lookupErrorReason(errorCode, errorMessage)
     : null
-  // Only show numeric code chips (e.g. "30007") — skip our internal sentinel strings.
-  const displayCode = errorCode && /^\d+$/.test(String(errorCode)) ? errorCode : null
+  // Show the code chip for real carrier codes; hide internal sentinels.
+  const INTERNAL_SENTINELS = new Set(['unknown', 'telnyx_record_expired'])
+  const displayCode =
+    errorCode
+    && !INTERNAL_SENTINELS.has(String(errorCode))
+    && !String(errorCode).startsWith('finalized_')
+      ? String(errorCode)
+      : null
 
-  const handleRecheck = async () => {
-    setReconciling(true)
-    setReconcileResult(null)
-    try {
-      const session = JSON.parse(localStorage.getItem('user_session') || '{}')
-      const res = await fetch('/api/messages/reconcile-status', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': session.userId || '',
-          'x-workspace-id': session.workspaceId || '',
-        },
-        body: JSON.stringify({ messageId: message.id }),
-      })
-      const data = await res.json()
-      setReconcileResult(data.results?.[0] || { action: 'no_op' })
-    } catch (err) {
-      setReconcileResult({ action: 'error', error: err.message })
-    } finally {
-      setReconciling(false)
-    }
-  }
 
   const formatTimestamp = (timestamp) => {
     if (!timestamp) return ''
@@ -259,24 +237,6 @@ export default function MessageBubble({ message, user }) {
           </div>
         )}
 
-        {/* "Delivery unverified" pill — message is too old for Telnyx to confirm */}
-        {isUnverifiable && (
-          <div className={`mt-1.5 flex ${isOutbound ? 'justify-end' : 'justify-start'}`}>
-            <button
-              onClick={() => setShowDeliveryDetails(true)}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#F7F6F3] border border-[#E3E1DB] text-[11.5px] text-[#5C5A55] hover:bg-[#EFEDE8] transition-colors cursor-pointer max-w-full tracking-tight"
-              title="Tap for details"
-              style={{ fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", letterSpacing: '-0.005em' }}
-            >
-              <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01" />
-              </svg>
-              <span className="font-semibold text-[#131210]">Delivery unverified</span>
-              <span className="text-[#9B9890] truncate hidden sm:inline">record too old to confirm</span>
-            </button>
-          </div>
-        )}
 
         {/* Delivery Details Modal */}
         {showDeliveryDetails && (
@@ -358,13 +318,6 @@ export default function MessageBubble({ message, user }) {
                     </div>
                   )}
 
-                  {isUnverifiable && (
-                    <div className="p-3.5 bg-[#F7F6F3] border border-[#E3E1DB] rounded-xl col-span-2">
-                      <span className="text-[10.5px] text-[#9B9890] font-semibold uppercase tracking-[0.06em]">Delivery status</span>
-                      <p className="text-sm font-semibold text-[#131210] mt-1.5 tracking-tight">Could not be verified</p>
-                      <p className="text-[12px] text-[#5C5A55] mt-1 leading-relaxed">Telnyx no longer keeps a record of this message (older than ~10 days). The original delivery state is unknown.</p>
-                    </div>
-                  )}
                 </div>
 
                 {/* From/To Information */}
@@ -381,51 +334,6 @@ export default function MessageBubble({ message, user }) {
                   </div>
                 </div>
               </div>
-
-              {/* Re-check delivery (only for outbound messages with a Telnyx ID) */}
-              {isOutbound && message.telnyx_message_id && (
-                <div className="mt-4 p-3.5 bg-[#F7F6F3] border border-[#E3E1DB] rounded-xl">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-[12.5px] font-semibold text-[#131210] tracking-tight">Re-check from Telnyx</p>
-                      <p className="text-[11.5px] text-[#9B9890] mt-0.5 leading-relaxed">Pulls the real delivery state directly from the carrier</p>
-                    </div>
-                    <button
-                      onClick={handleRecheck}
-                      disabled={reconciling}
-                      className="shrink-0 px-3.5 py-1.5 text-[12px] font-semibold text-white bg-[#131210] hover:bg-[#3a3833] rounded-lg disabled:opacity-50 transition-colors tracking-tight"
-                      style={{ fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}
-                    >
-                      {reconciling ? 'Checking…' : 'Re-check'}
-                    </button>
-                  </div>
-                  {reconcileResult && (
-                    <div className="mt-3 pt-3 border-t border-[#E3E1DB] space-y-1.5">
-                      {reconcileResult.telnyx_status && (
-                        <div className="flex items-center justify-between text-[11.5px]">
-                          <span className="text-[#9B9890]">Telnyx status</span>
-                          <span className="font-mono text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[#EFEDE8] text-[#131210]">{reconcileResult.telnyx_status}</span>
-                        </div>
-                      )}
-                      {reconcileResult.new_status && (
-                        <div className="flex items-center justify-between text-[11.5px]">
-                          <span className="text-[#9B9890]">Updated to</span>
-                          <span className="font-mono text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[rgba(214,59,31,0.07)] text-[#D63B1F]">{reconcileResult.new_status}</span>
-                        </div>
-                      )}
-                      {reconcileResult.action === 'telnyx_404' && (
-                        <p className="text-[11.5px] text-[#5C5A55] leading-relaxed">Telnyx no longer has this record (&gt;10 days old). Tagged as unverified.</p>
-                      )}
-                      {reconcileResult.action === 'skipped_non_terminal' && (
-                        <p className="text-[11.5px] text-[#5C5A55] leading-relaxed">Still in flight — Telnyx hasn&rsquo;t confirmed final state yet. Try again in a moment.</p>
-                      )}
-                      {reconcileResult.error && (
-                        <p className="text-[11.5px] text-[#D63B1F] leading-relaxed">{reconcileResult.error}</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
 
               {/* Close Button */}
               <button

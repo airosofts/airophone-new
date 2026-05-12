@@ -360,15 +360,38 @@ async function handleMessageDelivered(event) {
   }
 }
 
+// Carrier error info can appear in multiple places in a Telnyx webhook payload:
+//   - payload.errors[0]            (top-level array; most reliable)
+//   - payload.to[0].errors[0]      (per-recipient array; sometimes present)
+//   - payload.to[0].error_code     (older legacy shape)
+//   - payload.error_code           (very old legacy shape)
+// We probe all of them so the carrier code (e.g. "30007") makes it into the DB.
+function extractCarrierError(payload) {
+  const topErr = payload?.errors?.[0]
+  const toErr  = payload?.to?.[0]?.errors?.[0]
+  const err = topErr || toErr || null
+  const code = err?.code
+    || payload?.to?.[0]?.error_code
+    || payload?.error_code
+    || null
+  const message = err?.title
+    || err?.detail
+    || payload?.to?.[0]?.error_message
+    || payload?.error_message
+    || null
+  return {
+    code: code ? String(code) : null,
+    message: message || null,
+  }
+}
+
 async function handleMessageFailed(event) {
   try {
     const { payload } = event
     const telnyxMessageId = payload.id
-    const errorCode = String(payload.error_code || payload.errors?.[0]?.code || 'unknown')
-    const errorMessage = payload.error_message
-      || payload.errors?.[0]?.title
-      || payload.errors?.[0]?.detail
-      || 'Delivery failed'
+    const { code, message } = extractCarrierError(payload)
+    const errorCode = code || 'unknown'
+    const errorMessage = message || 'Delivery failed'
 
     await supabaseAdmin
       .from('messages')
@@ -420,14 +443,15 @@ async function handleMessageFinalized(event) {
       if (current && current.status !== 'failed' && current.status !== 'received') {
         update.status = 'failed'
         if (!current.error_details) {
-          const code = 'finalized_' + finalStatus
-          const message = finalStatus === 'sending_failed'
-            ? 'Carrier rejected the message'
-            : finalStatus === 'delivery_failed'
-            ? 'Could not be delivered to recipient'
-            : finalStatus === 'delivery_unconfirmed'
-            ? 'Delivery could not be confirmed by carrier'
-            : `Final status: ${finalStatus}`
+          // Prefer the real carrier code if Telnyx included one — falls back
+          // to a friendly description tied to the final status.
+          const carrier = extractCarrierError(payload)
+          const code = carrier.code || 'finalized_' + finalStatus
+          const message = carrier.message || (
+              finalStatus === 'sending_failed'      ? 'Message rejected by network'
+            : finalStatus === 'delivery_failed'     ? 'Could not be delivered'
+            : finalStatus === 'delivery_unconfirmed' ? 'Delivery could not be confirmed'
+            : `Final status: ${finalStatus}`)
           update.error_code = code
           update.error_message = message
           update.error_details = JSON.stringify({
