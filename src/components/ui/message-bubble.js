@@ -41,7 +41,8 @@ export default function MessageBubble({ message, user }) {
   const isOptimistic = message.isOptimistic
   const isFailed = isOutbound && (message.status === 'failed' || message.status === 'undelivered')
 
-  // Parse error_details once — used for both failed and "unverifiable" states.
+  // Prefer the dedicated columns; fall back to the old error_details JSON
+  // for messages that pre-date the migration.
   const errorParsed = (() => {
     try {
       return typeof message.error_details === 'string'
@@ -49,13 +50,15 @@ export default function MessageBubble({ message, user }) {
         : message.error_details
     } catch { return null }
   })()
-  const errorCode = errorParsed?.error_code || null
+  const errorCode = message.error_code || errorParsed?.error_code || null
+  const errorMessage = message.error_message || errorParsed?.error_message || null
+  const reconciledAt = errorParsed?.reconciled_at || null
   const isUnverifiable = isOutbound
     && !isFailed
     && message.status === 'sent'
     && errorCode === 'telnyx_record_expired'
   const failureReason = isFailed
-    ? lookupErrorReason(errorCode, errorParsed?.error_message)
+    ? lookupErrorReason(errorCode, errorMessage)
     : null
   // Only show numeric code chips (e.g. "30007") — skip our internal sentinel strings.
   const displayCode = errorCode && /^\d+$/.test(String(errorCode)) ? errorCode : null
@@ -349,8 +352,8 @@ export default function MessageBubble({ message, user }) {
                         )}
                       </div>
                       <p className="text-sm font-semibold text-[#D63B1F] tracking-tight">{failureReason}</p>
-                      {errorParsed?.reconciled_at && (
-                        <p className="text-[11px] text-[#D63B1F]/70 mt-1">Verified {formatTimestamp(errorParsed.reconciled_at)}</p>
+                      {reconciledAt && (
+                        <p className="text-[11px] text-[#D63B1F]/70 mt-1">Verified {formatTimestamp(reconciledAt)}</p>
                       )}
                     </div>
                   )}

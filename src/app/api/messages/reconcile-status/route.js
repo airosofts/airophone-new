@@ -123,17 +123,23 @@ export async function POST(request) {
         const update = { status: mapped.status }
         if (mapped.status === 'delivered') {
           update.delivered_at = new Date().toISOString()
+          update.error_code = null
+          update.error_message = null
           update.error_details = null
         }
         if (mapped.status === 'failed' && mapped.error) {
           const carrierErr = errors[0]
-          update.error_details = JSON.stringify({
-            error_code: carrierErr?.code || mapped.error,
-            error_message: carrierErr?.title || carrierErr?.detail || (
+          const code = String(carrierErr?.code || mapped.error)
+          const msg = carrierErr?.title || carrierErr?.detail || (
               mapped.error === 'sending_failed'   ? 'Carrier rejected the message'
             : mapped.error === 'delivery_failed'  ? 'Could not be delivered to recipient'
             : mapped.error === 'delivery_unconfirmed' ? 'Delivery could not be confirmed by carrier'
-            : `Final status: ${mapped.error}`),
+            : `Final status: ${mapped.error}`)
+          update.error_code = code
+          update.error_message = msg
+          update.error_details = JSON.stringify({
+            error_code: code,
+            error_message: msg,
             reconciled_at: new Date().toISOString(),
           })
         }
@@ -146,17 +152,20 @@ export async function POST(request) {
           // Telnyx no longer has the record (older than their retention window).
           // Record this on the message so the UI shows "couldn't verify" instead
           // of misleadingly displaying "Sent".
+          const expiredMsg = 'Delivery status unavailable — Telnyx no longer has this record (>10 days old)'
           await supabaseAdmin
             .from('messages')
             .update({
+              error_code: 'telnyx_record_expired',
+              error_message: expiredMsg,
               error_details: JSON.stringify({
                 error_code: 'telnyx_record_expired',
-                error_message: 'Delivery status unavailable — Telnyx no longer has this record (>10 days old)',
+                error_message: expiredMsg,
                 reconciled_at: new Date().toISOString(),
               }),
             })
             .eq('id', msg.id)
-            .is('error_details', null) // only set if not already set, don't overwrite real errors
+            .is('error_code', null) // only tag if not already tagged — don't overwrite real errors
           return { id: msg.id, action: 'telnyx_404', note: 'record expired' }
         }
         console.error(`[reconcile-status] ${msg.id} → ${code || 'no-status'}: ${err.message}`)

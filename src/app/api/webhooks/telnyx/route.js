@@ -343,10 +343,13 @@ async function handleMessageDelivered(event) {
       .update({
         status: 'delivered',
         delivered_at: deliveredAt,
+        error_code: null,
+        error_message: null,
+        error_details: null,
         delivery_details: JSON.stringify({
           delivered_at: deliveredAt,
-          webhook_id: event.messageId
-        })
+          webhook_id: event.messageId,
+        }),
       })
       .eq('telnyx_message_id', telnyxMessageId)
 
@@ -361,21 +364,28 @@ async function handleMessageFailed(event) {
   try {
     const { payload } = event
     const telnyxMessageId = payload.id
+    const errorCode = String(payload.error_code || payload.errors?.[0]?.code || 'unknown')
+    const errorMessage = payload.error_message
+      || payload.errors?.[0]?.title
+      || payload.errors?.[0]?.detail
+      || 'Delivery failed'
 
     await supabaseAdmin
       .from('messages')
       .update({
         status: 'failed',
+        error_code: errorCode,
+        error_message: errorMessage,
         error_details: JSON.stringify({
-          error_code: payload.error_code || 'unknown',
-          error_message: payload.error_message || 'Delivery failed',
+          error_code: errorCode,
+          error_message: errorMessage,
           failed_at: event.occurredAt,
-          webhook_id: event.messageId
-        })
+          webhook_id: event.messageId,
+        }),
       })
       .eq('telnyx_message_id', telnyxMessageId)
 
-    console.log(`Message failed status updated: ${telnyxMessageId}`)
+    console.log(`Message failed status updated: ${telnyxMessageId} (code ${errorCode})`)
 
   } catch (error) {
     console.error('Error handling message failed:', error)
@@ -410,15 +420,19 @@ async function handleMessageFinalized(event) {
       if (current && current.status !== 'failed' && current.status !== 'received') {
         update.status = 'failed'
         if (!current.error_details) {
+          const code = 'finalized_' + finalStatus
+          const message = finalStatus === 'sending_failed'
+            ? 'Carrier rejected the message'
+            : finalStatus === 'delivery_failed'
+            ? 'Could not be delivered to recipient'
+            : finalStatus === 'delivery_unconfirmed'
+            ? 'Delivery could not be confirmed by carrier'
+            : `Final status: ${finalStatus}`
+          update.error_code = code
+          update.error_message = message
           update.error_details = JSON.stringify({
-            error_code: 'finalized_' + finalStatus,
-            error_message: finalStatus === 'sending_failed'
-              ? 'Carrier rejected the message'
-              : finalStatus === 'delivery_failed'
-              ? 'Could not be delivered to recipient'
-              : finalStatus === 'delivery_unconfirmed'
-              ? 'Delivery could not be confirmed by carrier'
-              : `Final status: ${finalStatus}`,
+            error_code: code,
+            error_message: message,
             failed_at: event.occurredAt,
             webhook_id: event.messageId,
           })
