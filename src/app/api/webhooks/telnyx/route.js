@@ -386,22 +386,52 @@ async function handleMessageFinalized(event) {
   try {
     const { payload } = event
     const telnyxMessageId = payload.id
+    const finalStatus = payload.to[0]?.status || 'unknown'
 
     const deliveryDetails = {
       finalized_at: event.occurredAt,
-      final_status: payload.to[0]?.status || 'unknown',
+      final_status: finalStatus,
       cost: payload.cost || null,
       webhook_id: event.messageId
     }
 
+    // Defensive: if delivery_failed/failed webhook was missed, mark as failed here.
+    // Telnyx's per-recipient terminal states are 'delivered', 'sending_failed',
+    // 'delivery_failed', and 'delivery_unconfirmed'. Anything that's not 'delivered'
+    // and not already 'failed' should be marked failed so the UI shows it.
+    const update = { delivery_details: JSON.stringify(deliveryDetails) }
+    if (finalStatus && finalStatus !== 'delivered') {
+      const { data: current } = await supabaseAdmin
+        .from('messages')
+        .select('status, error_details')
+        .eq('telnyx_message_id', telnyxMessageId)
+        .single()
+
+      if (current && current.status !== 'failed' && current.status !== 'received') {
+        update.status = 'failed'
+        if (!current.error_details) {
+          update.error_details = JSON.stringify({
+            error_code: 'finalized_' + finalStatus,
+            error_message: finalStatus === 'sending_failed'
+              ? 'Carrier rejected the message'
+              : finalStatus === 'delivery_failed'
+              ? 'Could not be delivered to recipient'
+              : finalStatus === 'delivery_unconfirmed'
+              ? 'Delivery could not be confirmed by carrier'
+              : `Final status: ${finalStatus}`,
+            failed_at: event.occurredAt,
+            webhook_id: event.messageId,
+          })
+        }
+      }
+    }
+
     await supabaseAdmin
       .from('messages')
-      .update({
-        delivery_details: JSON.stringify(deliveryDetails)
-      })
+      .update(update)
       .eq('telnyx_message_id', telnyxMessageId)
 
-    console.log(`Message finalized: ${telnyxMessageId}`)
+    console.log(`Message finalized: ${telnyxMessageId} (final: ${finalStatus})`)
 
     // Simulate inbound when an outbound message lands on another workspace number.
     // Telnyx never fires message.received for same-account deliveries.

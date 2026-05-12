@@ -8,6 +8,20 @@ export default function MessageBubble({ message, user }) {
   const [showDeliveryDetails, setShowDeliveryDetails] = useState(false)
   const isOutbound = message.direction === 'outbound'
   const isOptimistic = message.isOptimistic
+  const isFailed = isOutbound && (message.status === 'failed' || message.status === 'undelivered')
+
+  // Parse the human-readable failure reason out of error_details (set by the Telnyx webhook)
+  const failureReason = (() => {
+    if (!isFailed) return null
+    try {
+      const d = typeof message.error_details === 'string'
+        ? JSON.parse(message.error_details)
+        : message.error_details
+      return d?.error_message || d?.error_code || 'Message could not be delivered'
+    } catch {
+      return 'Message could not be delivered'
+    }
+  })()
 
   const formatTimestamp = (timestamp) => {
     if (!timestamp) return ''
@@ -55,7 +69,13 @@ export default function MessageBubble({ message, user }) {
           href={part.content}
           target="_blank"
           rel="noopener noreferrer"
-          className={isOutbound ? 'underline text-white/90 hover:text-white break-all' : 'underline text-[#D63B1F] hover:text-[#c23119] break-all'}
+          className={
+            isOutbound
+              ? (isFailed
+                  ? 'underline text-[#7F1D1D] hover:text-[#5c1414] break-all'
+                  : 'underline text-white/90 hover:text-white break-all')
+              : 'underline text-[#D63B1F] hover:text-[#c23119] break-all'
+          }
           onClick={(e) => e.stopPropagation()}
         >
           {part.content}
@@ -113,7 +133,9 @@ export default function MessageBubble({ message, user }) {
           <div
             className={`px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-2xl relative ${
               isOutbound
-                ? `bg-[#D63B1F] text-white ${isOptimistic ? 'opacity-60' : ''}`
+                ? isFailed
+                  ? 'bg-[#FEF2F2] text-[#7F1D1D] border border-[#FCA5A5]'
+                  : `bg-[#D63B1F] text-white ${isOptimistic ? 'opacity-60' : ''}`
                 : 'bg-[#EFEDE8] text-[#131210]'
             }`}
           >
@@ -148,6 +170,25 @@ export default function MessageBubble({ message, user }) {
             </div>
           )}
         </div>
+
+        {/* "Not delivered" pill — only shown for failed outbound messages */}
+        {isFailed && (
+          <div className={`mt-1 flex ${isOutbound ? 'justify-end' : 'justify-start'}`}>
+            <button
+              onClick={() => setShowDeliveryDetails(true)}
+              className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-red-50 border border-red-200 text-[11px] text-red-700 hover:bg-red-100 transition-colors cursor-pointer max-w-full"
+              title="Tap for details"
+            >
+              <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+              <span className="font-semibold">Not delivered</span>
+              <span className="text-red-600/80 truncate hidden sm:inline">— {failureReason}</span>
+            </button>
+          </div>
+        )}
 
         {/* Delivery Details Modal */}
         {showDeliveryDetails && (
@@ -211,6 +252,13 @@ export default function MessageBubble({ message, user }) {
                     <div className="p-3 bg-[#FFFFFF] border border-[#E3E1DB] rounded-xl col-span-2">
                       <span className="text-xs text-[#9B9890] font-medium uppercase tracking-wider">Delivered</span>
                       <p className="text-sm font-semibold text-[#131210] mt-1">{formatTimestamp(message.delivered_at)}</p>
+                    </div>
+                  )}
+
+                  {isFailed && failureReason && (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-xl col-span-2">
+                      <span className="text-xs text-red-700 font-medium uppercase tracking-wider">Failure reason</span>
+                      <p className="text-sm font-semibold text-red-700 mt-1">{failureReason}</p>
                     </div>
                   )}
                 </div>
