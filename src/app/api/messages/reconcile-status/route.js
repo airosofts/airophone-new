@@ -49,89 +49,133 @@ export async function POST(request) {
   }
 
   const body = await request.json().catch(() => ({}))
-  const { conversationId } = body
-  if (!conversationId) {
-    return NextResponse.json({ error: 'conversationId required' }, { status: 400 })
+  const { conversationId, messageId } = body
+  if (!conversationId && !messageId) {
+    return NextResponse.json({ error: 'conversationId or messageId required' }, { status: 400 })
   }
 
-  // Confirm the conversation belongs to this workspace before touching messages
-  const { data: conv } = await supabaseAdmin
-    .from('conversations')
-    .select('id, workspace_id')
-    .eq('id', conversationId)
-    .single()
+  let stale
+  if (messageId) {
+    // Single-message reconcile (called from the message details modal)
+    const { data } = await supabaseAdmin
+      .from('messages')
+      .select('id, telnyx_message_id, status, conversation_id')
+      .eq('id', messageId)
+      .single()
+    if (!data) return NextResponse.json({ error: 'Message not found' }, { status: 404 })
 
-  if (!conv || (conv.workspace_id && conv.workspace_id !== user.workspaceId)) {
-    return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+    // Workspace check via the conversation
+    const { data: convCheck } = await supabaseAdmin
+      .from('conversations')
+      .select('workspace_id')
+      .eq('id', data.conversation_id)
+      .single()
+    if (convCheck?.workspace_id && convCheck.workspace_id !== user.workspaceId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    stale = [data]
+  } else {
+    // Confirm the conversation belongs to this workspace before touching messages
+    const { data: conv } = await supabaseAdmin
+      .from('conversations')
+      .select('id, workspace_id')
+      .eq('id', conversationId)
+      .single()
+
+    if (!conv || (conv.workspace_id && conv.workspace_id !== user.workspaceId)) {
+      return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+    }
+
+    // Find outbound messages still in non-terminal state, older than MIN_AGE_SECONDS
+    const cutoff = new Date(Date.now() - MIN_AGE_SECONDS * 1000).toISOString()
+    const { data: rows } = await supabaseAdmin
+      .from('messages')
+      .select('id, telnyx_message_id, status')
+      .eq('conversation_id', conversationId)
+      .eq('direction', 'outbound')
+      .in('status', ['sent', 'sending'])
+      .lt('created_at', cutoff)
+      .not('telnyx_message_id', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(MAX_BATCH)
+    stale = rows || []
   }
-
-  // Find outbound messages still in non-terminal state, older than MIN_AGE_SECONDS
-  const cutoff = new Date(Date.now() - MIN_AGE_SECONDS * 1000).toISOString()
-  const { data: stale } = await supabaseAdmin
-    .from('messages')
-    .select('id, telnyx_message_id, status')
-    .eq('conversation_id', conversationId)
-    .eq('direction', 'outbound')
-    .in('status', ['sent', 'sending'])
-    .lt('created_at', cutoff)
-    .not('telnyx_message_id', 'is', null)
-    .order('created_at', { ascending: false })
-    .limit(MAX_BATCH)
 
   if (!stale?.length) {
-    return NextResponse.json({ success: true, checked: 0, updated: 0 })
+    return NextResponse.json({ success: true, checked: 0, updated: 0, results: [] })
   }
 
-  const results = await Promise.allSettled(
+  const settled = await Promise.allSettled(
     stale.map(async (msg) => {
       try {
         const res = await axios.get(`${TELNYX_API}/messages/${msg.telnyx_message_id}`, {
           headers: { Authorization: `Bearer ${TELNYX_KEY}` },
-          timeout: 8000,
+          timeout: 10000,
         })
         const telnyxStatus = res.data?.data?.to?.[0]?.status
+        const errors = res.data?.data?.errors || []
         const mapped = mapTelnyxStatus(telnyxStatus)
-        if (!mapped) return { id: msg.id, skipped: true }
+
+        if (!mapped) {
+          return { id: msg.id, telnyx_status: telnyxStatus, action: 'skipped_non_terminal' }
+        }
 
         const update = { status: mapped.status }
         if (mapped.status === 'delivered') {
           update.delivered_at = new Date().toISOString()
+          update.error_details = null
         }
         if (mapped.status === 'failed' && mapped.error) {
+          const carrierErr = errors[0]
           update.error_details = JSON.stringify({
-            error_code: mapped.error,
-            error_message: mapped.error === 'sending_failed'
-              ? 'Carrier rejected the message'
-              : mapped.error === 'delivery_failed'
-              ? 'Could not be delivered to recipient'
-              : mapped.error === 'delivery_unconfirmed'
-              ? 'Delivery could not be confirmed by carrier'
-              : `Final status: ${mapped.error}`,
+            error_code: carrierErr?.code || mapped.error,
+            error_message: carrierErr?.title || carrierErr?.detail || (
+              mapped.error === 'sending_failed'   ? 'Carrier rejected the message'
+            : mapped.error === 'delivery_failed'  ? 'Could not be delivered to recipient'
+            : mapped.error === 'delivery_unconfirmed' ? 'Delivery could not be confirmed by carrier'
+            : `Final status: ${mapped.error}`),
             reconciled_at: new Date().toISOString(),
           })
         }
 
         await supabaseAdmin.from('messages').update(update).eq('id', msg.id)
-        return { id: msg.id, updated: true, status: mapped.status }
+        return { id: msg.id, telnyx_status: telnyxStatus, new_status: mapped.status, action: 'updated' }
       } catch (err) {
-        // Telnyx 404 means the message ID isn't theirs (test data, old account) —
-        // mark it 'delivered' optimistically to stop re-checking, since there's
-        // nothing else we can do. Other errors: leave for next reconcile.
-        if (err.response?.status === 404) {
-          return { id: msg.id, error: 'not_found' }
+        const code = err.response?.status
+        if (code === 404) {
+          // Telnyx no longer has the record (older than their retention window).
+          // Record this on the message so the UI shows "couldn't verify" instead
+          // of misleadingly displaying "Sent".
+          await supabaseAdmin
+            .from('messages')
+            .update({
+              error_details: JSON.stringify({
+                error_code: 'telnyx_record_expired',
+                error_message: 'Delivery status unavailable — Telnyx no longer has this record (>10 days old)',
+                reconciled_at: new Date().toISOString(),
+              }),
+            })
+            .eq('id', msg.id)
+            .is('error_details', null) // only set if not already set, don't overwrite real errors
+          return { id: msg.id, action: 'telnyx_404', note: 'record expired' }
         }
-        return { id: msg.id, error: err.message }
+        console.error(`[reconcile-status] ${msg.id} → ${code || 'no-status'}: ${err.message}`)
+        return { id: msg.id, action: 'error', code, error: err.message }
       }
     })
   )
 
-  const updated = results.filter(r => r.status === 'fulfilled' && r.value.updated).length
-  const errored = results.filter(r => r.status === 'rejected' || r.value?.error).length
+  const results = settled.map(r => r.status === 'fulfilled' ? r.value : { action: 'rejected', error: r.reason?.message })
+  const updated = results.filter(r => r.action === 'updated').length
+  const expired = results.filter(r => r.action === 'telnyx_404').length
+  const errored = results.filter(r => r.action === 'error' || r.action === 'rejected').length
 
   return NextResponse.json({
     success: true,
     checked: stale.length,
     updated,
+    expired,
     errored,
+    results,
   })
 }

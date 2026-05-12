@@ -4,24 +4,84 @@ import { useState } from 'react'
 import { formatInTimeZone } from 'date-fns-tz'
 import { format, differenceInHours, isToday, isYesterday, parseISO } from 'date-fns'
 
+// Telnyx delivery error codes → human-readable reasons.
+// Source: https://developers.telnyx.com/docs/messaging/troubleshooting/delivery-error-codes
+const TELNYX_ERRORS = {
+  '30001': 'Queue overflow',
+  '30002': 'Account suspended',
+  '30003': 'Handset unreachable',
+  '30004': 'Message blocked by recipient',
+  '30005': 'Unknown destination',
+  '30006': 'Landline or unreachable carrier',
+  '30007': 'Carrier filtered (likely spam-flagged)',
+  '30008': 'Carrier rejected the message',
+  '30009': 'Missing inbound segment',
+  '40001': 'Invalid messaging profile',
+  '40002': 'Outbound profile is disabled',
+  '40003': 'Insufficient permissions for this number',
+  '40010': 'Number not registered for messaging',
+  '40300': 'Number is not 10DLC-registered',
+  'sending_failed': 'Carrier rejected the message',
+  'delivery_failed': 'Could not be delivered to recipient',
+  'delivery_unconfirmed': 'Delivery could not be confirmed by carrier',
+  'telnyx_record_expired': 'Telnyx record expired (>10 days old)',
+}
+
+function lookupErrorReason(code, fallback) {
+  if (!code) return fallback || 'Message could not be delivered'
+  const c = String(code).trim()
+  return TELNYX_ERRORS[c] || fallback || `Error code ${c}`
+}
+
 export default function MessageBubble({ message, user }) {
   const [showDeliveryDetails, setShowDeliveryDetails] = useState(false)
+  const [reconciling, setReconciling] = useState(false)
+  const [reconcileResult, setReconcileResult] = useState(null)
   const isOutbound = message.direction === 'outbound'
   const isOptimistic = message.isOptimistic
   const isFailed = isOutbound && (message.status === 'failed' || message.status === 'undelivered')
 
-  // Parse the human-readable failure reason out of error_details (set by the Telnyx webhook)
-  const failureReason = (() => {
-    if (!isFailed) return null
+  // Parse error_details once — used for both failed and "unverifiable" states.
+  const errorParsed = (() => {
     try {
-      const d = typeof message.error_details === 'string'
+      return typeof message.error_details === 'string'
         ? JSON.parse(message.error_details)
         : message.error_details
-      return d?.error_message || d?.error_code || 'Message could not be delivered'
-    } catch {
-      return 'Message could not be delivered'
-    }
+    } catch { return null }
   })()
+  const errorCode = errorParsed?.error_code || null
+  const isUnverifiable = isOutbound
+    && !isFailed
+    && message.status === 'sent'
+    && errorCode === 'telnyx_record_expired'
+  const failureReason = isFailed
+    ? lookupErrorReason(errorCode, errorParsed?.error_message)
+    : null
+  // Only show numeric code chips (e.g. "30007") — skip our internal sentinel strings.
+  const displayCode = errorCode && /^\d+$/.test(String(errorCode)) ? errorCode : null
+
+  const handleRecheck = async () => {
+    setReconciling(true)
+    setReconcileResult(null)
+    try {
+      const session = JSON.parse(localStorage.getItem('user_session') || '{}')
+      const res = await fetch('/api/messages/reconcile-status', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': session.userId || '',
+          'x-workspace-id': session.workspaceId || '',
+        },
+        body: JSON.stringify({ messageId: message.id }),
+      })
+      const data = await res.json()
+      setReconcileResult(data.results?.[0] || { action: 'no_op' })
+    } catch (err) {
+      setReconcileResult({ action: 'error', error: err.message })
+    } finally {
+      setReconciling(false)
+    }
+  }
 
   const formatTimestamp = (timestamp) => {
     if (!timestamp) return ''
@@ -72,7 +132,7 @@ export default function MessageBubble({ message, user }) {
           className={
             isOutbound
               ? (isFailed
-                  ? 'underline text-[#7F1D1D] hover:text-[#5c1414] break-all'
+                  ? 'underline text-[#D63B1F] hover:text-[#c23119] break-all'
                   : 'underline text-white/90 hover:text-white break-all')
               : 'underline text-[#D63B1F] hover:text-[#c23119] break-all'
           }
@@ -134,13 +194,13 @@ export default function MessageBubble({ message, user }) {
             className={`px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-2xl relative ${
               isOutbound
                 ? isFailed
-                  ? 'bg-[#FEF2F2] text-[#7F1D1D] border border-[#FCA5A5]'
+                  ? 'bg-[rgba(214,59,31,0.06)] text-[#131210] border border-[rgba(214,59,31,0.22)]'
                   : `bg-[#D63B1F] text-white ${isOptimistic ? 'opacity-60' : ''}`
                 : 'bg-[#EFEDE8] text-[#131210]'
             }`}
           >
             {/* Message Text */}
-            <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+            <p className="text-sm leading-relaxed whitespace-pre-wrap wrap-break-word">
               {renderMessageText(message.body)}
             </p>
           </div>
@@ -173,19 +233,44 @@ export default function MessageBubble({ message, user }) {
 
         {/* "Not delivered" pill — only shown for failed outbound messages */}
         {isFailed && (
-          <div className={`mt-1 flex ${isOutbound ? 'justify-end' : 'justify-start'}`}>
+          <div className={`mt-1.5 flex ${isOutbound ? 'justify-end' : 'justify-start'}`}>
             <button
               onClick={() => setShowDeliveryDetails(true)}
-              className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-red-50 border border-red-200 text-[11px] text-red-700 hover:bg-red-100 transition-colors cursor-pointer max-w-full"
-              title="Tap for details"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[rgba(214,59,31,0.07)] border border-[rgba(214,59,31,0.18)] text-[11.5px] text-[#D63B1F] hover:bg-[rgba(214,59,31,0.11)] transition-colors cursor-pointer max-w-full tracking-tight"
+              title="Tap for full details"
+              style={{ fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", letterSpacing: '-0.005em' }}
             >
-              <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+              <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10" />
                 <line x1="12" y1="8" x2="12" y2="12" />
                 <line x1="12" y1="16" x2="12.01" y2="16" />
               </svg>
               <span className="font-semibold">Not delivered</span>
-              <span className="text-red-600/80 truncate hidden sm:inline">— {failureReason}</span>
+              {displayCode && (
+                <span className="font-mono text-[10px] font-semibold px-1.5 py-px rounded bg-[rgba(214,59,31,0.12)] text-[#D63B1F] tracking-normal">
+                  {displayCode}
+                </span>
+              )}
+              <span className="text-[#D63B1F]/75 truncate hidden sm:inline">{failureReason}</span>
+            </button>
+          </div>
+        )}
+
+        {/* "Delivery unverified" pill — message is too old for Telnyx to confirm */}
+        {isUnverifiable && (
+          <div className={`mt-1.5 flex ${isOutbound ? 'justify-end' : 'justify-start'}`}>
+            <button
+              onClick={() => setShowDeliveryDetails(true)}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#F7F6F3] border border-[#E3E1DB] text-[11.5px] text-[#5C5A55] hover:bg-[#EFEDE8] transition-colors cursor-pointer max-w-full tracking-tight"
+              title="Tap for details"
+              style={{ fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", letterSpacing: '-0.005em' }}
+            >
+              <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01" />
+              </svg>
+              <span className="font-semibold text-[#131210]">Delivery unverified</span>
+              <span className="text-[#9B9890] truncate hidden sm:inline">record too old to confirm</span>
             </button>
           </div>
         )}
@@ -222,43 +307,59 @@ export default function MessageBubble({ message, user }) {
                 </div>
 
                 {/* Status Information */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-3">
                   <div className="p-3 bg-[#FFFFFF] border border-[#E3E1DB] rounded-xl">
-                    <span className="text-xs text-[#9B9890] font-medium uppercase tracking-wider">Status</span>
-                    <div className="flex items-center gap-1.5 mt-1">
-                      {message.status === 'delivered' && (
-                        <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-                      )}
-                      {message.status === 'failed' && (
-                        <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                      )}
-                      {message.status === 'sent' && (
-                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                      )}
-                      <p className={`font-semibold capitalize text-sm ${
-                        message.status === 'delivered' ? 'text-emerald-600' :
-                        message.status === 'failed' ? 'text-red-600' :
-                        message.status === 'sent' ? 'text-blue-600' : 'text-[#5C5A55]'
-                      }`}>{message.status}</p>
+                    <span className="text-[10.5px] text-[#9B9890] font-semibold uppercase tracking-[0.06em]">Status</span>
+                    <div className="flex items-center gap-1.5 mt-1.5">
+                      <div className="w-1.5 h-1.5 rounded-full" style={{
+                        background:
+                          message.status === 'delivered' ? '#16a34a' :
+                          message.status === 'failed' ? '#D63B1F' :
+                          message.status === 'sent' ? '#5C5A55' : '#D4D1C9'
+                      }} />
+                      <p className="font-semibold capitalize text-sm tracking-tight" style={{
+                        color:
+                          message.status === 'delivered' ? '#16a34a' :
+                          message.status === 'failed' ? '#D63B1F' :
+                          message.status === 'sent' ? '#131210' : '#5C5A55'
+                      }}>{message.status}</p>
                     </div>
                   </div>
 
                   <div className="p-3 bg-[#FFFFFF] border border-[#E3E1DB] rounded-xl">
-                    <span className="text-xs text-[#9B9890] font-medium uppercase tracking-wider">Sent</span>
-                    <p className="text-sm font-semibold text-[#131210] mt-1">{formatTimestamp(message.created_at)}</p>
+                    <span className="text-[10.5px] text-[#9B9890] font-semibold uppercase tracking-[0.06em]">Sent</span>
+                    <p className="text-sm font-semibold text-[#131210] mt-1.5 tracking-tight">{formatTimestamp(message.created_at)}</p>
                   </div>
 
                   {message.delivered_at && (
                     <div className="p-3 bg-[#FFFFFF] border border-[#E3E1DB] rounded-xl col-span-2">
-                      <span className="text-xs text-[#9B9890] font-medium uppercase tracking-wider">Delivered</span>
-                      <p className="text-sm font-semibold text-[#131210] mt-1">{formatTimestamp(message.delivered_at)}</p>
+                      <span className="text-[10.5px] text-[#9B9890] font-semibold uppercase tracking-[0.06em]">Delivered</span>
+                      <p className="text-sm font-semibold text-[#131210] mt-1.5 tracking-tight">{formatTimestamp(message.delivered_at)}</p>
                     </div>
                   )}
 
                   {isFailed && failureReason && (
-                    <div className="p-3 bg-red-50 border border-red-200 rounded-xl col-span-2">
-                      <span className="text-xs text-red-700 font-medium uppercase tracking-wider">Failure reason</span>
-                      <p className="text-sm font-semibold text-red-700 mt-1">{failureReason}</p>
+                    <div className="p-3.5 bg-[rgba(214,59,31,0.06)] border border-[rgba(214,59,31,0.18)] rounded-xl col-span-2">
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <span className="text-[10.5px] text-[#D63B1F] font-semibold uppercase tracking-[0.06em]">Failure reason</span>
+                        {displayCode && (
+                          <span className="font-mono text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[rgba(214,59,31,0.12)] text-[#D63B1F]">
+                            CODE {displayCode}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm font-semibold text-[#D63B1F] tracking-tight">{failureReason}</p>
+                      {errorParsed?.reconciled_at && (
+                        <p className="text-[11px] text-[#D63B1F]/70 mt-1">Verified {formatTimestamp(errorParsed.reconciled_at)}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {isUnverifiable && (
+                    <div className="p-3.5 bg-[#F7F6F3] border border-[#E3E1DB] rounded-xl col-span-2">
+                      <span className="text-[10.5px] text-[#9B9890] font-semibold uppercase tracking-[0.06em]">Delivery status</span>
+                      <p className="text-sm font-semibold text-[#131210] mt-1.5 tracking-tight">Could not be verified</p>
+                      <p className="text-[12px] text-[#5C5A55] mt-1 leading-relaxed">Telnyx no longer keeps a record of this message (older than ~10 days). The original delivery state is unknown.</p>
                     </div>
                   )}
                 </div>
@@ -278,10 +379,56 @@ export default function MessageBubble({ message, user }) {
                 </div>
               </div>
 
+              {/* Re-check delivery (only for outbound messages with a Telnyx ID) */}
+              {isOutbound && message.telnyx_message_id && (
+                <div className="mt-4 p-3.5 bg-[#F7F6F3] border border-[#E3E1DB] rounded-xl">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[12.5px] font-semibold text-[#131210] tracking-tight">Re-check from Telnyx</p>
+                      <p className="text-[11.5px] text-[#9B9890] mt-0.5 leading-relaxed">Pulls the real delivery state directly from the carrier</p>
+                    </div>
+                    <button
+                      onClick={handleRecheck}
+                      disabled={reconciling}
+                      className="shrink-0 px-3.5 py-1.5 text-[12px] font-semibold text-white bg-[#131210] hover:bg-[#3a3833] rounded-lg disabled:opacity-50 transition-colors tracking-tight"
+                      style={{ fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}
+                    >
+                      {reconciling ? 'Checking…' : 'Re-check'}
+                    </button>
+                  </div>
+                  {reconcileResult && (
+                    <div className="mt-3 pt-3 border-t border-[#E3E1DB] space-y-1.5">
+                      {reconcileResult.telnyx_status && (
+                        <div className="flex items-center justify-between text-[11.5px]">
+                          <span className="text-[#9B9890]">Telnyx status</span>
+                          <span className="font-mono text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[#EFEDE8] text-[#131210]">{reconcileResult.telnyx_status}</span>
+                        </div>
+                      )}
+                      {reconcileResult.new_status && (
+                        <div className="flex items-center justify-between text-[11.5px]">
+                          <span className="text-[#9B9890]">Updated to</span>
+                          <span className="font-mono text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[rgba(214,59,31,0.07)] text-[#D63B1F]">{reconcileResult.new_status}</span>
+                        </div>
+                      )}
+                      {reconcileResult.action === 'telnyx_404' && (
+                        <p className="text-[11.5px] text-[#5C5A55] leading-relaxed">Telnyx no longer has this record (&gt;10 days old). Tagged as unverified.</p>
+                      )}
+                      {reconcileResult.action === 'skipped_non_terminal' && (
+                        <p className="text-[11.5px] text-[#5C5A55] leading-relaxed">Still in flight — Telnyx hasn&rsquo;t confirmed final state yet. Try again in a moment.</p>
+                      )}
+                      {reconcileResult.error && (
+                        <p className="text-[11.5px] text-[#D63B1F] leading-relaxed">{reconcileResult.error}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Close Button */}
               <button
                 onClick={() => setShowDeliveryDetails(false)}
-                className="mt-5 w-full py-2.5 bg-[#EFEDE8] hover:bg-[#EFEDE8] text-[#5C5A55] font-medium rounded-xl transition-colors duration-200"
+                className="mt-3 w-full py-2.5 bg-[#EFEDE8] hover:bg-[#E3E1DB] text-[#131210] font-semibold rounded-xl transition-colors duration-200 tracking-tight"
+                style={{ fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif" }}
               >
                 Close
               </button>
