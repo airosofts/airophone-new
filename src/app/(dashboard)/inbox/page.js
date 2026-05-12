@@ -254,6 +254,27 @@ export default function InboxPage() {
     return () => window.removeEventListener('notification-navigate', handleNotificationNavigate)
   }, [conversations])
 
+  // Reconcile delivery status from Telnyx whenever a conversation opens.
+  // Fixes "sent" messages where the delivery webhook was missed — they get their
+  // real terminal state pulled directly from Telnyx and update via realtime.
+  const reconciledConvsRef = useRef(new Set())
+  useEffect(() => {
+    if (!selectedConversation?.id) return
+    if (reconciledConvsRef.current.has(selectedConversation.id)) return
+    reconciledConvsRef.current.add(selectedConversation.id)
+
+    const session = JSON.parse(localStorage.getItem('user_session') || '{}')
+    fetch('/api/messages/reconcile-status', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-id': session.userId || '',
+        'x-workspace-id': session.workspaceId || '',
+      },
+      body: JSON.stringify({ conversationId: selectedConversation.id }),
+    }).catch(() => { /* fire-and-forget */ })
+  }, [selectedConversation?.id])
+
   // Restore last selected conversation after conversations load (once per mount)
   useEffect(() => {
     if (restoredConvRef.current || !conversations.length || !lastConvIdRef.current) return
