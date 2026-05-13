@@ -5,7 +5,7 @@
 -- error_details (JSON) is kept for the full webhook payload (timestamps,
 -- carrier hints, reconciled_at, etc.) — these new columns are the canonical
 -- "what happened" surfaces used by the UI.
-
+--dkjdkd
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS error_code    text;
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS error_message text;
 
