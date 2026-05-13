@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
 
-// Sends a phone OTP via Telnyx Verify (works internationally).
-// Verify profile: 4900019d-8732-43ed-a475-89086707d646
-// To add more countries: Telnyx portal → Verify → AiroPhone Onboarding → add destination
+// Sends a phone OTP via Telnyx Verify SMS (works internationally).
+// Verify profile id comes from env TELNYX_VERIFY_PROFILE_ID.
+// To add more destination countries: Telnyx portal → Verify → profile → destinations.
 
 export async function POST(request) {
   try {
@@ -27,7 +27,7 @@ export async function POST(request) {
     // Store phone against the user's onboarding profile
     await supabaseAdmin
       .from('onboarding_profiles')
-      .update({ whatsapp_phone: e164, updated_at: new Date().toISOString() })
+      .update({ phone: e164, updated_at: new Date().toISOString() })
       .eq('user_id', userId)
 
     // Send OTP via Telnyx Verify — handles routing, code generation, expiry

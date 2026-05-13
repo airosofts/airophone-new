@@ -10,6 +10,23 @@ import {
   toggleManualOverride
 } from '@/lib/followup-service'
 
+// Canonical custom_fields format is {key: value}. Some legacy rows were saved
+// from the inbox panel as [{id,label,type,value}]; coerce those on read.
+function normalizeCustomFields(cf) {
+  if (!cf) return {}
+  if (Array.isArray(cf)) {
+    const out = {}
+    for (const f of cf) {
+      const label = f?.label
+      if (!label) continue
+      const key = String(label).toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
+      if (key) out[key] = f?.value
+    }
+    return out
+  }
+  return cf
+}
+
 export async function findMatchingScenario(recipientNumber, senderNumber) {
   try {
     // First, find all phone number records with this phone number
@@ -181,6 +198,9 @@ export async function executeScenario(scenario, message, conversation) {
       console.error('Error looking up contact for substitution:', contactLookupError.message)
     }
 
+    // Defensive: ContactPanel.js historically stored custom_fields as an array
+    // of {id,label,type,value} — coerce to {key:value} so {{tokens}} resolve.
+    const customFields = normalizeCustomFields(contactRecord?.custom_fields)
     const substitutions = contactRecord ? {
       first_name: contactRecord.first_name || '',
       last_name: contactRecord.last_name || '',
@@ -190,7 +210,7 @@ export async function executeScenario(scenario, message, conversation) {
       city: contactRecord.city || '',
       state: contactRecord.state || '',
       country: contactRecord.country || '',
-      ...(contactRecord.custom_fields || {})
+      ...customFields,
     } : {}
 
     // Substitute known tags; remove unknown ones so AI doesn't see raw {{placeholders}}

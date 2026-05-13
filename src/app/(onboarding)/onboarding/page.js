@@ -434,12 +434,12 @@ export default function OnboardingPage() {
   const [isGoogleUser, setIsGoogleUser] = useState(false)
 
   const [selectedCountry, setSelectedCountry] = useState(COUNTRIES[0])
-  const [whatsappPhone, setWhatsappPhone] = useState('')
-  const [whatsappOtpSent, setWhatsappOtpSent] = useState(false)
-  const [whatsappOtpResent, setWhatsappOtpResent] = useState(false)
-  const [whatsappOtp, setWhatsappOtp] = useState('')
-  const [whatsappVerified, setWhatsappVerified] = useState(false)
-  const [whatsappLoading, setWhatsappLoading] = useState(false)
+  const [phoneNumber, setPhoneNumber] = useState('')
+  const [phoneOtpSent, setPhoneOtpSent] = useState(false)
+  const [phoneOtpResent, setPhoneOtpResent] = useState(false)
+  const [phoneOtp, setPhoneOtp] = useState('')
+  const [phoneVerified, setPhoneVerified] = useState(false)
+  const [phoneLoading, setPhoneLoading] = useState(false)
 
   const [selectedPlan, setSelectedPlan] = useState('growth')
   const [loading, setLoading] = useState(false)
@@ -497,11 +497,11 @@ export default function OnboardingPage() {
 
   // If user navigates back to the phone step and it's already verified, auto-advance
   useEffect(() => {
-    if (step === 4 && whatsappVerified) {
+    if (step === 4 && phoneVerified) {
       const t = setTimeout(() => setStep(5), 800)
       return () => clearTimeout(t)
     }
-  }, [step, whatsappVerified])
+  }, [step, phoneVerified])
 
   // Load suggested (recycled) numbers when entering step 5, auto-select the first one
   useEffect(() => {
@@ -570,42 +570,42 @@ export default function OnboardingPage() {
     finally { setLoading(false) }
   }
 
-  const handleSendWhatsappOtp = async () => {
-    const local = whatsappPhone.trim().replace(/[\s\-()]/g, '')
+  const handleSendPhoneOtp = async () => {
+    const local = phoneNumber.trim().replace(/[\s\-()]/g, '')
     if (!local || !/^\d{5,14}$/.test(local)) {
       setError('Enter a valid phone number'); return
     }
     const phone = `${selectedCountry.dial}${local}`
-    setWhatsappLoading(true); setError('')
+    setPhoneLoading(true); setError('')
     try {
-      const res = await fetch('/api/onboarding/send-whatsapp-otp', {
+      const res = await fetch('/api/onboarding/send-phone-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-user-id': user.userId },
         body: JSON.stringify({ phone }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Failed to send code'); return }
-      setWhatsappOtpSent(true)
+      setPhoneOtpSent(true)
     } catch { setError('Failed to send verification code') }
-    finally { setWhatsappLoading(false) }
+    finally { setPhoneLoading(false) }
   }
 
-  const handleVerifyWhatsappOtp = async () => {
-    if (!whatsappOtp || whatsappOtp.length < 5) { setError('Enter the 5-digit verification code'); return }
-    setWhatsappLoading(true); setError('')
+  const handleVerifyPhoneOtp = async () => {
+    if (!phoneOtp || phoneOtp.length < 5) { setError('Enter the 5-digit verification code'); return }
+    setPhoneLoading(true); setError('')
     try {
-      const res = await fetch('/api/onboarding/verify-whatsapp-otp', {
+      const res = await fetch('/api/onboarding/verify-phone-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-user-id': user.userId, 'x-workspace-id': user.workspaceId },
-        body: JSON.stringify({ phone: `${selectedCountry.dial}${whatsappPhone.trim().replace(/[\s\-()]/g, '')}`, code: whatsappOtp }),
+        body: JSON.stringify({ phone: `${selectedCountry.dial}${phoneNumber.trim().replace(/[\s\-()]/g, '')}`, code: phoneOtp }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Invalid code'); return }
-      setWhatsappVerified(true)
-      await saveProgress({ whatsapp_verified: true, whatsapp_phone: `${selectedCountry.dial}${whatsappPhone.trim().replace(/[\s\-()]/g, '')}` })
+      setPhoneVerified(true)
+      await saveProgress({ phone_verified: true, phone: `${selectedCountry.dial}${phoneNumber.trim().replace(/[\s\-()]/g, '')}` })
       setTimeout(() => setStep(5), 800)
     } catch { setError('Verification failed') }
-    finally { setWhatsappLoading(false) }
+    finally { setPhoneLoading(false) }
   }
 
   const handleComplete = async (paymentMethodId, cardholderName, plan, couponId) => {
@@ -981,9 +981,9 @@ export default function OnboardingPage() {
               }}>
                 <ErrorBanner error={error} />
 
-                {!whatsappVerified ? (
+                {!phoneVerified ? (
                   <>
-                    {!whatsappOtpSent ? (
+                    {!phoneOtpSent ? (
                       <>
                         <div style={{ marginBottom: 20 }}>
                           <label style={labelStyle}>Phone number</label>
@@ -1004,8 +1004,8 @@ export default function OnboardingPage() {
                               {COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.flag} {c.dial}</option>)}
                             </select>
                             <input
-                              value={whatsappPhone}
-                              onChange={e => setWhatsappPhone(e.target.value)}
+                              value={phoneNumber}
+                              onChange={e => setPhoneNumber(e.target.value)}
                               placeholder="555 000 0000"
                               style={{ ...inputStyle, flex: 1 }}
                               onFocus={focusHandler} onBlur={blurHandler}
@@ -1019,31 +1019,31 @@ export default function OnboardingPage() {
                           <button onClick={() => { setStep(isGoogleUser ? 2 : 3); setError('') }} style={btnSecondary}>
                             <ArrowLeft /> Back
                           </button>
-                          <button onClick={handleSendWhatsappOtp} disabled={whatsappLoading}
-                            style={{ ...btnPrimary, flex: 1, opacity: whatsappLoading ? 0.6 : 1, cursor: whatsappLoading ? 'not-allowed' : 'pointer' }}
-                            onMouseEnter={e => { if (!whatsappLoading) e.currentTarget.style.opacity = '0.88' }}
-                            onMouseLeave={e => { if (!whatsappLoading) e.currentTarget.style.opacity = '1' }}>
-                            {whatsappLoading ? 'Sending...' : <>Send verification code <ArrowRight /></>}
+                          <button onClick={handleSendPhoneOtp} disabled={phoneLoading}
+                            style={{ ...btnPrimary, flex: 1, opacity: phoneLoading ? 0.6 : 1, cursor: phoneLoading ? 'not-allowed' : 'pointer' }}
+                            onMouseEnter={e => { if (!phoneLoading) e.currentTarget.style.opacity = '0.88' }}
+                            onMouseLeave={e => { if (!phoneLoading) e.currentTarget.style.opacity = '1' }}>
+                            {phoneLoading ? 'Sending...' : <>Send verification code <ArrowRight /></>}
                           </button>
                         </div>
                       </>
                     ) : (
                       <>
-                        <SentNotice text={whatsappOtpResent ? `New code resent to ${selectedCountry.dial} ${whatsappPhone}` : `Code sent to ${selectedCountry.dial} ${whatsappPhone} via SMS`} />
-                        <OtpInput value={whatsappOtp} onChange={setWhatsappOtp} length={5} />
+                        <SentNotice text={phoneOtpResent ? `New code resent to ${selectedCountry.dial} ${phoneNumber}` : `Code sent to ${selectedCountry.dial} ${phoneNumber} via SMS`} />
+                        <OtpInput value={phoneOtp} onChange={setPhoneOtp} length={5} />
                         <div style={{ display: 'flex', gap: 10 }}>
-                          <button onClick={() => { setWhatsappOtp(''); setError(''); setWhatsappOtpResent(true); handleSendWhatsappOtp() }} disabled={whatsappLoading} style={btnSecondary}>
-                            {whatsappLoading ? 'Sending...' : 'Resend'}
+                          <button onClick={() => { setPhoneOtp(''); setError(''); setPhoneOtpResent(true); handleSendPhoneOtp() }} disabled={phoneLoading} style={btnSecondary}>
+                            {phoneLoading ? 'Sending...' : 'Resend'}
                           </button>
-                          <button onClick={handleVerifyWhatsappOtp} disabled={whatsappLoading}
-                            style={{ ...btnPrimary, flex: 1, opacity: whatsappLoading ? 0.6 : 1, cursor: whatsappLoading ? 'not-allowed' : 'pointer' }}
-                            onMouseEnter={e => { if (!whatsappLoading) e.currentTarget.style.opacity = '0.88' }}
-                            onMouseLeave={e => { if (!whatsappLoading) e.currentTarget.style.opacity = '1' }}>
-                            {whatsappLoading ? 'Verifying...' : 'Verify code'}
+                          <button onClick={handleVerifyPhoneOtp} disabled={phoneLoading}
+                            style={{ ...btnPrimary, flex: 1, opacity: phoneLoading ? 0.6 : 1, cursor: phoneLoading ? 'not-allowed' : 'pointer' }}
+                            onMouseEnter={e => { if (!phoneLoading) e.currentTarget.style.opacity = '0.88' }}
+                            onMouseLeave={e => { if (!phoneLoading) e.currentTarget.style.opacity = '1' }}>
+                            {phoneLoading ? 'Verifying...' : 'Verify code'}
                           </button>
                         </div>
                         <button
-                          onClick={() => { setWhatsappOtpSent(false); setWhatsappOtp(''); setError('') }}
+                          onClick={() => { setPhoneOtpSent(false); setPhoneOtp(''); setError('') }}
                           style={{ background: 'none', border: 'none', cursor: 'pointer', marginTop: 14, fontSize: 13, color: C.text3, fontFamily: C.sans, padding: 0, textDecoration: 'underline' }}
                         >
                           Wrong number? Change it

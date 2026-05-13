@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
 
-// Verifies a phone OTP via Telnyx Verify.
+// Verifies a phone OTP via Telnyx Verify SMS.
 
 export async function POST(request) {
   try {
@@ -48,7 +48,7 @@ export async function POST(request) {
     await supabaseAdmin
       .from('onboarding_profiles')
       .update({
-        whatsapp_verified: true,
+        phone_verified: true,
         updated_at: new Date().toISOString(),
       })
       .eq('user_id', userId)

@@ -130,34 +130,80 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user, on
     saveContact({ ...contact, [field]: editingValue })
   }
 
+  // Canonical storage shape is {key: value}. We adapt to the panel's UI which
+  // works with [{key, label, type, value}], converting in both directions so
+  // AI scenario substitutions ({{first_name}}, {{states}}, …) always work.
+  const keyFromLabel = (label) =>
+    String(label || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
+
+  const humanizeKey = (key) =>
+    String(key || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+
+  const inferType = (value) => {
+    if (typeof value === 'boolean') return 'checkbox'
+    if (Array.isArray(value)) return 'tags'
+    return 'text'
+  }
+
   const getCustomFields = () => {
-    if (!contact?.custom_fields) return []
-    return Array.isArray(contact.custom_fields) ? contact.custom_fields : []
+    const cf = contact?.custom_fields
+    if (!cf) return []
+    if (Array.isArray(cf)) {
+      // Legacy array shape — normalize to canonical form (with derived keys)
+      return cf.map((f) => ({
+        key: keyFromLabel(f?.label),
+        label: f?.label || '',
+        type: f?.type || inferType(f?.value),
+        value: f?.value,
+      })).filter((f) => f.key)
+    }
+    // Object shape — derive label/type from the value for the UI
+    return Object.entries(cf).map(([key, value]) => ({
+      key,
+      label: humanizeKey(key),
+      type: inferType(value),
+      value,
+    }))
+  }
+
+  const persistCustomFields = (fields) => {
+    const obj = {}
+    for (const f of fields) {
+      if (!f.key) continue
+      obj[f.key] = f.value
+    }
+    saveContact({ ...contact, custom_fields: obj })
   }
 
   const saveCustomValue = (idx) => {
     const fields = [...getCustomFields()]
     fields[idx] = { ...fields[idx], value: editCustomValue }
     setEditCustomIdx(null)
-    saveContact({ ...contact, custom_fields: fields })
+    persistCustomFields(fields)
   }
 
   const addCustomField = () => {
     if (!newPropLabel.trim()) return
+    const key = keyFromLabel(newPropLabel.trim())
+    if (!key) return
     const fields = [...getCustomFields()]
+    if (fields.some((f) => f.key === key)) {
+      setShowAddProp(false); setNewPropLabel(''); setNewPropType('text')
+      return // duplicate — don't overwrite
+    }
     fields.push({
-      id: Date.now().toString(),
+      key,
       label: newPropLabel.trim(),
       type: newPropType,
-      value: newPropType === 'checkbox' ? false : newPropType === 'tags' ? [] : ''
+      value: newPropType === 'checkbox' ? false : newPropType === 'tags' ? [] : '',
     })
     setShowAddProp(false); setNewPropLabel(''); setNewPropType('text')
-    saveContact({ ...contact, custom_fields: fields })
+    persistCustomFields(fields)
   }
 
   const deleteCustomField = (idx) => {
     const fields = getCustomFields().filter((_, i) => i !== idx)
-    saveContact({ ...contact, custom_fields: fields })
+    persistCustomFields(fields)
   }
 
   const addNote = async () => {
@@ -317,7 +363,7 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user, on
             onToggle={() => {
               const f = [...customFields]
               f[idx] = { ...f[idx], value: !f[idx].value }
-              saveContact({ ...contact, custom_fields: f })
+              persistCustomFields(f)
             }}
           />
         ))}
