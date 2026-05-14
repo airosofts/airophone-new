@@ -57,6 +57,7 @@ export async function GET(request) {
           campaign_status: phone.campaign_status,
           approval_notified_at: phone.approval_notified_at,
           next_billing_at: phone.next_billing_at,
+          voicedrop_verified: phone.voicedrop_verified,
         }))
 
         // Deduplicate by phone number (keep the most recent entry)

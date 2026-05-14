@@ -416,11 +416,11 @@ export default function ManageNumbers() {
               <p className="text-sm text-[#9B9890] mt-0.5 font-mono">{formatPhoneNumber(confirmPurchase.number.phone_number)}</p>
             </div>
             <div className="px-5 py-4 space-y-2 text-sm">
-              <div className="flex justify-between text-[#5C5A55]"><span>Phone number</span><span>{confirmPurchase.creditsCost} credits</span></div>
+              <div className="flex justify-between text-[#5C5A55]"><span>Phone number (monthly)</span><span>{confirmPurchase.creditsCost} credits</span></div>
               <div className="flex justify-between font-semibold text-[#131210] pt-2 border-t border-[#E3E1DB]">
-                <span>Total</span><span>{confirmPurchase.creditsCost} credits</span>
+                <span>Charged now</span><span>{confirmPurchase.creditsCost} credits</span>
               </div>
-              <p className="text-xs text-[#9B9890] pt-1">One-time charge, deducted from your wallet credits.</p>
+              <p className="text-xs text-[#9B9890] pt-1">Recurring — 100 credits every 30 days. Cancel anytime and the number is released.</p>
             </div>
             <div className="px-5 py-3 border-t border-[#E3E1DB] flex justify-end gap-2">
               <button onClick={() => setConfirmPurchase(null)} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
@@ -799,7 +799,7 @@ export default function ManageNumbers() {
                     <div className="flex items-center gap-2 sm:gap-4 shrink-0">
                       <div className="text-right">
                         <p className="text-sm font-semibold text-[#131210]">{creditsCost} credits</p>
-                        <p className="text-[10px] text-[#9B9890] hidden sm:block">one-time</p>
+                        <p className="text-[10px] text-[#9B9890] hidden sm:block">per month</p>
                       </div>
                       <button
                         onClick={() => handlePurchase(number)}

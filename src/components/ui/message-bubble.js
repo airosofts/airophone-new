@@ -93,6 +93,7 @@ export default function MessageBubble({ message, user }) {
   const isOutbound = message.direction === 'outbound'
   const isOptimistic = message.isOptimistic
   const isFailed = isOutbound && (message.status === 'failed' || message.status === 'undelivered')
+  const isVoicemail = message.type === 'voicemail' && !!message.recording_url
 
   // Prefer the dedicated columns; fall back to the old error_details JSON
   // for messages that pre-date the migration.
@@ -227,18 +228,39 @@ export default function MessageBubble({ message, user }) {
         {/* Message Bubble */}
         <div className="relative">
           <div
-            className={`px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-2xl relative ${
+            className={`${isVoicemail ? 'px-3 py-2.5' : 'px-3 py-2 sm:px-3.5 sm:py-2.5'} rounded-2xl relative ${
               isOutbound
                 ? isFailed
                   ? 'bg-[rgba(214,59,31,0.06)] text-[#131210] border border-[rgba(214,59,31,0.22)]'
-                  : `bg-[#D63B1F] text-white ${isOptimistic ? 'opacity-60' : ''}`
+                  : isVoicemail
+                    ? `bg-[#F7F6F3] text-[#131210] border border-[#E3E1DB] ${isOptimistic ? 'opacity-60' : ''}`
+                    : `bg-[#D63B1F] text-white ${isOptimistic ? 'opacity-60' : ''}`
                 : 'bg-[#EFEDE8] text-[#131210]'
             }`}
           >
-            {/* Message Text */}
-            <p className="text-sm leading-relaxed whitespace-pre-wrap wrap-break-word">
-              {renderMessageText(message.body)}
-            </p>
+            {isVoicemail ? (
+              <div className="flex items-center gap-3 min-w-60">
+                <div className="shrink-0 w-9 h-9 rounded-full bg-[rgba(214,59,31,0.08)] border border-[rgba(214,59,31,0.18)] flex items-center justify-center">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D63B1F" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="6" cy="14" r="4"/><circle cx="18" cy="14" r="4"/><line x1="6" y1="18" x2="18" y2="18"/>
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider mb-1">Voicemail</p>
+                  <audio
+                    src={message.recording_url}
+                    controls
+                    preload="none"
+                    className="w-full h-8"
+                    style={{ maxWidth: 260 }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm leading-relaxed whitespace-pre-wrap wrap-break-word">
+                {renderMessageText(message.body)}
+              </p>
+            )}
           </div>
         </div>
 
