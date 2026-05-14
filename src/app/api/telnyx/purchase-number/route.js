@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getUserFromRequest, getWorkspaceFromRequest } from '@/lib/session-helper'
+import { PHONE_NUMBER_CREDIT_COST } from '@/lib/pricing'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -88,11 +89,12 @@ export async function POST(request) {
       }
     }
 
-    // Step 2: Check wallet
+    // Step 2: Check wallet — phone numbers cost a flat PHONE_NUMBER_CREDIT_COST
+    // in credits, deducted from the same wallet.credits ledger SMS uses.
     const { data: wallet, error: walletError } = await supabaseAdmin
       .from('wallets')
-      .select('id, balance, credits')
-      .eq('user_id', user.userId)
+      .select('id, credits, workspace_id')
+      .eq('workspace_id', workspace.workspaceId)
       .single()
 
     if (walletError || !wallet) {
@@ -102,10 +104,8 @@ export async function POST(request) {
       )
     }
 
-    const purchasePrice = parseFloat(totalCost) || 2.30
-
     // Check if workspace has an active subscription and no phone numbers yet
-    // First number is included in every plan — skip balance check in that case
+    // First number is included in every plan — skip credit deduction in that case
     const { data: existingNumbers } = await supabaseAdmin
       .from('phone_numbers')
       .select('id')
@@ -123,13 +123,14 @@ export async function POST(request) {
     const hasSubscription = activeSub && activeSub.length > 0
     const skipBalanceCheck = isFirstNumber && hasSubscription
 
-    if (!skipBalanceCheck && wallet.balance < purchasePrice) {
+    const availableCredits = Number(wallet.credits || 0)
+    if (!skipBalanceCheck && availableCredits < PHONE_NUMBER_CREDIT_COST) {
       return NextResponse.json(
         {
-          error: 'Insufficient balance',
-          required: purchasePrice,
-          available: wallet.balance,
-          shortfall: purchasePrice - wallet.balance
+          error: 'Insufficient credits',
+          required: PHONE_NUMBER_CREDIT_COST,
+          available: availableCredits,
+          shortfall: PHONE_NUMBER_CREDIT_COST - availableCredits,
         },
         { status: 402 }
       )
@@ -176,20 +177,50 @@ export async function POST(request) {
                           telnyxData.data.id ||
                           `telnyx_${Date.now()}`
 
-    // Step 3: Use database RPC function to handle wallet deduction and records
-    // First included number costs 0 to deduct from balance
-    const effectivePurchasePrice = skipBalanceCheck ? 0 : purchasePrice
+    // Step 3: Insert phone number row + deduct credits.
+    // We pass 0 for purchase_price / monthly_price because we're charging in
+    // credits (the RPC was designed around a dollar-balance ledger we no longer use).
+    const creditsToDeduct = skipBalanceCheck ? 0 : PHONE_NUMBER_CREDIT_COST
     const { data: purchaseResult, error: purchaseError } = await supabaseAdmin
       .rpc('purchase_phone_number', {
         p_user_id: user.userId,
         p_phone_number_id: phoneNumberId,
         p_phone_number: phoneNumber,
         p_workspace_id: workspace.workspaceId,
-        p_purchase_price: effectivePurchasePrice,
-        p_monthly_price: skipBalanceCheck ? 0 : (parseFloat(monthlyCost) || 0.00),
+        p_purchase_price: 0,
+        p_monthly_price: 0,
         p_messaging_profile_id: workspace.messagingProfileId || null,
         p_billing_group_id: workspace.billingGroupId || null
       })
+
+    // Deduct credits from the workspace wallet (skip for the first-number freebie)
+    if (creditsToDeduct > 0 && !purchaseError) {
+      const newCredits = Math.max(0, availableCredits - creditsToDeduct)
+      await supabaseAdmin
+        .from('wallets')
+        .update({ credits: newCredits, updated_at: new Date().toISOString() })
+        .eq('id', wallet.id)
+
+      await supabaseAdmin.from('transactions').insert({
+        workspace_id: workspace.workspaceId,
+        user_id: user.userId,
+        type: 'phone_number_purchase',
+        credits: -creditsToDeduct,
+        amount: 0,
+        currency: 'USD',
+        description: `Phone number ${phoneNumber} (${creditsToDeduct} credits)`,
+        status: 'completed',
+      })
+    }
+
+    // Schedule the first monthly renewal 30 days from now.
+    // Even free first-number plans renew via the cron after 30 days.
+    const nextBillingAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+    await supabaseAdmin
+      .from('phone_numbers')
+      .update({ next_billing_at: nextBillingAt })
+      .eq('phone_number', phoneNumber)
+      .eq('workspace_id', workspace.workspaceId)
 
     if (purchaseError) {
       console.error('Database purchase error:', purchaseError)
@@ -343,16 +374,12 @@ export async function POST(request) {
       data: {
         phoneNumber,
         phoneNumberId,
-        purchasePrice: effectivePurchasePrice,
-        monthlyPrice: skipBalanceCheck ? 0 : (parseFloat(monthlyCost) || 0.00),
-        previousBalance: purchaseResult.previous_balance,
-        newBalance: purchaseResult.new_balance,
-        transactionId: purchaseResult.transaction_id,
+        creditsCharged: creditsToDeduct,
         telnyxOrderId: telnyxData.data.id,
         workspaceId: workspace.workspaceId,
         messagingProfileId: workspace.messagingProfileId,
-        billingGroupId: workspace.billingGroupId
-      }
+        billingGroupId: workspace.billingGroupId,
+      },
     })
 
   } catch (error) {

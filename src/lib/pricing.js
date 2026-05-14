@@ -25,7 +25,12 @@ export const MESSAGE_PRICING_TIERS = [
   }
 ]
 
-export const MONTHLY_NUMBER_FEE = 3.00 // Rounded up to $3.00
+// Flat credit cost per phone number — applies to both the initial purchase
+// and each monthly renewal. Charged against wallet.credits, same ledger SMS uses.
+export const PHONE_NUMBER_CREDIT_COST = 100
+
+// Renewal cadence — every 30 days the cron deducts another PHONE_NUMBER_CREDIT_COST.
+export const PHONE_NUMBER_BILLING_DAYS = 30
 
 // Calls are unlimited — no credits deducted for calls
 export const CALL_CREDITS_PER_MINUTE = 0

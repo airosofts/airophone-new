@@ -618,6 +618,30 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [created, setCreated] = useState(false)
+  const messageRef = useRef(null)
+
+  // Insert a placeholder at the textarea's current cursor / selection.
+  // Falls back to appending if the textarea hasn't been focused yet.
+  const insertPlaceholder = (tag) => {
+    const ta = messageRef.current
+    const current = formData.message || ''
+    if (!ta || typeof ta.selectionStart !== 'number') {
+      setFormData(f => ({ ...f, message: (f.message || '') + tag }))
+      return
+    }
+    const start = ta.selectionStart
+    const end = ta.selectionEnd
+    const next = current.slice(0, start) + tag + current.slice(end)
+    setFormData(f => ({ ...f, message: next }))
+    // Re-position the caret right after the inserted tag, after React re-renders
+    requestAnimationFrame(() => {
+      const node = messageRef.current
+      if (!node) return
+      const pos = start + tag.length
+      node.focus()
+      node.setSelectionRange(pos, pos)
+    })
+  }
 
   const contactListOptions = contactLists.map(cl => ({
     value: cl.id,
@@ -723,6 +747,7 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
             <div data-tour="campaign-modal-message" className="flex-1 flex flex-col">
               <label className="block text-sm font-medium text-[#5C5A55] mb-2">Message *</label>
               <textarea
+                ref={messageRef}
                 value={formData.message}
                 onChange={(e) => setFormData({ ...formData, message: e.target.value })}
                 placeholder="Type your SMS message here…"
@@ -734,7 +759,7 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
                   <button
                     key={tag}
                     type="button"
-                    onClick={() => setFormData(f => ({ ...f, message: f.message + tag }))}
+                    onClick={() => insertPlaceholder(tag)}
                     className="px-2.5 py-1 text-xs bg-[#EFEDE8] hover:bg-[#fdecea] hover:text-[#D63B1F] hover:border-[#D63B1F] text-[#5C5A55] rounded-md border border-[#E3E1DB] font-mono transition-colors"
                   >
                     {tag}

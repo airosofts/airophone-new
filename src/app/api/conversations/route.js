@@ -85,6 +85,9 @@ export async function GET(request) {
 
     const { data: conversationsData, error: conversationsError } = await query
       .order('last_message_at', { ascending: false })
+      // PostgREST default cap is 1000 — busy workspaces silently lost the
+      // older conversations. Raise to 50k so the inbox shows everything.
+      .range(0, 49999)
 
     if (conversationsError) {
       console.error('Error fetching conversations:', conversationsError)

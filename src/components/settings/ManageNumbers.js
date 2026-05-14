@@ -5,6 +5,9 @@ import { getCurrentUser } from '@/lib/auth'
 import { apiGet, apiPost } from '@/lib/api-client'
 import { supabase } from '@/lib/supabase'
 
+// Flat credit cost to buy a phone number — kept in sync with lib/pricing.js
+const PHONE_NUMBER_CREDIT_COST = 100
+
 export default function ManageNumbers() {
   const [loading, setLoading] = useState(false)
   const [availableNumbers, setAvailableNumbers] = useState([])
@@ -201,34 +204,27 @@ export default function ManageNumbers() {
       return
     }
 
-    // Calculate total cost: $1 one-time + $1 monthly + $0.30 VAT = $2.30
-    const oneTimeCost = 1.00
-    const monthlyCost = 1.00
-    const vat = 0.30
-    const totalCost = oneTimeCost + monthlyCost + vat
+    // Flat 100 credits per phone number (charged against wallet.credits)
+    const creditsCost = PHONE_NUMBER_CREDIT_COST
+    const availableCredits = Number(wallet?.credits ?? wallet?.balance ?? 0)
 
-    // Check wallet balance
-    if (!wallet || wallet.balance < totalCost) {
+    if (availableCredits < creditsCost) {
       setShowError({
-        title: 'Insufficient Balance',
-        message: `You need $${totalCost.toFixed(2)} to purchase this number. Your balance: $${(wallet?.balance || 0).toFixed(2)}`,
-        action: 'topup'
+        title: 'Insufficient Credits',
+        message: `You need ${creditsCost} credits to purchase this number. You have ${availableCredits} credits.`,
+        action: 'topup',
       })
       return
     }
 
-    // Show confirmation dialog
     setConfirmPurchase({
-      number: number,
-      oneTimeCost,
-      monthlyCost,
-      vat,
-      totalCost
+      number,
+      creditsCost,
     })
   }
 
   const confirmPurchaseAction = async () => {
-    const { number, oneTimeCost, monthlyCost, totalCost } = confirmPurchase
+    const { number, creditsCost } = confirmPurchase
 
     setConfirmPurchase(null)
     setPurchasing(number.phone_number)
@@ -241,15 +237,12 @@ export default function ManageNumbers() {
           'Content-Type': 'application/json',
           'x-user-id': user.userId,
           'x-workspace-id': user.workspaceId,
-          'x-messaging-profile-id': user.messagingProfileId || ''
+          'x-messaging-profile-id': user.messagingProfileId || '',
         },
         body: JSON.stringify({
           phoneNumber: number.phone_number,
-          upfrontCost: oneTimeCost.toFixed(2),
-          monthlyCost: monthlyCost.toFixed(2),
-          vat: 0.30,
-          totalCost: totalCost.toFixed(2)
-        })
+          creditsCost,
+        }),
       })
 
       const data = await response.json()
@@ -423,13 +416,11 @@ export default function ManageNumbers() {
               <p className="text-sm text-[#9B9890] mt-0.5 font-mono">{formatPhoneNumber(confirmPurchase.number.phone_number)}</p>
             </div>
             <div className="px-5 py-4 space-y-2 text-sm">
-              <div className="flex justify-between text-[#5C5A55]"><span>Setup fee</span><span>${confirmPurchase.oneTimeCost.toFixed(2)}</span></div>
-              <div className="flex justify-between text-[#5C5A55]"><span>First month</span><span>${confirmPurchase.monthlyCost.toFixed(2)}</span></div>
-              <div className="flex justify-between text-[#5C5A55]"><span>VAT (13%)</span><span>${confirmPurchase.vat.toFixed(2)}</span></div>
+              <div className="flex justify-between text-[#5C5A55]"><span>Phone number</span><span>{confirmPurchase.creditsCost} credits</span></div>
               <div className="flex justify-between font-semibold text-[#131210] pt-2 border-t border-[#E3E1DB]">
-                <span>Total</span><span>${confirmPurchase.totalCost.toFixed(2)}</span>
+                <span>Total</span><span>{confirmPurchase.creditsCost} credits</span>
               </div>
-              <p className="text-xs text-[#9B9890] pt-1">${confirmPurchase.monthlyCost.toFixed(2)}/month recurring after purchase</p>
+              <p className="text-xs text-[#9B9890] pt-1">One-time charge, deducted from your wallet credits.</p>
             </div>
             <div className="px-5 py-3 border-t border-[#E3E1DB] flex justify-end gap-2">
               <button onClick={() => setConfirmPurchase(null)} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
@@ -766,12 +757,10 @@ export default function ManageNumbers() {
           ) : (
             <div className="divide-y divide-[#E3E1DB]">
               {availableNumbers.map((number, index) => {
-                const oneTimeCost = 1.00
-                const monthlyCost = 1.00
-                const vat = 0.30
-                const totalCost = oneTimeCost + monthlyCost + vat
+                const creditsCost = PHONE_NUMBER_CREDIT_COST
                 const isPurchasing = purchasing === number.phone_number
-                const canAfford = wallet && wallet.balance >= totalCost
+                const availableCredits = Number(wallet?.credits ?? wallet?.balance ?? 0)
+                const canAfford = availableCredits >= creditsCost
 
                 return (
                   <div key={index} className="px-5 py-3 flex items-center gap-4 hover:bg-[#F7F6F3]">
@@ -788,8 +777,8 @@ export default function ManageNumbers() {
                     </div>
                     <div className="flex items-center gap-2 sm:gap-4 shrink-0">
                       <div className="text-right">
-                        <p className="text-sm font-semibold text-[#131210]">${totalCost.toFixed(2)}</p>
-                        <p className="text-[10px] text-[#9B9890] hidden sm:block">setup + 1st month</p>
+                        <p className="text-sm font-semibold text-[#131210]">{creditsCost} credits</p>
+                        <p className="text-[10px] text-[#9B9890] hidden sm:block">one-time</p>
                       </div>
                       <button
                         onClick={() => handlePurchase(number)}
@@ -802,7 +791,7 @@ export default function ManageNumbers() {
                       >
                         {isPurchasing ? <><i className="fas fa-spinner fa-spin mr-1"></i>Buying…</>
                           : canAfford ? 'Buy'
-                          : 'No funds'}
+                          : 'Not enough credits'}
                       </button>
                     </div>
                   </div>

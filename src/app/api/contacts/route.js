@@ -37,6 +37,9 @@ export async function GET(request) {
       `)
       .eq('workspace_id', workspace.workspaceId)
       .order('created_at', { ascending: false })
+      // PostgREST defaults to 1000 rows — workspaces with bigger contact
+      // imports were getting silently truncated. Raise to 50k.
+      .range(0, 49999)
 
     if (contactListId) {
       query = query.eq('contact_list_id', contactListId)

@@ -56,16 +56,20 @@ export async function POST(request) {
       }).catch((err) => console.warn('[recycled-numbers/claim] Telnyx profile assignment failed:', err.message))
     }
 
-    // Upsert phone_numbers record for new workspace (reuse existing row or create fresh)
+    // Upsert phone_numbers record for new workspace. Pricing fields are zeroed
+    // because billing is now credit-based — the monthly cron deducts 100 credits
+    // per number based on next_billing_at, set 30 days out.
+    const nextBillingAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
     await supabaseAdmin.from('phone_numbers').upsert({
       phone_number: phoneNumber,
       workspace_id: workspaceId,
       messaging_profile_id: messagingProfileId || null,
       purchase_price: 0,
-      monthly_price: 1.00,
+      monthly_price: 0,
       purchased_by: userId,
       status: 'active',
       is_active: true,
+      next_billing_at: nextBillingAt,
       updated_at: nowIso,
     }, { onConflict: 'phone_number' })
 
