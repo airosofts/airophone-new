@@ -586,6 +586,27 @@ export default function ManageNumbers() {
                         10DLC: {number.campaign_status}
                       </span>
                     )}
+                    {number.next_billing_at && (() => {
+                      const days = Math.ceil((new Date(number.next_billing_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+                      const overdue = days <= 0
+                      const soon = days > 0 && days <= 3
+                      const label = overdue
+                        ? 'Renews today'
+                        : days === 1 ? 'Renews in 1 day'
+                        : `Renews in ${days} days`
+                      return (
+                        <span
+                          title={`100 credits will be deducted on ${new Date(number.next_billing_at).toLocaleDateString()}`}
+                          className={`px-2 py-0.5 text-xs rounded-full font-medium ${
+                            overdue ? 'bg-red-50 text-red-600'
+                            : soon ? 'bg-yellow-50 text-yellow-700'
+                            : 'bg-[#F7F6F3] text-[#5C5A55]'
+                          }`}
+                        >
+                          {label} · 100 credits
+                        </span>
+                      )
+                    })()}
                     {isEditing ? (
                       <div className="flex gap-1.5">
                         <button onClick={() => saveCustomName(number.id)} className="px-2.5 py-1 text-xs font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded">Save</button>
