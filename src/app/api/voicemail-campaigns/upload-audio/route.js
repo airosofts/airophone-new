@@ -49,11 +49,15 @@ export async function POST(request) {
     return NextResponse.json({ error: error.message || 'Upload failed' }, { status: 500 })
   }
 
-  const { data: publicData } = supabaseAdmin.storage.from('voicemails').getPublicUrl(path)
+  // Return a signed URL (7 days) so the upload UI can preview the audio immediately,
+  // and the path so campaign launch can regenerate a fresh signed URL each time.
+  const { data: signed } = await supabaseAdmin.storage
+    .from('voicemails')
+    .createSignedUrl(path, 604800)
 
   return NextResponse.json({
     success: true,
-    url: publicData.publicUrl,
+    url: signed?.signedUrl || '',
     path,
     sizeBytes: file.size,
   })

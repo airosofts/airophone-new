@@ -82,24 +82,23 @@ export async function POST(request, { params }) {
     }, { status: 402 })
   }
 
-  // Verify the recording URL is publicly accessible before sending to VoiceDrop.
-  // If the Supabase `voicemails` bucket is not public, VoiceDrop gets a 403 and
-  // delivery silently fails even though the API call returns 200.
-  try {
-    const urlCheck = await fetch(campaign.recording_url, { method: 'HEAD' })
-    if (!urlCheck.ok) {
-      await supabaseAdmin.from('voicemail_campaigns').update({ status: 'draft', started_at: null }).eq('id', campaignId)
-      return NextResponse.json({
-        error: `Recording file is not publicly accessible (HTTP ${urlCheck.status}). Go to Supabase → Storage → voicemails bucket and set it to Public.`,
-      }, { status: 422 })
+  // Generate a fresh signed URL so VoiceDrop can fetch the audio without needing
+  // a public bucket. Signed URLs work regardless of bucket permissions.
+  // 7-day expiry (604800s) is far more than enough for RVM delivery queues.
+  let recordingUrl = campaign.recording_url
+  if (campaign.recording_path) {
+    const { data: signed, error: signErr } = await supabaseAdmin.storage
+      .from('voicemails')
+      .createSignedUrl(campaign.recording_path, 604800)
+    if (signErr) {
+      console.warn('[voicemail-campaigns:start] could not create signed URL, using stored URL:', signErr.message)
+    } else {
+      recordingUrl = signed.signedUrl
     }
-  } catch (e) {
-    console.warn('[voicemail-campaigns:start] recording URL check failed:', e.message)
-    // Non-fatal — let the campaign proceed and log any VoiceDrop errors normally
   }
 
   // Kick off async processing — don't block the HTTP response
-  processVoicemailCampaign(campaign, contacts, user.userId, workspace.workspaceId, wallet)
+  processVoicemailCampaign(campaign, contacts, user.userId, workspace.workspaceId, wallet, recordingUrl)
     .catch(err => console.error('[voicemail-campaigns:start] async error:', err))
 
   return NextResponse.json({
@@ -109,7 +108,7 @@ export async function POST(request, { params }) {
   })
 }
 
-async function processVoicemailCampaign(campaign, contacts, userId, workspaceId, wallet) {
+async function processVoicemailCampaign(campaign, contacts, userId, workspaceId, wallet, recordingUrl) {
   let sentCount = 0
   let failedCount = 0
   const statusWebhookUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.airophone.com'}/api/webhooks/voicedrop`
@@ -119,9 +118,9 @@ async function processVoicemailCampaign(campaign, contacts, userId, workspaceId,
       // Get/create conversation so this voicemail shows in the chat window
       const conversation = await getOrCreateConversation(contact.phone, campaign.sender_number, workspaceId, userId)
 
-      // Send via VoiceDrop
+      // Send via VoiceDrop using the signed URL (works regardless of bucket visibility)
       const result = await sendStaticVoicemail({
-        recordingUrl: campaign.recording_url,
+        recordingUrl,
         from: campaign.sender_number,
         to: contact.phone,
         statusWebhookUrl,

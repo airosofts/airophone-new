@@ -16,11 +16,6 @@ export async function POST(request) {
 
   console.log('[voicedrop:webhook]', JSON.stringify(payload))
 
-  const voiceDropId = payload.voice_drop_id || payload.id
-  if (!voiceDropId) {
-    return NextResponse.json({ received: true, note: 'no voice_drop_id in payload' })
-  }
-
   const status = String(payload.status || '').toLowerCase()
   // VoiceDrop statuses: scheduled, skipped, failed, delivered, not-delivered
   let newStatus = null
@@ -31,8 +26,8 @@ export async function POST(request) {
     newStatus = 'delivered'
   } else if (status === 'not-delivered' || status === 'failed' || status.startsWith('failed') || status.startsWith('skipped')) {
     newStatus = 'failed'
-    errorMessage = payload.message || payload.error || (
-        status === 'not-delivered' ? 'Could not be delivered'
+    errorMessage = payload.message || payload.error || payload.reason || (
+        status === 'not-delivered' ? 'Could not be delivered to recipient'
       : status.startsWith('skipped') ? 'Skipped (recipient validation failed)'
       : 'Send failed'
     )
@@ -55,14 +50,51 @@ export async function POST(request) {
       error_code: errorCode,
       error_message: errorMessage,
       voicedrop_status: status,
+      raw_payload: payload,
       received_at: new Date().toISOString(),
     })
   }
 
-  await supabaseAdmin
-    .from('messages')
-    .update(update)
-    .eq('telnyx_message_id', voiceDropId) // we reuse this column to store voice_drop_id
+  // Try matching by voice_drop_id first (preferred, if VoiceDrop sends it in webhook)
+  const voiceDropId = payload.voice_drop_id || payload.id || payload.job_id || payload.request_id
+  if (voiceDropId) {
+    const { count } = await supabaseAdmin
+      .from('messages')
+      .update(update)
+      .eq('telnyx_message_id', voiceDropId)
+      .select('id', { count: 'exact', head: true })
 
-  return NextResponse.json({ received: true })
+    if (count && count > 0) {
+      return NextResponse.json({ received: true, matched: 'by_id' })
+    }
+  }
+
+  // Fallback: match by recipient phone + type='voicemail' + recent sent status.
+  // VoiceDrop's initial response doesn't always include an ID, so telnyx_message_id
+  // may be null. We match by the `to` phone number and grab the most recent voicemail
+  // message for that number that hasn't been given a terminal status yet.
+  const toPhone = payload.to || payload.recipient || payload.phone_number
+  if (toPhone) {
+    const normalizedTo = toPhone.replace(/\D/g, '').replace(/^1(\d{10})$/, '$1')
+    const { data: msgs } = await supabaseAdmin
+      .from('messages')
+      .select('id, to_number')
+      .eq('type', 'voicemail')
+      .eq('status', 'sent')
+      .order('created_at', { ascending: false })
+      .limit(20)
+
+    const match = msgs?.find(m => {
+      const d = (m.to_number || '').replace(/\D/g, '').replace(/^1(\d{10})$/, '$1')
+      return d === normalizedTo
+    })
+
+    if (match) {
+      await supabaseAdmin.from('messages').update(update).eq('id', match.id)
+      return NextResponse.json({ received: true, matched: 'by_phone' })
+    }
+  }
+
+  console.warn('[voicedrop:webhook] could not match message', { voiceDropId, toPhone, status })
+  return NextResponse.json({ received: true, note: 'no matching message found' })
 }
