@@ -82,17 +82,15 @@ export async function POST(request, { params }) {
     }, { status: 402 })
   }
 
-  // Generate a fresh signed URL so VoiceDrop can fetch the audio without needing
-  // a public bucket. Signed URLs work regardless of bucket permissions.
-  // 7-day expiry (604800s) is far more than enough for RVM delivery queues.
-  let recordingUrl = campaign.recording_url
-  if (campaign.recording_path) {
+  // Resolve the recording URL VoiceDrop will use to fetch the audio.
+  // Priority: VoiceDrop's own S3 URL (permanent, no auth needed) → fresh Supabase
+  // signed URL (7 days, no public bucket required) → stored URL (last resort).
+  let recordingUrl = campaign.voicedrop_recording_url || campaign.recording_url
+  if (!campaign.voicedrop_recording_url && campaign.recording_path) {
     const { data: signed, error: signErr } = await supabaseAdmin.storage
       .from('voicemails')
       .createSignedUrl(campaign.recording_path, 604800)
-    if (signErr) {
-      console.warn('[voicemail-campaigns:start] could not create signed URL, using stored URL:', signErr.message)
-    } else {
+    if (!signErr && signed?.signedUrl) {
       recordingUrl = signed.signedUrl
     }
   }

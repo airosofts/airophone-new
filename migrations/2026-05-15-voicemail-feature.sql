@@ -23,8 +23,9 @@ CREATE TABLE IF NOT EXISTS voicemail_campaigns (
   workspace_id        uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   created_by          uuid REFERENCES users(id) ON DELETE SET NULL,
   name                text NOT NULL,
-  recording_url       text NOT NULL,
-  recording_path      text,                                -- supabase storage path (for cleanup on delete)
+  recording_url       text NOT NULL,                       -- Supabase URL (used for in-app playback)
+  voicedrop_recording_url text,                            -- VoiceDrop S3 URL (used when sending RVMs)
+  recording_path      text,                                -- Supabase storage path (for signed URL refresh)
   sender_number       text NOT NULL,                       -- e.g. "+13203158316"
   contact_list_ids    uuid[] NOT NULL DEFAULT '{}',
   status              text NOT NULL DEFAULT 'draft',       -- draft / running / completed / failed / paused
@@ -64,6 +65,10 @@ BEGIN
   END IF;
 END;
 $$;
+
+-- Add voicedrop_recording_url to existing tables (idempotent)
+ALTER TABLE voicemail_campaigns
+  ADD COLUMN IF NOT EXISTS voicedrop_recording_url text;
 
 -- ─── Backfill existing messages so type is never NULL ──────────────────────
 UPDATE messages SET type = 'sms' WHERE type IS NULL;

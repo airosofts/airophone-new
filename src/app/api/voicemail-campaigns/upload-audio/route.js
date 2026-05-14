@@ -1,12 +1,16 @@
-// Uploads an .mp3 to the public-read `voicemails` bucket in Supabase Storage.
-// Returns the public URL we'll pass to VoiceDrop as `recording_url`.
+// Uploads audio for RVM campaigns.
+// 1. Stores the file in Supabase Storage (for in-app playback in the chat window)
+// 2. Uploads the same file to VoiceDrop's S3 via POST /upload-static-audio
+//    → returns their permanent CDN URL as `voicedrop_url` so RVM sends never
+//      depend on Supabase bucket permissions.
 
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
 import { getWorkspaceFromRequest, getUserFromRequest } from '@/lib/session-helper'
+import { uploadAudio } from '@/lib/voicedrop'
 
 const ALLOWED_MIME = new Set(['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav', 'audio/ogg', 'audio/flac'])
-const MAX_BYTES = 10 * 1024 * 1024 // 10 MB — matches VoiceDrop's stated limit
+const MAX_BYTES = 10 * 1024 * 1024
 
 export async function POST(request) {
   const user = getUserFromRequest(request)
@@ -29,36 +33,43 @@ export async function POST(request) {
     return NextResponse.json({ error: `Unsupported file type: ${file.type}` }, { status: 400 })
   }
 
-  // Use a workspace-scoped path; random suffix prevents collisions across uploads.
   const ext = (file.name || 'audio.mp3').split('.').pop().toLowerCase().replace(/[^a-z0-9]/g, '') || 'mp3'
   const random = Math.random().toString(36).slice(2, 10)
-  const path = `${workspace.workspaceId}/${Date.now()}_${random}.${ext}`
+  const storagePath = `${workspace.workspaceId}/${Date.now()}_${random}.${ext}`
 
   const arrayBuffer = await file.arrayBuffer()
   const buffer = new Uint8Array(arrayBuffer)
 
-  const { error } = await supabaseAdmin.storage
+  // 1. Store in Supabase for in-app audio playback
+  const { error: storageErr } = await supabaseAdmin.storage
     .from('voicemails')
-    .upload(path, buffer, {
-      contentType: file.type || 'audio/mpeg',
-      upsert: false,
-    })
+    .upload(storagePath, buffer, { contentType: file.type || 'audio/mpeg', upsert: false })
 
-  if (error) {
-    console.error('[voicemails:upload]', error)
-    return NextResponse.json({ error: error.message || 'Upload failed' }, { status: 500 })
+  if (storageErr) {
+    console.error('[voicemails:upload] supabase error', storageErr)
+    return NextResponse.json({ error: storageErr.message || 'Upload failed' }, { status: 500 })
   }
 
-  // Return a signed URL (7 days) so the upload UI can preview the audio immediately,
-  // and the path so campaign launch can regenerate a fresh signed URL each time.
+  // Signed URL for in-app playback (7 days — refreshed at campaign launch anyway)
   const { data: signed } = await supabaseAdmin.storage
     .from('voicemails')
-    .createSignedUrl(path, 604800)
+    .createSignedUrl(storagePath, 604800)
+  const playbackUrl = signed?.signedUrl || ''
+
+  // 2. Upload to VoiceDrop's own S3 so their servers can always fetch the audio
+  let voicedropUrl = null
+  try {
+    voicedropUrl = await uploadAudio(buffer, file.name || `voicemail.${ext}`, file.type || 'audio/mpeg')
+  } catch (e) {
+    console.error('[voicemails:upload] VoiceDrop upload failed:', e.message)
+    // Non-fatal — campaign launch will fall back to signed URL
+  }
 
   return NextResponse.json({
     success: true,
-    url: signed?.signedUrl || '',
-    path,
+    url: playbackUrl,           // used for in-app audio player
+    voicedrop_url: voicedropUrl, // used as recording_url when sending RVMs
+    path: storagePath,
     sizeBytes: file.size,
   })
 }
