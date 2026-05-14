@@ -82,6 +82,22 @@ export async function POST(request, { params }) {
     }, { status: 402 })
   }
 
+  // Verify the recording URL is publicly accessible before sending to VoiceDrop.
+  // If the Supabase `voicemails` bucket is not public, VoiceDrop gets a 403 and
+  // delivery silently fails even though the API call returns 200.
+  try {
+    const urlCheck = await fetch(campaign.recording_url, { method: 'HEAD' })
+    if (!urlCheck.ok) {
+      await supabaseAdmin.from('voicemail_campaigns').update({ status: 'draft', started_at: null }).eq('id', campaignId)
+      return NextResponse.json({
+        error: `Recording file is not publicly accessible (HTTP ${urlCheck.status}). Go to Supabase → Storage → voicemails bucket and set it to Public.`,
+      }, { status: 422 })
+    }
+  } catch (e) {
+    console.warn('[voicemail-campaigns:start] recording URL check failed:', e.message)
+    // Non-fatal — let the campaign proceed and log any VoiceDrop errors normally
+  }
+
   // Kick off async processing — don't block the HTTP response
   processVoicemailCampaign(campaign, contacts, user.userId, workspace.workspaceId, wallet)
     .catch(err => console.error('[voicemail-campaigns:start] async error:', err))

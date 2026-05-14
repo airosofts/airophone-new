@@ -61,6 +61,7 @@ export async function sendStaticVoicemail({ recordingUrl, from, to, statusWebhoo
     send_status_to_webhook: statusWebhookUrl || undefined,
   })
 
+  // Log full response so server logs show exactly what VoiceDrop returns
   console.log('[voicedrop:send]', {
     to: toLocalDigits(to),
     from: toLocalDigits(from),
@@ -69,14 +70,21 @@ export async function sendStaticVoicemail({ recordingUrl, from, to, statusWebhoo
     response: result.data,
   })
 
-  // VoiceDrop may return HTTP 200 with a body-level error (no voice_drop_id).
-  // Treat those as failures so the campaign reports them correctly.
+  // Detect body-level errors: if HTTP 200 but response contains an explicit error
+  // field (no voice_drop_id AND an error/message field), treat it as a failure.
   if (result.ok && !result.data?.voice_drop_id) {
-    result.ok = false
-    result.data = {
-      ...result.data,
-      _bodyError: true,
-      message: result.data?.message || result.data?.error || 'VoiceDrop accepted request but returned no voice_drop_id',
+    const hasBodyError = result.data?.error || result.data?.message
+    if (hasBodyError) {
+      result.ok = false
+      result.data = {
+        ...result.data,
+        message: result.data.message || result.data.error,
+      }
+    }
+    // If no voice_drop_id but also no explicit error, log a warning but let it through
+    // so we don't break delivery for APIs that return a different ID field.
+    else {
+      console.warn('[voicedrop:send] no voice_drop_id in response — delivery tracking will not work', result.data)
     }
   }
 

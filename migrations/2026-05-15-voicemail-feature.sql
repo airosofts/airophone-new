@@ -42,9 +42,28 @@ CREATE INDEX IF NOT EXISTS idx_voicemail_campaigns_status    ON voicemail_campai
 
 -- ─── Storage bucket for audio uploads ──────────────────────────────────────
 -- Public-read so VoiceDrop can fetch the .mp3 via the URL we send them.
+-- DO UPDATE ensures an already-existing private bucket gets flipped to public.
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('voicemails', 'voicemails', true)
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET public = true;
+
+-- Allow anyone (including VoiceDrop's servers) to download from this bucket.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'storage'
+      AND tablename  = 'objects'
+      AND policyname = 'voicemails_public_read'
+  ) THEN
+    EXECUTE $p$
+      CREATE POLICY voicemails_public_read ON storage.objects
+        FOR SELECT
+        USING (bucket_id = 'voicemails');
+    $p$;
+  END IF;
+END;
+$$;
 
 -- ─── Backfill existing messages so type is never NULL ──────────────────────
 UPDATE messages SET type = 'sms' WHERE type IS NULL;
