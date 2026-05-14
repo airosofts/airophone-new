@@ -34,8 +34,14 @@ export async function POST(request) {
   }
 
   const result = await verifySenderInit(phoneNumber)
+  console.log('[voicedrop:verify-init]', {
+    phoneNumber,
+    httpOk: result.ok,
+    httpStatus: result.status,
+    response: result.data,
+  })
+
   if (!result.ok) {
-    console.error('[voicedrop:verify-init]', result.status, result.data)
     return NextResponse.json(
       { error: result.data?.message || result.data?.error || 'VoiceDrop rejected the verification request' },
       { status: 400 }

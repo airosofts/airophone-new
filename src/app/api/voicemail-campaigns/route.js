@@ -32,7 +32,7 @@ export async function POST(request) {
   }
 
   const body = await request.json().catch(() => ({}))
-  const { name, recordingUrl, recordingPath, senderNumber, contactListIds } = body
+  const { name, recordingUrl, recordingPath, voicedropRecordingUrl, senderNumber, contactListIds } = body
 
   if (!name || !recordingUrl || !senderNumber || !Array.isArray(contactListIds) || contactListIds.length === 0) {
     return NextResponse.json(
@@ -64,6 +64,7 @@ export async function POST(request) {
       name,
       recording_url: recordingUrl,
       recording_path: recordingPath || null,
+      voicedrop_recording_url: voicedropRecordingUrl || null,
       sender_number: senderNumber,
       contact_list_ids: contactListIds,
       status: 'draft',

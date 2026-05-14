@@ -34,8 +34,14 @@ export async function POST(request) {
   }
 
   const result = await verifySenderConfirm(phoneNumber, code)
+  console.log('[voicedrop:verify-confirm]', {
+    phoneNumber,
+    httpOk: result.ok,
+    httpStatus: result.status,
+    response: result.data,
+  })
+
   if (!result.ok) {
-    console.error('[voicedrop:verify-confirm]', result.status, result.data)
     return NextResponse.json(
       { error: result.data?.message || result.data?.error || 'Invalid or expired verification code' },
       { status: 400 }
@@ -51,5 +57,6 @@ export async function POST(request) {
     })
     .eq('id', pn.id)
 
+  console.log('[voicedrop:verify-confirm] SUCCESS — number marked verified in DB:', phoneNumber)
   return NextResponse.json({ success: true })
 }

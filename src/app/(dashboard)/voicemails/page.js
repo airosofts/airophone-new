@@ -134,6 +134,7 @@ function CreateVoicemailModal({ phoneNumbers, contactLists, onClose, onCreated, 
   const [senderNumber, setSenderNumber] = useState('')
   const [recordingUrl, setRecordingUrl] = useState('')
   const [recordingPath, setRecordingPath] = useState('')
+  const [voicedropRecordingUrl, setVoicedropRecordingUrl] = useState('')
   const [contactListIds, setContactListIds] = useState([])
   const [uploading, setUploading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -156,6 +157,7 @@ function CreateVoicemailModal({ phoneNumbers, contactLists, onClose, onCreated, 
       if (!res.ok) { onError({ title: 'Upload failed', message: data.error || 'Unable to upload' }); return }
       setRecordingUrl(data.url)
       setRecordingPath(data.path)
+      setVoicedropRecordingUrl(data.voicedrop_url || '')
     } finally {
       setUploading(false)
     }
@@ -170,7 +172,7 @@ function CreateVoicemailModal({ phoneNumbers, contactLists, onClose, onCreated, 
 
     setSubmitting(true)
     try {
-      const res = await apiPost('/api/voicemail-campaigns', { name: name.trim(), recordingUrl, recordingPath, senderNumber, contactListIds })
+      const res = await apiPost('/api/voicemail-campaigns', { name: name.trim(), recordingUrl, recordingPath, voicedropRecordingUrl, senderNumber, contactListIds })
       const data = await res.json()
       if (!res.ok) { onError({ title: 'Create failed', message: data.error || 'Could not create' }); return }
       // Auto-launch
