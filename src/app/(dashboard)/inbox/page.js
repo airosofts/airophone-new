@@ -10,9 +10,8 @@ import ChatWindow from '@/components/inbox/ChatWindow'
 import ContactPanel from '@/components/inbox/ContactPanel'
 import NewConversationView from '@/components/inbox/NewConversationView'
 import FilterTabs from '@/components/inbox/FilterTabs'
-import CallInterface from '@/components/calling/CallInterface'
 import { useRealtimeConversations, useRealtimeMessages, usePhoneNumbers } from '@/hooks/useRealtime'
-import { useWebRTCCall } from '@/hooks/useWebRTCCall'
+import { useCallContext } from '@/contexts/CallContext'
 import SkeletonLoader from '@/components/ui/skeleton-loader'
 
 export default function InboxPage() {
@@ -73,7 +72,7 @@ export default function InboxPage() {
   const router = useRouter()
   const audioRef = useRef(null)
 
-  const callHook = useWebRTCCall()
+  const callHook = useCallContext()
 
   const handleAudioUnlock = () => {
     localStorage.setItem('airo_audio_unlocked', '1')
@@ -1250,25 +1249,6 @@ export default function InboxPage() {
       </div>
       </div>{/* end flex-1 overflow-hidden */}
 
-      {callHook && (
-        <CallInterface
-          callStatus={callHook.callStatus}
-          currentCall={callHook.currentCall}
-          incomingCall={callHook.incomingCall}
-          callDuration={callHook.callDuration}
-          isCallActive={callHook.isCallActive}
-          onAcceptCall={callHook.acceptCall}
-          onRejectCall={callHook.rejectCall}
-          onEndCall={callHook.endCall}
-          onToggleMute={callHook.toggleMute}
-          onToggleHold={callHook.toggleHold}
-          onSendDTMF={callHook.sendDTMF}
-          formatPhoneNumber={formatPhoneNumber}
-          availablePhoneNumbers={callHook.availablePhoneNumbers}
-          phoneNumbers={phoneNumbers}
-          callHook={callHook}
-        />
-      )}
 
       {assignScenarioModal && (
         <AssignScenarioModal

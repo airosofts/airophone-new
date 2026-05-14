@@ -53,11 +53,32 @@ export async function verifySenderConfirm(phoneNumber, code) {
 // Send a Ringless Voicemail using a pre-recorded audio file.
 // status_webhook will receive VoiceDrop's delivery updates.
 export async function sendStaticVoicemail({ recordingUrl, from, to, statusWebhookUrl, validateRecipientPhone = true }) {
-  return vdPost('/ringless_voicemail', {
+  const result = await vdPost('/ringless_voicemail', {
     recording_url: recordingUrl,
     from: toLocalDigits(from),
     to: toLocalDigits(to),
     validate_recipient_phone: validateRecipientPhone,
     send_status_to_webhook: statusWebhookUrl || undefined,
   })
+
+  console.log('[voicedrop:send]', {
+    to: toLocalDigits(to),
+    from: toLocalDigits(from),
+    httpOk: result.ok,
+    httpStatus: result.status,
+    response: result.data,
+  })
+
+  // VoiceDrop may return HTTP 200 with a body-level error (no voice_drop_id).
+  // Treat those as failures so the campaign reports them correctly.
+  if (result.ok && !result.data?.voice_drop_id) {
+    result.ok = false
+    result.data = {
+      ...result.data,
+      _bodyError: true,
+      message: result.data?.message || result.data?.error || 'VoiceDrop accepted request but returned no voice_drop_id',
+    }
+  }
+
+  return result
 }

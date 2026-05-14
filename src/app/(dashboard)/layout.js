@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { getCurrentUser, isAuthenticated } from '@/lib/auth'
 import Sidebar from '@/components/layout/Sidebar'
 import ProductTour from '@/components/inbox/ProductTour'
+import { CallProvider } from '@/contexts/CallContext'
 
 const BLOCKED_STATUSES = ['canceled', 'past_due']
 
@@ -355,7 +356,9 @@ export default function DashboardLayout({ children }) {
           <div style={{ width: 36 }} /> {/* Spacer for centering */}
         </div>
 
-        {children}
+        <CallProvider>
+          {children}
+        </CallProvider>
       </main>
 
       {showTour && <ProductTour onDone={handleTourDone} />}
