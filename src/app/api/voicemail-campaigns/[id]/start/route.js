@@ -86,14 +86,26 @@ export async function POST(request, { params }) {
   // Priority: VoiceDrop's own S3 URL (permanent, no auth needed) → fresh Supabase
   // signed URL (7 days, no public bucket required) → stored URL (last resort).
   let recordingUrl = campaign.voicedrop_recording_url || campaign.recording_url
+  let recordingUrlSource = campaign.voicedrop_recording_url ? 'voicedrop_s3' : 'stored_url'
+
   if (!campaign.voicedrop_recording_url && campaign.recording_path) {
     const { data: signed, error: signErr } = await supabaseAdmin.storage
       .from('voicemails')
       .createSignedUrl(campaign.recording_path, 604800)
     if (!signErr && signed?.signedUrl) {
       recordingUrl = signed.signedUrl
+      recordingUrlSource = 'signed_url'
     }
   }
+
+  console.log('[voicemail-campaigns:start] resolved recording URL', {
+    campaignId,
+    source: recordingUrlSource,
+    url: recordingUrl,
+    senderNumber: campaign.sender_number,
+    contactCount: contacts.length,
+    webhookUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.airophone.com'}/api/webhooks/voicedrop`,
+  })
 
   // Kick off async processing — don't block the HTTP response
   processVoicemailCampaign(campaign, contacts, user.userId, workspace.workspaceId, wallet, recordingUrl)

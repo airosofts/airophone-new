@@ -60,14 +60,21 @@ export async function POST(request) {
   let voicedropUrl = null
   try {
     voicedropUrl = await uploadAudio(buffer, file.name || `voicemail.${ext}`, file.type || 'audio/mpeg')
+    console.log('[voicemails:upload] VoiceDrop S3 upload success:', voicedropUrl)
   } catch (e) {
-    console.error('[voicemails:upload] VoiceDrop upload failed:', e.message)
-    // Non-fatal — campaign launch will fall back to signed URL
+    console.error('[voicemails:upload] VoiceDrop S3 upload failed — will fall back to signed URL at send time:', e.message)
   }
+
+  console.log('[voicemails:upload] complete', {
+    storagePath,
+    hasVoicedropUrl: !!voicedropUrl,
+    playbackUrlOk: !!playbackUrl,
+    sizeBytes: file.size,
+  })
 
   return NextResponse.json({
     success: true,
-    url: playbackUrl,           // used for in-app audio player
+    url: playbackUrl,            // used for in-app audio player
     voicedrop_url: voicedropUrl, // used as recording_url when sending RVMs
     path: storagePath,
     sizeBytes: file.size,
