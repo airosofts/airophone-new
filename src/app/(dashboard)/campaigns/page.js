@@ -22,10 +22,24 @@ export default function CampaignsPage() {
 
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
   const launchingIdsRef = useRef(new Set())
+
+  // Tab
+  const [activeTab, setActiveTab] = useState('sms')
+
+  // RVM state
+  const [rvmCampaigns, setRvmCampaigns] = useState([])
+  const [rvmLoading, setRvmLoading] = useState(false)
+  const [showCreateRVM, setShowCreateRVM] = useState(false)
+  const [showViewRVM, setShowViewRVM] = useState(false)
+  const [selectedRVMCampaign, setSelectedRVMCampaign] = useState(null)
+  const [rvmDeleteConfirm, setRvmDeleteConfirm] = useState(null)
+  const [rvmSearchTerm, setRvmSearchTerm] = useState('')
+  const [rvmStatusFilter, setRvmStatusFilter] = useState('all')
+  const [rvmCurrentPage, setRvmCurrentPage] = useState(1)
+  const rvmLaunchingIdsRef = useRef(new Set())
 
   const fetchCampaigns = useCallback(async () => {
     try {
@@ -48,11 +62,27 @@ export default function CampaignsPage() {
     }
   }, [loading])
 
+  const fetchRVMCampaigns = useCallback(async () => {
+    try {
+      const response = await apiGet('/api/voicemail-campaigns')
+      const data = await response.json()
+      if (data.success) setRvmCampaigns(data.campaigns || [])
+    } catch (error) {
+      console.error('Error fetching RVM campaigns:', error)
+    }
+  }, [])
+
   useEffect(() => {
     fetchCampaigns()
     const interval = setInterval(fetchCampaigns, 5000)
     return () => clearInterval(interval)
   }, [fetchCampaigns])
+
+  useEffect(() => {
+    fetchRVMCampaigns()
+    const interval = setInterval(fetchRVMCampaigns, 5000)
+    return () => clearInterval(interval)
+  }, [fetchRVMCampaigns])
 
   useEffect(() => {
     const open = () => setShowCreateCampaign(true)
@@ -126,7 +156,6 @@ export default function CampaignsPage() {
       setShowTrialUpsell(true)
       return
     }
-    // Prevent double-click / accidental re-submission while the start request is in flight
     if (launchingIdsRef.current.has(campaignId)) return
     launchingIdsRef.current.add(campaignId)
     try {
@@ -164,6 +193,43 @@ export default function CampaignsPage() {
     }
   }
 
+  const handleDeleteRVMCampaign = async (campaignId) => {
+    try {
+      const response = await apiPost(`/api/voicemail-campaigns/${campaignId}/delete`, {})
+      const data = await response.json()
+      if (data.success) {
+        setRvmDeleteConfirm(null)
+        setSelectedRVMCampaign(null)
+        setShowViewRVM(false)
+        await fetchRVMCampaigns()
+      } else {
+        setErrorModal({ title: 'Error', message: data.error || 'Failed to delete campaign' })
+      }
+    } catch {
+      setErrorModal({ title: 'Error', message: 'Failed to delete campaign. Please try again.' })
+    }
+  }
+
+  const handleLaunchRVMCampaign = async (campaignId) => {
+    if (rvmLaunchingIdsRef.current.has(campaignId)) return
+    rvmLaunchingIdsRef.current.add(campaignId)
+    try {
+      const response = await apiPost(`/api/voicemail-campaigns/${campaignId}/start`, {})
+      const data = await response.json()
+      if (data.success) {
+        setShowViewRVM(false)
+        setSelectedRVMCampaign(null)
+        await fetchRVMCampaigns()
+      } else {
+        setErrorModal({ title: 'Cannot Launch', message: data.message || data.error || 'Failed to start RVM campaign' })
+      }
+    } catch {
+      setErrorModal({ title: 'Error', message: 'Failed to start RVM campaign. Please try again.' })
+    } finally {
+      rvmLaunchingIdsRef.current.delete(campaignId)
+    }
+  }
+
   const filteredCampaigns = useMemo(() => {
     return campaigns.filter((campaign) => {
       const searchLower = searchTerm.toLowerCase()
@@ -171,11 +237,9 @@ export default function CampaignsPage() {
         campaign.name.toLowerCase().includes(searchLower) ||
         (campaign.message_template || '').toLowerCase().includes(searchLower)
       if (!matchesSearch) return false
-
       if (statusFilter === 'active' && !['draft', 'running', 'completed'].includes(campaign.status)) return false
       if (statusFilter === 'paused' && campaign.status !== 'paused') return false
       if (statusFilter === 'archived' && campaign.status !== 'archived') return false
-
       return true
     })
   }, [campaigns, searchTerm, statusFilter])
@@ -187,7 +251,25 @@ export default function CampaignsPage() {
 
   const totalPages = Math.ceil(filteredCampaigns.length / itemsPerPage)
 
+  const filteredRVMCampaigns = useMemo(() => {
+    return rvmCampaigns.filter((campaign) => {
+      const matchesSearch = campaign.name.toLowerCase().includes(rvmSearchTerm.toLowerCase())
+      if (!matchesSearch) return false
+      if (rvmStatusFilter === 'active' && !['draft', 'running', 'completed'].includes(campaign.status)) return false
+      if (rvmStatusFilter === 'failed' && campaign.status !== 'failed') return false
+      return true
+    })
+  }, [rvmCampaigns, rvmSearchTerm, rvmStatusFilter])
+
+  const paginatedRVMCampaigns = useMemo(() => {
+    const startIndex = (rvmCurrentPage - 1) * itemsPerPage
+    return filteredRVMCampaigns.slice(startIndex, startIndex + itemsPerPage)
+  }, [filteredRVMCampaigns, rvmCurrentPage])
+
+  const totalRVMPages = Math.ceil(filteredRVMCampaigns.length / itemsPerPage)
+
   useEffect(() => { setCurrentPage(1) }, [searchTerm, statusFilter])
+  useEffect(() => { setRvmCurrentPage(1) }, [rvmSearchTerm, rvmStatusFilter])
 
   const getContactListName = (ids) => {
     if (!ids || !Array.isArray(ids) || ids.length === 0) return 'Unknown'
@@ -208,7 +290,8 @@ export default function CampaignsPage() {
     if (campaign.status === 'paused') return { label: 'Paused', className: 'bg-yellow-50 text-yellow-700' }
     if (campaign.status === 'running') return { label: 'Running', className: 'bg-[rgba(214,59,31,0.07)] text-[#D63B1F]' }
     if (campaign.status === 'completed') return { label: 'Completed', className: 'bg-[rgba(214,59,31,0.07)] text-[#D63B1F]' }
-    return { label: 'Active', className: 'bg-green-50 text-green-700' }
+    if (campaign.status === 'failed') return { label: 'Failed', className: 'bg-[rgba(214,59,31,0.07)] text-[#D63B1F]' }
+    return { label: 'Draft', className: 'bg-green-50 text-green-700' }
   }
 
   if (loading) {
@@ -249,232 +332,310 @@ export default function CampaignsPage() {
 
         {/* Campaign type tabs */}
         <div className="flex items-center gap-2">
-          {/* SMS — active */}
-          <div className="flex items-center gap-1.5 px-3 py-2 bg-[#FFFFFF] border border-[#D63B1F] rounded-lg">
-            <i className="fas fa-comment-sms text-[#D63B1F] text-xs"></i>
-            <span className="text-sm font-semibold text-[#131210]">SMS</span>
-            <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-green-50 text-green-700 rounded-full uppercase tracking-wide">Active</span>
-          </div>
-          {/* RVM — coming soon */}
-          <div className="flex items-center gap-1.5 px-3 py-2 bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg opacity-55 cursor-not-allowed">
-            <i className="fas fa-voicemail text-[#9B9890] text-xs"></i>
-            <span className="text-sm font-medium text-[#5C5A55]">
+          <button
+            onClick={() => setActiveTab('sms')}
+            className={`flex items-center gap-1.5 px-3 py-2 border rounded-lg transition-colors ${
+              activeTab === 'sms' ? 'bg-[#FFFFFF] border-[#D63B1F]' : 'bg-[#FFFFFF] border-[#E3E1DB] hover:border-[#9B9890]'
+            }`}
+          >
+            <i className={`fas fa-comment-sms text-xs ${activeTab === 'sms' ? 'text-[#D63B1F]' : 'text-[#9B9890]'}`}></i>
+            <span className={`text-sm ${activeTab === 'sms' ? 'font-semibold text-[#131210]' : 'font-medium text-[#5C5A55]'}`}>SMS</span>
+            {activeTab === 'sms' && <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-green-50 text-green-700 rounded-full uppercase tracking-wide">Active</span>}
+          </button>
+          <button
+            onClick={() => setActiveTab('rvm')}
+            className={`flex items-center gap-1.5 px-3 py-2 border rounded-lg transition-colors ${
+              activeTab === 'rvm' ? 'bg-[#FFFFFF] border-[#D63B1F]' : 'bg-[#FFFFFF] border-[#E3E1DB] hover:border-[#9B9890]'
+            }`}
+          >
+            <i className={`fas fa-voicemail text-xs ${activeTab === 'rvm' ? 'text-[#D63B1F]' : 'text-[#9B9890]'}`}></i>
+            <span className={`text-sm ${activeTab === 'rvm' ? 'font-semibold text-[#131210]' : 'font-medium text-[#5C5A55]'}`}>
               <span className="hidden sm:inline">Ringless Voicemail</span>
               <span className="sm:hidden">RVM</span>
             </span>
-            <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-[#EFEDE8] text-[#9B9890] rounded-full whitespace-nowrap">Coming Soon</span>
-          </div>
+            {activeTab === 'rvm' && <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-green-50 text-green-700 rounded-full uppercase tracking-wide">Active</span>}
+          </button>
         </div>
 
-        {/* Main Card */}
-        <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg overflow-hidden">
-          {/* Card Header */}
-          <div data-tour="campaigns-header" className="px-4 py-3 border-b border-[#E3E1DB] space-y-2.5 md:space-y-0 md:flex md:items-center md:justify-between md:gap-4 md:px-5 md:py-3.5">
-            {/* Row 1: title + new button */}
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 min-w-0">
-                <h3 className="text-sm font-semibold text-[#131210] whitespace-nowrap">SMS Campaigns</h3>
-                <span className="hidden sm:inline text-[10px] font-medium text-[#9B9890] bg-[#F7F6F3] border border-[#E3E1DB] px-1.5 py-0.5 rounded whitespace-nowrap">Bulk SMS to contact lists</span>
-              </div>
-              <button
-                data-tour="new-campaign-btn"
-                onClick={() => setShowCreateCampaign(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#D63B1F] hover:bg-[#c23119] text-white text-sm font-medium rounded-md transition-colors whitespace-nowrap shrink-0"
-              >
-                <i className="fas fa-plus text-xs"></i>
-                <span className="hidden sm:inline">New Campaign</span>
-                <span className="sm:hidden">New</span>
-              </button>
-            </div>
-            {/* Row 2: search + filter */}
-            <div className="flex items-center gap-2 md:flex-1 md:max-w-sm md:ml-3">
-              <div className="relative flex-1">
-                <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-[#9B9890] text-xs"></i>
-                <input
-                  type="text"
-                  placeholder="Search…"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 border border-[#E3E1DB] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
-                />
-              </div>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="shrink-0 px-2.5 py-1.5 border border-[#E3E1DB] rounded-md text-sm text-[#5C5A55] focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
-              >
-                <option value="all">All</option>
-                <option value="active">Active</option>
-                <option value="paused">Paused</option>
-                <option value="archived">Archived</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Table */}
-          {paginatedCampaigns.length === 0 ? (
-            <div className="px-5 py-10 text-center">
-              <p className="text-sm text-[#9B9890]">No SMS campaigns found</p>
-              <p className="text-xs text-[#9B9890] mt-1">
-                {campaigns.length === 0 ? 'Create your first SMS campaign to start sending bulk messages' : 'Try adjusting your filters'}
-              </p>
-            </div>
-          ) : (
-            <>
-              {/* ── Mobile card list ── */}
-              <div className="md:hidden divide-y divide-[#E3E1DB]">
-                {paginatedCampaigns.map((campaign) => {
-                  const status = getStatusBadge(campaign)
-                  return (
-                    <div
-                      key={campaign.id}
-                      className="px-4 py-3.5 active:bg-[#F7F6F3] cursor-pointer"
-                      onClick={() => { setSelectedCampaign(campaign); setShowViewCampaign(true) }}
-                    >
-                      {/* Name + status */}
-                      <div className="flex items-start justify-between gap-3 mb-1.5">
-                        <p className="text-sm font-semibold text-[#131210] leading-snug flex-1 min-w-0">{campaign.name}</p>
-                        <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${status.className}`}>
-                          {status.label}
-                        </span>
-                      </div>
-                      {/* Message preview */}
-                      <p className="text-xs text-[#9B9890] truncate mb-2">{campaign.message_template}</p>
-                      {/* Meta row */}
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-3 text-xs text-[#9B9890] min-w-0">
-                          <span className="flex items-center gap-1 min-w-0">
-                            <i className="fas fa-users text-[10px]"></i>
-                            <span>{campaign.total_recipients ?? 0} recipients</span>
-                          </span>
-                          <span className="truncate hidden xs:block">{campaign.contact_list_names?.join(', ') || '—'}</span>
-                        </div>
-                        {/* Actions */}
-                        <div className="flex items-center gap-0.5 shrink-0">
-                          <button
-                            title="View"
-                            onClick={(e) => { e.stopPropagation(); setSelectedCampaign(campaign); setShowViewCampaign(true) }}
-                            className="p-2 text-[#9B9890] hover:text-[#5C5A55] rounded-lg transition-colors"
-                          >
-                            <i className="fas fa-eye text-xs"></i>
-                          </button>
-                          <button
-                            title={campaign.status === 'paused' ? 'Resume' : 'Pause'}
-                            onClick={(e) => { e.stopPropagation(); handlePauseCampaign(campaign.id, campaign.status === 'paused') }}
-                            className="p-2 text-[#9B9890] hover:text-yellow-600 rounded-lg transition-colors"
-                          >
-                            <i className={`fas ${campaign.status === 'paused' ? 'fa-play' : 'fa-pause'} text-xs`}></i>
-                          </button>
-                          <button
-                            title="Delete"
-                            onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ campaignId: campaign.id, campaignName: campaign.name }) }}
-                            className="p-2 text-[#9B9890] hover:text-[#D63B1F] rounded-lg transition-colors"
-                          >
-                            <i className="fas fa-trash text-xs"></i>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-
-              {/* ── Desktop table ── */}
-              <div className="hidden md:block overflow-x-auto">
-                <table className="min-w-full">
-                  <thead>
-                    <tr className="bg-[#F7F6F3] border-b border-[#E3E1DB]">
-                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Campaign</th>
-                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Status</th>
-                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Contact List</th>
-                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Recipients</th>
-                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Created</th>
-                      <th className="px-5 py-3 text-right text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#E3E1DB]">
-                    {paginatedCampaigns.map((campaign) => {
-                      const status = getStatusBadge(campaign)
-                      return (
-                        <tr
-                          key={campaign.id}
-                          className="hover:bg-[#F7F6F3] cursor-pointer"
-                          onClick={() => { setSelectedCampaign(campaign); setShowViewCampaign(true) }}
-                        >
-                          <td className="px-5 py-3">
-                            <p className="text-sm font-medium text-[#131210]">{campaign.name}</p>
-                            <p className="text-xs text-[#9B9890] truncate max-w-xs mt-0.5">{campaign.message_template}</p>
-                          </td>
-                          <td className="px-5 py-3">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${status.className}`}>
-                              {status.label}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3 text-sm text-[#5C5A55]">{campaign.contact_list_names?.join(', ') || 'Unknown'}</td>
-                          <td className="px-5 py-3 text-sm text-[#5C5A55]">{campaign.total_recipients}</td>
-                          <td className="px-5 py-3 text-sm text-[#9B9890] whitespace-nowrap">{formatDate(campaign.created_at)}</td>
-                          <td className="px-5 py-3 text-right">
-                            <div className="flex items-center justify-end gap-1">
-                              <button title="View" onClick={(e) => { e.stopPropagation(); setSelectedCampaign(campaign); setShowViewCampaign(true) }} className="p-1.5 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded transition-colors">
-                                <i className="fas fa-eye text-[13px]"></i>
-                              </button>
-                              <button title={campaign.status === 'paused' ? 'Resume' : 'Pause'} onClick={(e) => { e.stopPropagation(); handlePauseCampaign(campaign.id, campaign.status === 'paused') }} className="p-1.5 text-[#9B9890] hover:text-yellow-600 hover:bg-yellow-50 rounded transition-colors">
-                                <i className={`fas ${campaign.status === 'paused' ? 'fa-play' : 'fa-pause'} text-[13px]`}></i>
-                              </button>
-                              <button title={campaign.status === 'archived' ? 'Unarchive' : 'Archive'} onClick={(e) => { e.stopPropagation(); handleArchiveCampaign(campaign.id, campaign.status === 'archived') }} className="p-1.5 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded transition-colors">
-                                <i className="fas fa-archive text-[13px]"></i>
-                              </button>
-                              <button title="Delete" onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ campaignId: campaign.id, campaignName: campaign.name }) }} className="p-1.5 text-[#9B9890] hover:text-[#D63B1F] hover:bg-[rgba(214,59,31,0.07)] rounded transition-colors">
-                                <i className="fas fa-trash text-[13px]"></i>
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {totalPages > 1 && (
-                <div className="px-5 py-3 border-t border-[#E3E1DB] flex items-center justify-between bg-[#F7F6F3]">
-                  <p className="text-xs text-[#9B9890]">
-                    {(currentPage - 1) * itemsPerPage + 1}–{Math.min(currentPage * itemsPerPage, filteredCampaigns.length)} of {filteredCampaigns.length}
-                  </p>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                      disabled={currentPage === 1}
-                      className="px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded hover:bg-[#F7F6F3] disabled:opacity-50"
-                    >
-                      <i className="fas fa-angle-left"></i>
-                    </button>
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                      <button
-                        key={page}
-                        onClick={() => setCurrentPage(page)}
-                        className={`px-2.5 py-1.5 text-xs rounded border transition-colors ${
-                          currentPage === page
-                            ? 'bg-[#D63B1F] text-white border-[#D63B1F]'
-                            : 'text-[#5C5A55] border-[#E3E1DB] hover:bg-[#F7F6F3]'
-                        }`}
-                      >
-                        {page}
-                      </button>
-                    ))}
-                    <button
-                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                      disabled={currentPage === totalPages}
-                      className="px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded hover:bg-[#F7F6F3] disabled:opacity-50"
-                    >
-                      <i className="fas fa-angle-right"></i>
-                    </button>
-                  </div>
+        {/* ── SMS Section ── */}
+        {activeTab === 'sms' && (
+          <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg overflow-hidden">
+            <div data-tour="campaigns-header" className="px-4 py-3 border-b border-[#E3E1DB] space-y-2.5 md:space-y-0 md:flex md:items-center md:justify-between md:gap-4 md:px-5 md:py-3.5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <h3 className="text-sm font-semibold text-[#131210] whitespace-nowrap">SMS Campaigns</h3>
+                  <span className="hidden sm:inline text-[10px] font-medium text-[#9B9890] bg-[#F7F6F3] border border-[#E3E1DB] px-1.5 py-0.5 rounded whitespace-nowrap">Bulk SMS to contact lists</span>
                 </div>
-              )}
-            </>
-          )}
-        </div>
+                <button
+                  data-tour="new-campaign-btn"
+                  onClick={() => setShowCreateCampaign(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[#D63B1F] hover:bg-[#c23119] text-white text-sm font-medium rounded-md transition-colors whitespace-nowrap shrink-0"
+                >
+                  <i className="fas fa-plus text-xs"></i>
+                  <span className="hidden sm:inline">New Campaign</span>
+                  <span className="sm:hidden">New</span>
+                </button>
+              </div>
+              <div className="flex items-center gap-2 md:flex-1 md:max-w-sm md:ml-3">
+                <div className="relative flex-1">
+                  <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-[#9B9890] text-xs"></i>
+                  <input
+                    type="text"
+                    placeholder="Search…"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 border border-[#E3E1DB] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
+                  />
+                </div>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="shrink-0 px-2.5 py-1.5 border border-[#E3E1DB] rounded-md text-sm text-[#5C5A55] focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
+                >
+                  <option value="all">All</option>
+                  <option value="active">Active</option>
+                  <option value="paused">Paused</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </div>
+            </div>
+
+            {paginatedCampaigns.length === 0 ? (
+              <div className="px-5 py-10 text-center">
+                <p className="text-sm text-[#9B9890]">No SMS campaigns found</p>
+                <p className="text-xs text-[#9B9890] mt-1">
+                  {campaigns.length === 0 ? 'Create your first SMS campaign to start sending bulk messages' : 'Try adjusting your filters'}
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="md:hidden divide-y divide-[#E3E1DB]">
+                  {paginatedCampaigns.map((campaign) => {
+                    const status = getStatusBadge(campaign)
+                    return (
+                      <div key={campaign.id} className="px-4 py-3.5 active:bg-[#F7F6F3] cursor-pointer" onClick={() => { setSelectedCampaign(campaign); setShowViewCampaign(true) }}>
+                        <div className="flex items-start justify-between gap-3 mb-1.5">
+                          <p className="text-sm font-semibold text-[#131210] leading-snug flex-1 min-w-0">{campaign.name}</p>
+                          <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${status.className}`}>{status.label}</span>
+                        </div>
+                        <p className="text-xs text-[#9B9890] truncate mb-2">{campaign.message_template}</p>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-3 text-xs text-[#9B9890] min-w-0">
+                            <span className="flex items-center gap-1 min-w-0">
+                              <i className="fas fa-users text-[10px]"></i>
+                              <span>{campaign.total_recipients ?? 0} recipients</span>
+                            </span>
+                            <span className="truncate hidden xs:block">{campaign.contact_list_names?.join(', ') || '—'}</span>
+                          </div>
+                          <div className="flex items-center gap-0.5 shrink-0">
+                            <button title="View" onClick={(e) => { e.stopPropagation(); setSelectedCampaign(campaign); setShowViewCampaign(true) }} className="p-2 text-[#9B9890] hover:text-[#5C5A55] rounded-lg transition-colors"><i className="fas fa-eye text-xs"></i></button>
+                            <button title={campaign.status === 'paused' ? 'Resume' : 'Pause'} onClick={(e) => { e.stopPropagation(); handlePauseCampaign(campaign.id, campaign.status === 'paused') }} className="p-2 text-[#9B9890] hover:text-yellow-600 rounded-lg transition-colors"><i className={`fas ${campaign.status === 'paused' ? 'fa-play' : 'fa-pause'} text-xs`}></i></button>
+                            <button title="Delete" onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ campaignId: campaign.id, campaignName: campaign.name }) }} className="p-2 text-[#9B9890] hover:text-[#D63B1F] rounded-lg transition-colors"><i className="fas fa-trash text-xs"></i></button>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="min-w-full">
+                    <thead>
+                      <tr className="bg-[#F7F6F3] border-b border-[#E3E1DB]">
+                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Campaign</th>
+                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Status</th>
+                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Contact List</th>
+                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Recipients</th>
+                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Created</th>
+                        <th className="px-5 py-3 text-right text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#E3E1DB]">
+                      {paginatedCampaigns.map((campaign) => {
+                        const status = getStatusBadge(campaign)
+                        return (
+                          <tr key={campaign.id} className="hover:bg-[#F7F6F3] cursor-pointer" onClick={() => { setSelectedCampaign(campaign); setShowViewCampaign(true) }}>
+                            <td className="px-5 py-3">
+                              <p className="text-sm font-medium text-[#131210]">{campaign.name}</p>
+                              <p className="text-xs text-[#9B9890] truncate max-w-xs mt-0.5">{campaign.message_template}</p>
+                            </td>
+                            <td className="px-5 py-3"><span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${status.className}`}>{status.label}</span></td>
+                            <td className="px-5 py-3 text-sm text-[#5C5A55]">{campaign.contact_list_names?.join(', ') || 'Unknown'}</td>
+                            <td className="px-5 py-3 text-sm text-[#5C5A55]">{campaign.total_recipients}</td>
+                            <td className="px-5 py-3 text-sm text-[#9B9890] whitespace-nowrap">{formatDate(campaign.created_at)}</td>
+                            <td className="px-5 py-3 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <button title="View" onClick={(e) => { e.stopPropagation(); setSelectedCampaign(campaign); setShowViewCampaign(true) }} className="p-1.5 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded transition-colors"><i className="fas fa-eye text-[13px]"></i></button>
+                                <button title={campaign.status === 'paused' ? 'Resume' : 'Pause'} onClick={(e) => { e.stopPropagation(); handlePauseCampaign(campaign.id, campaign.status === 'paused') }} className="p-1.5 text-[#9B9890] hover:text-yellow-600 hover:bg-yellow-50 rounded transition-colors"><i className={`fas ${campaign.status === 'paused' ? 'fa-play' : 'fa-pause'} text-[13px]`}></i></button>
+                                <button title={campaign.status === 'archived' ? 'Unarchive' : 'Archive'} onClick={(e) => { e.stopPropagation(); handleArchiveCampaign(campaign.id, campaign.status === 'archived') }} className="p-1.5 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded transition-colors"><i className="fas fa-archive text-[13px]"></i></button>
+                                <button title="Delete" onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ campaignId: campaign.id, campaignName: campaign.name }) }} className="p-1.5 text-[#9B9890] hover:text-[#D63B1F] hover:bg-[rgba(214,59,31,0.07)] rounded transition-colors"><i className="fas fa-trash text-[13px]"></i></button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {totalPages > 1 && (
+                  <div className="px-5 py-3 border-t border-[#E3E1DB] flex items-center justify-between bg-[#F7F6F3]">
+                    <p className="text-xs text-[#9B9890]">{(currentPage - 1) * itemsPerPage + 1}–{Math.min(currentPage * itemsPerPage, filteredCampaigns.length)} of {filteredCampaigns.length}</p>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded hover:bg-[#F7F6F3] disabled:opacity-50"><i className="fas fa-angle-left"></i></button>
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                        <button key={page} onClick={() => setCurrentPage(page)} className={`px-2.5 py-1.5 text-xs rounded border transition-colors ${currentPage === page ? 'bg-[#D63B1F] text-white border-[#D63B1F]' : 'text-[#5C5A55] border-[#E3E1DB] hover:bg-[#F7F6F3]'}`}>{page}</button>
+                      ))}
+                      <button onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded hover:bg-[#F7F6F3] disabled:opacity-50"><i className="fas fa-angle-right"></i></button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ── RVM Section ── */}
+        {activeTab === 'rvm' && (
+          <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg overflow-hidden">
+            <div className="px-4 py-3 border-b border-[#E3E1DB] space-y-2.5 md:space-y-0 md:flex md:items-center md:justify-between md:gap-4 md:px-5 md:py-3.5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <h3 className="text-sm font-semibold text-[#131210] whitespace-nowrap">RVM Campaigns</h3>
+                  <span className="hidden sm:inline text-[10px] font-medium text-[#9B9890] bg-[#F7F6F3] border border-[#E3E1DB] px-1.5 py-0.5 rounded whitespace-nowrap">Ringless voicemail drops</span>
+                </div>
+                <button
+                  onClick={() => setShowCreateRVM(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[#D63B1F] hover:bg-[#c23119] text-white text-sm font-medium rounded-md transition-colors whitespace-nowrap shrink-0"
+                >
+                  <i className="fas fa-plus text-xs"></i>
+                  <span className="hidden sm:inline">New RVM Campaign</span>
+                  <span className="sm:hidden">New</span>
+                </button>
+              </div>
+              <div className="flex items-center gap-2 md:flex-1 md:max-w-sm md:ml-3">
+                <div className="relative flex-1">
+                  <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-[#9B9890] text-xs"></i>
+                  <input
+                    type="text"
+                    placeholder="Search…"
+                    value={rvmSearchTerm}
+                    onChange={(e) => setRvmSearchTerm(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 border border-[#E3E1DB] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
+                  />
+                </div>
+                <select
+                  value={rvmStatusFilter}
+                  onChange={(e) => setRvmStatusFilter(e.target.value)}
+                  className="shrink-0 px-2.5 py-1.5 border border-[#E3E1DB] rounded-md text-sm text-[#5C5A55] focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
+                >
+                  <option value="all">All</option>
+                  <option value="active">Active</option>
+                  <option value="failed">Failed</option>
+                </select>
+              </div>
+            </div>
+
+            {paginatedRVMCampaigns.length === 0 ? (
+              <div className="px-5 py-12 text-center">
+                <div className="w-10 h-10 bg-[#F7F6F3] rounded-full flex items-center justify-center mx-auto mb-3">
+                  <i className="fas fa-voicemail text-[#9B9890]"></i>
+                </div>
+                <p className="text-sm text-[#9B9890]">No RVM campaigns found</p>
+                <p className="text-xs text-[#9B9890] mt-1">
+                  {rvmCampaigns.length === 0 ? 'Create your first ringless voicemail campaign' : 'Try adjusting your filters'}
+                </p>
+                {rvmCampaigns.length === 0 && (
+                  <button onClick={() => setShowCreateRVM(true)} className="mt-3 px-4 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md transition-colors">
+                    Create RVM Campaign
+                  </button>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="md:hidden divide-y divide-[#E3E1DB]">
+                  {paginatedRVMCampaigns.map((campaign) => {
+                    const status = getStatusBadge(campaign)
+                    return (
+                      <div key={campaign.id} className="px-4 py-3.5 active:bg-[#F7F6F3] cursor-pointer" onClick={() => { setSelectedRVMCampaign(campaign); setShowViewRVM(true) }}>
+                        <div className="flex items-start justify-between gap-3 mb-1.5">
+                          <p className="text-sm font-semibold text-[#131210] leading-snug flex-1 min-w-0">{campaign.name}</p>
+                          <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${status.className}`}>{status.label}</span>
+                        </div>
+                        <p className="text-xs text-[#9B9890] mb-2">{campaign.sender_number}</p>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-3 text-xs text-[#9B9890]">
+                            <span><i className="fas fa-paper-plane text-[10px] mr-1"></i>{campaign.sent_count ?? 0} sent</span>
+                            <span><i className="fas fa-check-circle text-[10px] mr-1"></i>{campaign.delivered_count ?? 0} delivered</span>
+                          </div>
+                          <div className="flex items-center gap-0.5 shrink-0">
+                            <button title="View" onClick={(e) => { e.stopPropagation(); setSelectedRVMCampaign(campaign); setShowViewRVM(true) }} className="p-2 text-[#9B9890] hover:text-[#5C5A55] rounded-lg transition-colors"><i className="fas fa-eye text-xs"></i></button>
+                            <button title="Delete" onClick={(e) => { e.stopPropagation(); setRvmDeleteConfirm({ campaignId: campaign.id, campaignName: campaign.name }) }} className="p-2 text-[#9B9890] hover:text-[#D63B1F] rounded-lg transition-colors"><i className="fas fa-trash text-xs"></i></button>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="min-w-full">
+                    <thead>
+                      <tr className="bg-[#F7F6F3] border-b border-[#E3E1DB]">
+                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Campaign</th>
+                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Status</th>
+                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Sender</th>
+                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Sent</th>
+                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Delivered</th>
+                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Failed</th>
+                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Created</th>
+                        <th className="px-5 py-3 text-right text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#E3E1DB]">
+                      {paginatedRVMCampaigns.map((campaign) => {
+                        const status = getStatusBadge(campaign)
+                        return (
+                          <tr key={campaign.id} className="hover:bg-[#F7F6F3] cursor-pointer" onClick={() => { setSelectedRVMCampaign(campaign); setShowViewRVM(true) }}>
+                            <td className="px-5 py-3">
+                              <p className="text-sm font-medium text-[#131210]">{campaign.name}</p>
+                              <p className="text-xs text-[#9B9890] mt-0.5">{getContactListName(campaign.contact_list_ids)}</p>
+                            </td>
+                            <td className="px-5 py-3"><span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${status.className}`}>{status.label}</span></td>
+                            <td className="px-5 py-3 text-sm text-[#5C5A55]">{campaign.sender_number}</td>
+                            <td className="px-5 py-3 text-sm text-[#5C5A55]">{campaign.sent_count ?? 0}</td>
+                            <td className="px-5 py-3 text-sm text-[#5C5A55]">{campaign.delivered_count ?? 0}</td>
+                            <td className="px-5 py-3 text-sm text-[#5C5A55]">{campaign.failed_count ?? 0}</td>
+                            <td className="px-5 py-3 text-sm text-[#9B9890] whitespace-nowrap">{formatDate(campaign.created_at)}</td>
+                            <td className="px-5 py-3 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <button title="View" onClick={(e) => { e.stopPropagation(); setSelectedRVMCampaign(campaign); setShowViewRVM(true) }} className="p-1.5 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded transition-colors"><i className="fas fa-eye text-[13px]"></i></button>
+                                <button title="Delete" onClick={(e) => { e.stopPropagation(); setRvmDeleteConfirm({ campaignId: campaign.id, campaignName: campaign.name }) }} className="p-1.5 text-[#9B9890] hover:text-[#D63B1F] hover:bg-[rgba(214,59,31,0.07)] rounded transition-colors"><i className="fas fa-trash text-[13px]"></i></button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {totalRVMPages > 1 && (
+                  <div className="px-5 py-3 border-t border-[#E3E1DB] flex items-center justify-between bg-[#F7F6F3]">
+                    <p className="text-xs text-[#9B9890]">{(rvmCurrentPage - 1) * itemsPerPage + 1}–{Math.min(rvmCurrentPage * itemsPerPage, filteredRVMCampaigns.length)} of {filteredRVMCampaigns.length}</p>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => setRvmCurrentPage((p) => Math.max(1, p - 1))} disabled={rvmCurrentPage === 1} className="px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded hover:bg-[#F7F6F3] disabled:opacity-50"><i className="fas fa-angle-left"></i></button>
+                      {Array.from({ length: totalRVMPages }, (_, i) => i + 1).map((page) => (
+                        <button key={page} onClick={() => setRvmCurrentPage(page)} className={`px-2.5 py-1.5 text-xs rounded border transition-colors ${rvmCurrentPage === page ? 'bg-[#D63B1F] text-white border-[#D63B1F]' : 'text-[#5C5A55] border-[#E3E1DB] hover:bg-[#F7F6F3]'}`}>{page}</button>
+                      ))}
+                      <button onClick={() => setRvmCurrentPage((p) => Math.min(totalRVMPages, p + 1))} disabled={rvmCurrentPage === totalRVMPages} className="px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded hover:bg-[#F7F6F3] disabled:opacity-50"><i className="fas fa-angle-right"></i></button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {showCreateCampaign && (
@@ -510,6 +671,25 @@ export default function CampaignsPage() {
         />
       )}
 
+      {showCreateRVM && (
+        <CreateRVMCampaignModal
+          contactLists={contactLists}
+          phoneNumbers={phoneNumbers}
+          onClose={() => setShowCreateRVM(false)}
+          onCreated={() => { setShowCreateRVM(false); fetchRVMCampaigns() }}
+        />
+      )}
+
+      {showViewRVM && selectedRVMCampaign && (
+        <ViewRVMCampaignModal
+          campaign={selectedRVMCampaign}
+          contactLists={contactLists}
+          onClose={() => { setShowViewRVM(false); setSelectedRVMCampaign(null) }}
+          onLaunch={() => handleLaunchRVMCampaign(selectedRVMCampaign.id)}
+          onDelete={() => setRvmDeleteConfirm({ campaignId: selectedRVMCampaign.id, campaignName: selectedRVMCampaign.name })}
+        />
+      )}
+
       {errorModal && (
         <ErrorModal title={errorModal.title} message={errorModal.message} onClose={() => setErrorModal(null)} />
       )}
@@ -519,6 +699,14 @@ export default function CampaignsPage() {
           campaignName={deleteConfirm.campaignName}
           onConfirm={() => handleDeleteCampaign(deleteConfirm.campaignId)}
           onCancel={() => setDeleteConfirm(null)}
+        />
+      )}
+
+      {rvmDeleteConfirm && (
+        <DeleteConfirmationModal
+          campaignName={rvmDeleteConfirm.campaignName}
+          onConfirm={() => handleDeleteRVMCampaign(rvmDeleteConfirm.campaignId)}
+          onCancel={() => setRvmDeleteConfirm(null)}
         />
       )}
     </div>
@@ -532,17 +720,11 @@ function SearchableDropdown({ value, onChange, options, placeholder, renderOptio
   const inputRef = useRef(null)
 
   const selected = options.find(o => o.value === value)
-
-  const filtered = options.filter(o =>
-    (o.searchText || '').toLowerCase().includes(search.toLowerCase())
-  )
+  const filtered = options.filter(o => (o.searchText || '').toLowerCase().includes(search.toLowerCase()))
 
   useEffect(() => {
     const handler = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) {
-        setOpen(false)
-        setSearch('')
-      }
+      if (ref.current && !ref.current.contains(e.target)) { setOpen(false); setSearch('') }
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -552,9 +734,7 @@ function SearchableDropdown({ value, onChange, options, placeholder, renderOptio
 
   return (
     <div className="relative" ref={ref}>
-      <div className={`flex items-center border rounded-lg bg-[#FFFFFF] transition-colors ${
-        error ? 'border-[#D63B1F]' : open ? 'border-[#D63B1F] ring-2 ring-[#D63B1F]/20' : 'border-[#D4D1C9]'
-      }`}>
+      <div className={`flex items-center border rounded-lg bg-[#FFFFFF] transition-colors ${error ? 'border-[#D63B1F]' : open ? 'border-[#D63B1F] ring-2 ring-[#D63B1F]/20' : 'border-[#D4D1C9]'}`}>
         <svg className="w-4 h-4 text-[#9B9890] ml-3 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
           <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd"/>
         </svg>
@@ -568,34 +748,22 @@ function SearchableDropdown({ value, onChange, options, placeholder, renderOptio
           className="flex-1 px-3 py-3 text-sm bg-transparent outline-none text-[#131210] placeholder-[#9B9890] min-w-0"
         />
         {selected && !open && (
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onChange(''); setSearch('') }}
-            className="p-2 text-[#D4D1C9] hover:text-[#9B9890] flex-shrink-0"
-          >
-            <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/>
-            </svg>
+          <button type="button" onClick={(e) => { e.stopPropagation(); onChange(''); setSearch('') }} className="p-2 text-[#D4D1C9] hover:text-[#9B9890] flex-shrink-0">
+            <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
           </button>
         )}
         <svg className={`w-4 h-4 text-[#9B9890] mr-3 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
           <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd"/>
         </svg>
       </div>
-
       {open && (
         <div className="absolute z-50 w-full mt-1 bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg shadow-xl overflow-hidden">
           <div className="max-h-60 overflow-y-auto">
             {filtered.length === 0 ? (
               <p className="px-4 py-4 text-sm text-[#9B9890] text-center">No results found</p>
             ) : filtered.map(o => (
-              <button
-                key={o.value}
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => { onChange(o.value); setOpen(false); setSearch('') }}
-                className={`w-full text-left px-4 py-3 hover:bg-[#F7F6F3] transition-colors border-b border-[#EFEDE8] last:border-0 ${value === o.value ? 'bg-[rgba(214,59,31,0.07)]' : ''}`}
-              >
+              <button key={o.value} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { onChange(o.value); setOpen(false); setSearch('') }}
+                className={`w-full text-left px-4 py-3 hover:bg-[#F7F6F3] transition-colors border-b border-[#EFEDE8] last:border-0 ${value === o.value ? 'bg-[rgba(214,59,31,0.07)]' : ''}`}>
                 {renderOption(o)}
               </button>
             ))}
@@ -607,21 +775,12 @@ function SearchableDropdown({ value, onChange, options, placeholder, renderOptio
 }
 
 function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCreated }) {
-  const [formData, setFormData] = useState({
-    name: '',
-    message: '',
-    contactListId: '',
-    phoneNumberId: '',
-    scheduleTime: '',
-    scheduleType: 'immediate',
-  })
+  const [formData, setFormData] = useState({ name: '', message: '', contactListId: '', phoneNumberId: '', scheduleTime: '', scheduleType: 'immediate' })
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [created, setCreated] = useState(false)
   const messageRef = useRef(null)
 
-  // Insert a placeholder at the textarea's current cursor / selection.
-  // Falls back to appending if the textarea hasn't been focused yet.
   const insertPlaceholder = (tag) => {
     const ta = messageRef.current
     const current = formData.message || ''
@@ -633,7 +792,6 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
     const end = ta.selectionEnd
     const next = current.slice(0, start) + tag + current.slice(end)
     setFormData(f => ({ ...f, message: next }))
-    // Re-position the caret right after the inserted tag, after React re-renders
     requestAnimationFrame(() => {
       const node = messageRef.current
       if (!node) return
@@ -643,19 +801,8 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
     })
   }
 
-  const contactListOptions = contactLists.map(cl => ({
-    value: cl.id,
-    label: cl.name,
-    count: cl.contactCount ?? cl.contact_count ?? 0,
-    searchText: cl.name,
-  }))
-
-  const phoneNumberOptions = phoneNumbers.map(pn => ({
-    value: pn.id,
-    number: pn.phone_number || pn.phoneNumber,
-    name: pn.custom_name || pn.prefix || '',
-    searchText: `${pn.custom_name || ''} ${pn.phone_number || pn.phoneNumber || ''}`,
-  }))
+  const contactListOptions = contactLists.map(cl => ({ value: cl.id, label: cl.name, count: cl.contactCount ?? cl.contact_count ?? 0, searchText: cl.name }))
+  const phoneNumberOptions = phoneNumbers.map(pn => ({ value: pn.id, number: pn.phone_number || pn.phoneNumber, name: pn.custom_name || pn.prefix || '', searchText: `${pn.custom_name || ''} ${pn.phone_number || pn.phoneNumber || ''}` }))
 
   const validateForm = () => {
     const newErrors = {}
@@ -675,20 +822,11 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
     try {
       const selectedPn = phoneNumbers.find(pn => pn.id === formData.phoneNumberId)
       const senderNumber = selectedPn?.phone_number || selectedPn?.phoneNumber
-      const payload = {
-        name: formData.name,
-        message_template: formData.message,
-        contact_list_ids: [formData.contactListId],
-        sender_number: senderNumber,
-        delay_between_messages: 1000,
-      }
+      const payload = { name: formData.name, message_template: formData.message, contact_list_ids: [formData.contactListId], sender_number: senderNumber, delay_between_messages: 1000 }
       const response = await apiPost('/api/campaigns', payload)
       const data = await response.json()
-      if (data.success) {
-        setCreated(true)
-      } else {
-        setErrors({ submit: data.error || 'Failed to create campaign' })
-      }
+      if (data.success) { setCreated(true) }
+      else { setErrors({ submit: data.error || 'Failed to create campaign' }) }
     } catch {
       setErrors({ submit: 'Failed to create campaign. Please try again.' })
     } finally {
@@ -701,14 +839,10 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
       <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
         <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-sm">
           <div className="px-5 py-8 text-center">
-            <div className="w-10 h-10 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-3">
-              <i className="fas fa-check text-green-600"></i>
-            </div>
+            <div className="w-10 h-10 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-3"><i className="fas fa-check text-green-600"></i></div>
             <h3 className="text-sm font-semibold text-[#131210] mb-1">Campaign Created</h3>
             <p className="text-xs text-[#9B9890] mb-4">Your campaign has been created successfully.</p>
-            <button onClick={onCampaignCreated} className="px-4 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md">
-              Done
-            </button>
+            <button onClick={onCampaignCreated} className="px-4 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md">Done</button>
           </div>
         </div>
       </div>
@@ -718,159 +852,77 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-6">
       <div className="bg-[#FFFFFF] rounded-xl shadow-2xl flex flex-col" style={{ width: '90vw', maxWidth: '1100px', height: '88vh' }}>
-        {/* Header */}
         <div data-tour="campaign-modal-header" className="flex items-center justify-between px-8 py-5 border-b border-[#E3E1DB] flex-shrink-0">
           <h3 className="text-lg font-semibold text-[#131210]">New Campaign</h3>
           <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1.5 hover:bg-[#F7F6F3] rounded-md transition-colors">
-            <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/>
-            </svg>
+            <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
           </button>
         </div>
 
-        {/* Body — two columns */}
         <form onSubmit={handleSubmit} className="flex flex-1 min-h-0">
-          {/* Left column */}
           <div className="flex-1 flex flex-col px-8 py-6 border-r border-[#E3E1DB] overflow-y-auto space-y-5">
             <div data-tour="campaign-modal-name">
               <label className="block text-sm font-medium text-[#5C5A55] mb-2">Campaign Name *</label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g., Summer Sale Campaign"
-                className="w-full px-4 py-3 border border-[#D4D1C9] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F]"
-              />
+              <input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="e.g., Summer Sale Campaign" className="w-full px-4 py-3 border border-[#D4D1C9] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F]" />
               {errors.name && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.name}</p>}
             </div>
-
             <div data-tour="campaign-modal-message" className="flex-1 flex flex-col">
               <label className="block text-sm font-medium text-[#5C5A55] mb-2">Message *</label>
-              <textarea
-                ref={messageRef}
-                value={formData.message}
-                onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                placeholder="Type your SMS message here…"
-                className="w-full flex-1 px-4 py-3 border border-[#D4D1C9] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F] resize-none min-h-[200px]"
-              />
+              <textarea ref={messageRef} value={formData.message} onChange={(e) => setFormData({ ...formData, message: e.target.value })} placeholder="Type your SMS message here…" className="w-full flex-1 px-4 py-3 border border-[#D4D1C9] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F] resize-none min-h-[200px]" />
               <div className="flex flex-wrap items-center gap-2 mt-3">
                 <span className="text-xs text-[#9B9890] font-medium">Insert placeholder:</span>
                 {['{first_name}', '{last_name}', '{business_name}', '{email}', '{phone}', '{city}', '{state}', '{country}'].map(tag => (
-                  <button
-                    key={tag}
-                    type="button"
-                    onClick={() => insertPlaceholder(tag)}
-                    className="px-2.5 py-1 text-xs bg-[#EFEDE8] hover:bg-[#fdecea] hover:text-[#D63B1F] hover:border-[#D63B1F] text-[#5C5A55] rounded-md border border-[#E3E1DB] font-mono transition-colors"
-                  >
-                    {tag}
-                  </button>
+                  <button key={tag} type="button" onClick={() => insertPlaceholder(tag)} className="px-2.5 py-1 text-xs bg-[#EFEDE8] hover:bg-[#fdecea] hover:text-[#D63B1F] hover:border-[#D63B1F] text-[#5C5A55] rounded-md border border-[#E3E1DB] font-mono transition-colors">{tag}</button>
                 ))}
               </div>
               {errors.message && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.message}</p>}
             </div>
           </div>
 
-          {/* Right column */}
           <div data-tour="campaign-modal-settings" className="w-96 flex flex-col px-8 py-6 overflow-y-auto space-y-5 flex-shrink-0">
             <div>
               <label className="block text-sm font-medium text-[#5C5A55] mb-2">Contact List *</label>
-              <SearchableDropdown
-                value={formData.contactListId}
-                onChange={(v) => setFormData(f => ({ ...f, contactListId: v }))}
-                options={contactListOptions}
-                placeholder="Select a list"
-                error={errors.contactListId}
+              <SearchableDropdown value={formData.contactListId} onChange={(v) => setFormData(f => ({ ...f, contactListId: v }))} options={contactListOptions} placeholder="Select a list" error={errors.contactListId}
                 renderSelected={(o) => o.label}
-                renderOption={(o) => (
-                  <div>
-                    <p className="text-sm font-medium text-[#131210]">{o.label}</p>
-                    <p className="text-xs text-[#9B9890] mt-0.5">{o.count} contacts</p>
-                  </div>
-                )}
+                renderOption={(o) => (<div><p className="text-sm font-medium text-[#131210]">{o.label}</p><p className="text-xs text-[#9B9890] mt-0.5">{o.count} contacts</p></div>)}
               />
               {errors.contactListId && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.contactListId}</p>}
             </div>
-
             <div>
               <label className="block text-sm font-medium text-[#5C5A55] mb-2">Phone Number *</label>
-              <SearchableDropdown
-                value={formData.phoneNumberId}
-                onChange={(v) => setFormData(f => ({ ...f, phoneNumberId: v }))}
-                options={phoneNumberOptions}
-                placeholder="Select a number"
-                error={errors.phoneNumberId}
+              <SearchableDropdown value={formData.phoneNumberId} onChange={(v) => setFormData(f => ({ ...f, phoneNumberId: v }))} options={phoneNumberOptions} placeholder="Select a number" error={errors.phoneNumberId}
                 renderSelected={(o) => o.name ? `${o.name} — ${o.number}` : o.number}
-                renderOption={(o) => (
-                  <div>
-                    {o.name && <p className="text-sm font-medium text-[#131210]">{o.name}</p>}
-                    <p className={`text-sm ${o.name ? 'text-[#9B9890]' : 'font-medium text-[#131210]'}`}>{o.number}</p>
-                  </div>
-                )}
+                renderOption={(o) => (<div>{o.name && <p className="text-sm font-medium text-[#131210]">{o.name}</p>}<p className={`text-sm ${o.name ? 'text-[#9B9890]' : 'font-medium text-[#131210]'}`}>{o.number}</p></div>)}
               />
               {errors.phoneNumberId && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.phoneNumberId}</p>}
             </div>
-
             <div>
               <label className="block text-sm font-medium text-[#5C5A55] mb-2">Schedule</label>
               <div className="space-y-2.5">
                 <label className="flex items-center gap-3 p-3 border border-[#E3E1DB] rounded-lg cursor-pointer hover:bg-[#F7F6F3] transition-colors">
-                  <input
-                    type="radio" value="immediate"
-                    checked={formData.scheduleType === 'immediate'}
-                    onChange={(e) => setFormData({ ...formData, scheduleType: e.target.value, scheduleTime: '' })}
-                    className="text-[#D63B1F]"
-                  />
-                  <div>
-                    <p className="text-sm font-medium text-[#131210]">Send Immediately</p>
-                    <p className="text-xs text-[#9B9890]">Starts sending right after creation</p>
-                  </div>
+                  <input type="radio" value="immediate" checked={formData.scheduleType === 'immediate'} onChange={(e) => setFormData({ ...formData, scheduleType: e.target.value, scheduleTime: '' })} className="text-[#D63B1F]" />
+                  <div><p className="text-sm font-medium text-[#131210]">Send Immediately</p><p className="text-xs text-[#9B9890]">Starts sending right after creation</p></div>
                 </label>
                 <label className="flex items-center gap-3 p-3 border border-[#E3E1DB] rounded-lg cursor-pointer hover:bg-[#F7F6F3] transition-colors">
-                  <input
-                    type="radio" value="scheduled"
-                    checked={formData.scheduleType === 'scheduled'}
-                    onChange={(e) => setFormData({ ...formData, scheduleType: e.target.value })}
-                    className="text-[#D63B1F]"
-                  />
-                  <div>
-                    <p className="text-sm font-medium text-[#131210]">Schedule for Later</p>
-                    <p className="text-xs text-[#9B9890]">Pick a date and time</p>
-                  </div>
+                  <input type="radio" value="scheduled" checked={formData.scheduleType === 'scheduled'} onChange={(e) => setFormData({ ...formData, scheduleType: e.target.value })} className="text-[#D63B1F]" />
+                  <div><p className="text-sm font-medium text-[#131210]">Schedule for Later</p><p className="text-xs text-[#9B9890]">Pick a date and time</p></div>
                 </label>
               </div>
             </div>
-
             {formData.scheduleType === 'scheduled' && (
               <div>
                 <label className="block text-sm font-medium text-[#5C5A55] mb-2">Schedule Time *</label>
-                <input
-                  type="datetime-local"
-                  value={formData.scheduleTime}
-                  onChange={(e) => setFormData({ ...formData, scheduleTime: e.target.value })}
-                  className="w-full px-4 py-3 border border-[#D4D1C9] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F]"
-                />
+                <input type="datetime-local" value={formData.scheduleTime} onChange={(e) => setFormData({ ...formData, scheduleTime: e.target.value })} className="w-full px-4 py-3 border border-[#D4D1C9] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F]" />
                 {errors.scheduleTime && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.scheduleTime}</p>}
               </div>
             )}
-
-            {errors.submit && (
-              <div className="bg-[rgba(214,59,31,0.07)] border border-[rgba(214,59,31,0.14)] text-[#D63B1F] px-4 py-3 rounded-lg text-sm">
-                {errors.submit}
-              </div>
-            )}
+            {errors.submit && <div className="bg-[rgba(214,59,31,0.07)] border border-[rgba(214,59,31,0.14)] text-[#D63B1F] px-4 py-3 rounded-lg text-sm">{errors.submit}</div>}
           </div>
         </form>
 
-        {/* Footer */}
         <div className="flex items-center justify-end gap-3 px-8 py-4 border-t border-[#E3E1DB] flex-shrink-0">
-          <button type="button" onClick={onClose} className="px-5 py-2.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3] transition-colors">
-            Cancel
-          </button>
-          <button
-            type="submit" form="campaign-form" disabled={isSubmitting}
-            onClick={handleSubmit}
-            className="px-6 py-2.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg disabled:opacity-50 transition-colors"
-          >
+          <button type="button" onClick={onClose} className="px-5 py-2.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3] transition-colors">Cancel</button>
+          <button type="submit" form="campaign-form" disabled={isSubmitting} onClick={handleSubmit} className="px-6 py-2.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg disabled:opacity-50 transition-colors">
             {isSubmitting ? <><i className="fas fa-spinner fa-spin mr-2"></i>Creating…</> : 'Create Campaign'}
           </button>
         </div>
@@ -946,36 +998,22 @@ function ViewCampaignModal({ campaign, contactLists, phoneNumbers, isTrial, onCl
       <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-2xl my-8">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#E3E1DB] sticky top-0 bg-[#FFFFFF]">
           <h3 className="text-sm font-semibold text-[#131210]">{isEditing ? 'Edit Campaign' : 'Campaign Details'}</h3>
-          <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1">
-            <i className="fas fa-times text-sm"></i>
-          </button>
+          <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1"><i className="fas fa-times text-sm"></i></button>
         </div>
 
         {isEditing ? (
           <form onSubmit={handleEditSubmit} className="px-5 py-4 space-y-4">
             <div>
               <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Campaign Name *</label>
-              <input
-                type="text"
-                value={editFormData.name}
-                onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
-                className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
-              />
+              <input type="text" value={editFormData.name} onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })} className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]" />
               {errors.name && <p className="text-[#D63B1F] text-xs mt-1">{errors.name}</p>}
             </div>
             <div>
               <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Message *</label>
-              <textarea
-                value={editFormData.message}
-                onChange={(e) => setEditFormData({ ...editFormData, message: e.target.value })}
-                rows="4"
-                className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F] resize-none"
-              />
+              <textarea value={editFormData.message} onChange={(e) => setEditFormData({ ...editFormData, message: e.target.value })} rows="4" className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F] resize-none" />
               {errors.message && <p className="text-[#D63B1F] text-xs mt-1">{errors.message}</p>}
             </div>
-            {errors.submit && (
-              <div className="bg-[rgba(214,59,31,0.07)] border border-[rgba(214,59,31,0.14)] text-[#D63B1F] px-3 py-2.5 rounded-md text-sm">{errors.submit}</div>
-            )}
+            {errors.submit && <div className="bg-[rgba(214,59,31,0.07)] border border-[rgba(214,59,31,0.14)] text-[#D63B1F] px-3 py-2.5 rounded-md text-sm">{errors.submit}</div>}
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" onClick={() => { setIsEditing(false); setErrors({}) }} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
               <button type="submit" disabled={isSubmitting} className="px-4 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md disabled:opacity-50">
@@ -986,14 +1024,8 @@ function ViewCampaignModal({ campaign, contactLists, phoneNumbers, isTrial, onCl
         ) : (
           <>
             <div className="px-5 py-4 space-y-4">
-              <div>
-                <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Campaign Name</p>
-                <p className="text-sm text-[#131210] font-medium">{campaign.name}</p>
-              </div>
-              <div>
-                <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Message</p>
-                <p className="text-sm text-[#5C5A55] bg-[#F7F6F3] border border-[#E3E1DB] rounded px-3 py-2 whitespace-pre-wrap">{campaign.message_template}</p>
-              </div>
+              <div><p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Campaign Name</p><p className="text-sm text-[#131210] font-medium">{campaign.name}</p></div>
+              <div><p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Message</p><p className="text-sm text-[#5C5A55] bg-[#F7F6F3] border border-[#E3E1DB] rounded px-3 py-2 whitespace-pre-wrap">{campaign.message_template}</p></div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {[
                   { label: 'Contact List', value: campaign.contact_list_names?.join(', ') || 'Unknown' },
@@ -1001,21 +1033,12 @@ function ViewCampaignModal({ campaign, contactLists, phoneNumbers, isTrial, onCl
                   { label: 'Recipients', value: campaign.total_recipients },
                   { label: 'Created', value: formatDate(campaign.created_at) },
                 ].map((item) => (
-                  <div key={item.label}>
-                    <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">{item.label}</p>
-                    <p className="text-sm text-[#5C5A55]">{item.value}</p>
-                  </div>
+                  <div key={item.label}><p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">{item.label}</p><p className="text-sm text-[#5C5A55]">{item.value}</p></div>
                 ))}
               </div>
-              <div>
-                <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Status</p>
-                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${statusClass}`}>
-                  {statusLabel}
-                </span>
-              </div>
+              <div><p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Status</p><span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${statusClass}`}>{statusLabel}</span></div>
             </div>
 
-            {/* Execution History */}
             <div className="border-t border-[#E3E1DB] px-5 py-4">
               <p className="text-xs font-semibold text-[#9B9890] uppercase tracking-wider mb-3">Execution History</p>
               {loadingLogs ? (
@@ -1030,45 +1053,388 @@ function ViewCampaignModal({ campaign, contactLists, phoneNumbers, isTrial, onCl
                         <p className="text-sm text-[#5C5A55]">{formatDate(log.executed_at)}</p>
                         <p className="text-xs text-[#9B9890]">{log.sent_count} sent, {log.failed_count} failed</p>
                       </div>
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                        log.status === 'completed' ? 'bg-green-50 text-green-700'
-                        : log.status === 'failed' ? 'bg-[rgba(214,59,31,0.07)] text-[#D63B1F]'
-                        : 'bg-[rgba(214,59,31,0.07)] text-[#D63B1F]'
-                      }`}>
-                        {log.status}
-                      </span>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${log.status === 'completed' ? 'bg-green-50 text-green-700' : 'bg-[rgba(214,59,31,0.07)] text-[#D63B1F]'}`}>{log.status}</span>
                     </div>
                   ))}
                 </div>
               )}
             </div>
 
-            {/* Actions */}
             <div className="border-t border-[#E3E1DB] px-5 py-3.5 flex flex-wrap items-center gap-2">
               {campaign.status === 'draft' && (
-                <button
-                  onClick={onLaunch}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-semibold text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md transition-colors"
-                >
-                  {isTrial ? (
-                    <><i className="fas fa-lock text-xs"></i> Launch Campaign</>
-                  ) : (
-                    <><i className="fas fa-rocket text-xs"></i> Launch Campaign</>
-                  )}
+                <button onClick={onLaunch} className="flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-semibold text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md transition-colors">
+                  {isTrial ? <><i className="fas fa-lock text-xs"></i> Launch Campaign</> : <><i className="fas fa-rocket text-xs"></i> Launch Campaign</>}
                 </button>
               )}
               <button onClick={() => setIsEditing(true)} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Edit</button>
-              <button onClick={onPause} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">
-                {campaign.status === 'paused' ? 'Resume' : 'Pause'}
-              </button>
-              <button onClick={onArchive} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">
-                {campaign.status === 'archived' ? 'Unarchive' : 'Archive'}
-              </button>
+              <button onClick={onPause} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">{campaign.status === 'paused' ? 'Resume' : 'Pause'}</button>
+              <button onClick={onArchive} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">{campaign.status === 'archived' ? 'Unarchive' : 'Archive'}</button>
               <button onClick={onDelete} className="px-3 py-1.5 text-sm text-[#D63B1F] border border-[rgba(214,59,31,0.14)] rounded-md hover:bg-[rgba(214,59,31,0.07)]">Delete</button>
               <button onClick={onClose} className="ml-auto px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Close</button>
             </div>
           </>
         )}
+      </div>
+    </div>
+  )
+}
+
+function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated }) {
+  const [name, setName] = useState('')
+  const [selectedListIds, setSelectedListIds] = useState([])
+  const [senderNumber, setSenderNumber] = useState('')
+  const [uploadState, setUploadState] = useState(null) // null | 'uploading' | { url, voicedropUrl, path, name }
+  const [errors, setErrors] = useState({})
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [created, setCreated] = useState(false)
+  const fileInputRef = useRef(null)
+
+  const verifiedNumbers = phoneNumbers.filter(pn => pn.voicedrop_verified)
+
+  const toggleList = (id) => {
+    setSelectedListIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadState('uploading')
+    setErrors(prev => ({ ...prev, audio: null }))
+    const form = new FormData()
+    form.append('file', file)
+    try {
+      const user = getCurrentUser()
+      const res = await fetch('/api/voicemail-campaigns/upload-audio', {
+        method: 'POST',
+        headers: { 'x-workspace-id': user?.workspaceId, 'x-user-id': user?.userId },
+        body: form,
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        setErrors(prev => ({ ...prev, audio: data.error || 'Upload failed' }))
+        setUploadState(null)
+        return
+      }
+      setUploadState({ url: data.url, voicedropUrl: data.voicedrop_url, path: data.path, name: file.name })
+    } catch {
+      setErrors(prev => ({ ...prev, audio: 'Upload failed. Please try again.' }))
+      setUploadState(null)
+    }
+  }
+
+  const validate = () => {
+    const errs = {}
+    if (!name.trim()) errs.name = 'Campaign name is required'
+    if (!uploadState || uploadState === 'uploading') errs.audio = 'Please upload a voicemail recording'
+    if (!senderNumber) errs.senderNumber = 'Sender number is required'
+    if (selectedListIds.length === 0) errs.contactLists = 'Select at least one contact list'
+    setErrors(errs)
+    return Object.keys(errs).length === 0
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!validate()) return
+    setIsSubmitting(true)
+    try {
+      const payload = {
+        name: name.trim(),
+        recordingUrl: uploadState.voicedropUrl || uploadState.url,
+        recordingPath: uploadState.path,
+        voicedropRecordingUrl: uploadState.voicedropUrl || null,
+        senderNumber,
+        contactListIds: selectedListIds,
+      }
+      const response = await apiPost('/api/voicemail-campaigns', payload)
+      const data = await response.json()
+      if (data.success) { setCreated(true) }
+      else { setErrors({ submit: data.error || 'Failed to create campaign' }) }
+    } catch {
+      setErrors({ submit: 'Failed to create campaign. Please try again.' })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  if (created) {
+    return (
+      <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+        <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-sm">
+          <div className="px-5 py-8 text-center">
+            <div className="w-10 h-10 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-3"><i className="fas fa-check text-green-600"></i></div>
+            <h3 className="text-sm font-semibold text-[#131210] mb-1">RVM Campaign Created</h3>
+            <p className="text-xs text-[#9B9890] mb-4">Your campaign is ready. Open it to launch and start sending.</p>
+            <button onClick={onCreated} className="px-4 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md">View Campaigns</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-6">
+      <div className="bg-[#FFFFFF] rounded-xl shadow-2xl flex flex-col" style={{ width: '90vw', maxWidth: '1000px', height: '88vh' }}>
+        <div className="flex items-center justify-between px-8 py-5 border-b border-[#E3E1DB] flex-shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 bg-[rgba(214,59,31,0.08)] rounded-lg flex items-center justify-center">
+              <i className="fas fa-voicemail text-[#D63B1F] text-sm"></i>
+            </div>
+            <h3 className="text-lg font-semibold text-[#131210]">New RVM Campaign</h3>
+          </div>
+          <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1.5 hover:bg-[#F7F6F3] rounded-md transition-colors">
+            <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="flex flex-1 min-h-0">
+          {/* Left column */}
+          <div className="flex-1 flex flex-col px-8 py-6 border-r border-[#E3E1DB] overflow-y-auto space-y-5">
+            <div>
+              <label className="block text-sm font-medium text-[#5C5A55] mb-2">Campaign Name *</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g., Spring Outreach Voicemail"
+                className="w-full px-4 py-3 border border-[#D4D1C9] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F]"
+              />
+              {errors.name && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.name}</p>}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-[#5C5A55] mb-2">Voicemail Recording *</label>
+              {uploadState && uploadState !== 'uploading' ? (
+                <div className="border border-[#E3E1DB] rounded-lg p-4 bg-[#F7F6F3]">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-8 h-8 bg-[rgba(214,59,31,0.08)] rounded flex items-center justify-center flex-shrink-0">
+                        <i className="fas fa-music text-[#D63B1F] text-xs"></i>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-[#131210] truncate">{uploadState.name}</p>
+                        <p className="text-xs text-[#9B9890]">{uploadState.voicedropUrl ? 'Uploaded to VoiceDrop' : 'Stored locally'}</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setUploadState(null); if (fileInputRef.current) fileInputRef.current.value = '' }}
+                      className="p-1.5 text-[#9B9890] hover:text-[#D63B1F] rounded transition-colors flex-shrink-0"
+                    >
+                      <i className="fas fa-times text-xs"></i>
+                    </button>
+                  </div>
+                  <audio controls src={uploadState.url} className="w-full" style={{ height: '36px' }} />
+                  {uploadState.voicedropUrl && (
+                    <p className="text-[10px] text-green-700 mt-2 flex items-center gap-1">
+                      <i className="fas fa-check-circle"></i> Ready for ringless delivery
+                    </p>
+                  )}
+                </div>
+              ) : uploadState === 'uploading' ? (
+                <div className="border border-[#E3E1DB] rounded-lg p-8 text-center bg-[#F7F6F3]">
+                  <i className="fas fa-spinner fa-spin text-[#D63B1F] text-xl mb-2"></i>
+                  <p className="text-sm text-[#9B9890]">Uploading audio…</p>
+                </div>
+              ) : (
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className="border-2 border-dashed border-[#E3E1DB] rounded-lg p-8 text-center cursor-pointer hover:border-[#D63B1F] hover:bg-[rgba(214,59,31,0.02)] transition-colors"
+                >
+                  <div className="w-10 h-10 bg-[#F7F6F3] rounded-full flex items-center justify-center mx-auto mb-3">
+                    <i className="fas fa-cloud-upload-alt text-[#9B9890] text-lg"></i>
+                  </div>
+                  <p className="text-sm font-medium text-[#131210] mb-1">Click to upload audio</p>
+                  <p className="text-xs text-[#9B9890]">MP3, WAV, OGG, FLAC — up to 10 MB</p>
+                </div>
+              )}
+              <input ref={fileInputRef} type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/ogg,audio/flac" onChange={handleFileChange} className="hidden" />
+              {errors.audio && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.audio}</p>}
+            </div>
+          </div>
+
+          {/* Right column */}
+          <div className="w-96 flex flex-col px-8 py-6 overflow-y-auto space-y-5 flex-shrink-0">
+            <div>
+              <label className="block text-sm font-medium text-[#5C5A55] mb-2">Sender Number *</label>
+              {verifiedNumbers.length === 0 ? (
+                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-xs text-yellow-800 flex items-start gap-2">
+                    <i className="fas fa-exclamation-triangle mt-0.5 flex-shrink-0"></i>
+                    <span>No VoiceDrop-verified numbers found. Go to <strong>Phone Numbers</strong> settings to verify a number before sending RVMs.</span>
+                  </p>
+                </div>
+              ) : (
+                <select
+                  value={senderNumber}
+                  onChange={(e) => setSenderNumber(e.target.value)}
+                  className={`w-full px-4 py-3 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F] ${errors.senderNumber ? 'border-[#D63B1F]' : 'border-[#D4D1C9]'}`}
+                >
+                  <option value="">Select a verified number…</option>
+                  {verifiedNumbers.map(pn => (
+                    <option key={pn.id} value={pn.phone_number || pn.phoneNumber}>
+                      {pn.custom_name ? `${pn.custom_name} — ${pn.phone_number || pn.phoneNumber}` : (pn.phone_number || pn.phoneNumber)}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {errors.senderNumber && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.senderNumber}</p>}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-[#5C5A55] mb-2">Contact Lists *</label>
+              {contactLists.length === 0 ? (
+                <p className="text-xs text-[#9B9890]">No contact lists found. Create one first.</p>
+              ) : (
+                <div className={`border rounded-lg overflow-hidden ${errors.contactLists ? 'border-[#D63B1F]' : 'border-[#D4D1C9]'}`}>
+                  {contactLists.map((cl, i) => (
+                    <label
+                      key={cl.id}
+                      className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-[#F7F6F3] transition-colors ${i > 0 ? 'border-t border-[#E3E1DB]' : ''} ${selectedListIds.includes(cl.id) ? 'bg-[rgba(214,59,31,0.03)]' : ''}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedListIds.includes(cl.id)}
+                        onChange={() => toggleList(cl.id)}
+                        className="w-4 h-4 rounded border-[#D4D1C9] accent-[#D63B1F]"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm text-[#131210] font-medium truncate">{cl.name}</p>
+                        <p className="text-xs text-[#9B9890]">{cl.contactCount ?? cl.contact_count ?? 0} contacts</p>
+                      </div>
+                      {selectedListIds.includes(cl.id) && <i className="fas fa-check text-[#D63B1F] text-xs flex-shrink-0"></i>}
+                    </label>
+                  ))}
+                </div>
+              )}
+              {errors.contactLists && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.contactLists}</p>}
+              {selectedListIds.length > 0 && (
+                <p className="text-xs text-[#9B9890] mt-1.5">
+                  {selectedListIds.reduce((sum, id) => {
+                    const cl = contactLists.find(c => c.id === id)
+                    return sum + (cl?.contactCount ?? cl?.contact_count ?? 0)
+                  }, 0)} total contacts selected
+                </p>
+              )}
+            </div>
+
+            {errors.submit && (
+              <div className="bg-[rgba(214,59,31,0.07)] border border-[rgba(214,59,31,0.14)] text-[#D63B1F] px-4 py-3 rounded-lg text-sm">{errors.submit}</div>
+            )}
+          </div>
+        </form>
+
+        <div className="flex items-center justify-end gap-3 px-8 py-4 border-t border-[#E3E1DB] flex-shrink-0">
+          <button type="button" onClick={onClose} className="px-5 py-2.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3] transition-colors">Cancel</button>
+          <button
+            onClick={handleSubmit}
+            disabled={isSubmitting || uploadState === 'uploading'}
+            className="px-6 py-2.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg disabled:opacity-50 transition-colors"
+          >
+            {isSubmitting ? <><i className="fas fa-spinner fa-spin mr-2"></i>Creating…</> : 'Create RVM Campaign'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ViewRVMCampaignModal({ campaign, contactLists, onClose, onLaunch, onDelete }) {
+  const [isLaunching, setIsLaunching] = useState(false)
+
+  const getContactListName = (ids) => {
+    if (!ids || !Array.isArray(ids) || ids.length === 0) return 'Unknown'
+    const names = ids.map(id => contactLists.find(cl => cl.id === id)?.name).filter(Boolean)
+    return names.length > 0 ? names.join(', ') : 'Unknown'
+  }
+
+  const formatDate = (dateString) => {
+    try { return formatInTimeZone(new Date(dateString), 'UTC', 'MMM dd, yyyy HH:mm') }
+    catch { return dateString }
+  }
+
+  const statusLabel = campaign.status === 'running' ? 'Running' : campaign.status === 'completed' ? 'Completed' : campaign.status === 'failed' ? 'Failed' : 'Draft'
+  const statusClass = campaign.status === 'running' ? 'bg-[rgba(214,59,31,0.07)] text-[#D63B1F]' : campaign.status === 'completed' ? 'bg-[rgba(214,59,31,0.07)] text-[#D63B1F]' : campaign.status === 'failed' ? 'bg-[rgba(214,59,31,0.07)] text-[#D63B1F]' : 'bg-green-50 text-green-700'
+
+  const handleLaunch = async () => {
+    setIsLaunching(true)
+    try { await onLaunch() }
+    finally { setIsLaunching(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 overflow-y-auto">
+      <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-2xl my-8">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#E3E1DB] sticky top-0 bg-[#FFFFFF]">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 bg-[rgba(214,59,31,0.08)] rounded flex items-center justify-center">
+              <i className="fas fa-voicemail text-[#D63B1F] text-xs"></i>
+            </div>
+            <h3 className="text-sm font-semibold text-[#131210]">RVM Campaign Details</h3>
+          </div>
+          <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1"><i className="fas fa-times text-sm"></i></button>
+        </div>
+
+        <div className="px-5 py-4 space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Campaign Name</p>
+              <p className="text-sm font-medium text-[#131210]">{campaign.name}</p>
+            </div>
+            <span className={`inline-flex items-center px-2.5 py-1 rounded text-xs font-medium ${statusClass}`}>{statusLabel}</span>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: 'Sent', value: campaign.sent_count ?? 0, icon: 'fa-paper-plane', color: 'text-[#5C5A55]' },
+              { label: 'Delivered', value: campaign.delivered_count ?? 0, icon: 'fa-check-circle', color: 'text-green-600' },
+              { label: 'Failed', value: campaign.failed_count ?? 0, icon: 'fa-times-circle', color: 'text-[#D63B1F]' },
+            ].map(item => (
+              <div key={item.label} className="bg-[#F7F6F3] border border-[#E3E1DB] rounded-lg p-3 text-center">
+                <i className={`fas ${item.icon} ${item.color} text-sm mb-1`}></i>
+                <p className="text-lg font-semibold text-[#131210]">{item.value}</p>
+                <p className="text-xs text-[#9B9890]">{item.label}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Sender Number</p>
+              <p className="text-sm text-[#5C5A55]">{campaign.sender_number}</p>
+            </div>
+            <div>
+              <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Contact Lists</p>
+              <p className="text-sm text-[#5C5A55]">{getContactListName(campaign.contact_list_ids)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Created</p>
+              <p className="text-sm text-[#5C5A55]">{formatDate(campaign.created_at)}</p>
+            </div>
+          </div>
+
+          {campaign.recording_url && (
+            <div>
+              <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-2">Voicemail Recording</p>
+              <div className="bg-[#F7F6F3] border border-[#E3E1DB] rounded-lg p-3">
+                <audio controls src={campaign.recording_url} className="w-full" style={{ height: '36px' }} />
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-[#E3E1DB] px-5 py-3.5 flex flex-wrap items-center gap-2">
+          {campaign.status === 'draft' && (
+            <button
+              onClick={handleLaunch}
+              disabled={isLaunching}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-semibold text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md transition-colors disabled:opacity-50"
+            >
+              {isLaunching ? <><i className="fas fa-spinner fa-spin text-xs"></i> Launching…</> : <><i className="fas fa-rocket text-xs"></i> Launch Campaign</>}
+            </button>
+          )}
+          <button onClick={onDelete} className="px-3 py-1.5 text-sm text-[#D63B1F] border border-[rgba(214,59,31,0.14)] rounded-md hover:bg-[rgba(214,59,31,0.07)]">Delete</button>
+          <button onClick={onClose} className="ml-auto px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Close</button>
+        </div>
       </div>
     </div>
   )
@@ -1085,16 +1451,10 @@ function TrialUpsellModal({ subscription, user, onClose, onActivated }) {
     setActivating(true)
     setError(null)
     try {
-      const res = await fetch('/api/stripe/activate-now', {
-        method: 'POST',
-        headers: { 'x-workspace-id': user?.workspaceId },
-      })
+      const res = await fetch('/api/stripe/activate-now', { method: 'POST', headers: { 'x-workspace-id': user?.workspaceId } })
       const data = await res.json()
-      if (data.success) {
-        onActivated()
-      } else {
-        setError(data.error || 'Failed to activate. Please try again.')
-      }
+      if (data.success) { onActivated() }
+      else { setError(data.error || 'Failed to activate. Please try again.') }
     } catch {
       setError('Something went wrong. Please try again.')
     } finally {
@@ -1105,24 +1465,14 @@ function TrialUpsellModal({ subscription, user, onClose, onActivated }) {
   return (
     <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-[#FFFFFF] rounded-2xl shadow-2xl w-full max-w-md border border-[#E3E1DB] overflow-hidden">
-
-        {/* Top accent bar */}
         <div className="h-1 w-full bg-[#D63B1F]" />
-
-        {/* Header */}
         <div className="px-6 pt-7 pb-5 text-center border-b border-[#E3E1DB]">
-          <div className="w-12 h-12 bg-[rgba(214,59,31,0.08)] rounded-full flex items-center justify-center mx-auto mb-4">
-            <i className="fas fa-rocket text-[#D63B1F] text-lg"></i>
-          </div>
+          <div className="w-12 h-12 bg-[rgba(214,59,31,0.08)] rounded-full flex items-center justify-center mx-auto mb-4"><i className="fas fa-rocket text-[#D63B1F] text-lg"></i></div>
           <h2 className="text-[17px] font-semibold text-[#131210] tracking-tight mb-1.5">Campaigns require a paid subscription</h2>
           <p className="text-sm text-[#5C5A55] leading-relaxed">
-            {daysLeft !== null
-              ? `You have ${daysLeft} day${daysLeft !== 1 ? 's' : ''} left on your trial — upgrade now to unlock campaigns before it ends.`
-              : 'Upgrade your plan to start sending SMS campaigns to your contacts.'}
+            {daysLeft !== null ? `You have ${daysLeft} day${daysLeft !== 1 ? 's' : ''} left on your trial — upgrade now to unlock campaigns before it ends.` : 'Upgrade your plan to start sending SMS campaigns to your contacts.'}
           </p>
         </div>
-
-        {/* Body */}
         <div className="px-6 py-5">
           <p className="text-[11px] font-semibold text-[#9B9890] uppercase tracking-widest mb-3">What you unlock</p>
           <ul className="space-y-2.5 mb-5">
@@ -1133,35 +1483,16 @@ function TrialUpsellModal({ subscription, user, onClose, onActivated }) {
               { icon: 'fa-headset', text: 'Priority support from our team' },
             ].map(({ icon, text }) => (
               <li key={text} className="flex items-center gap-3">
-                <div className="w-6 h-6 rounded-full bg-[rgba(214,59,31,0.08)] flex items-center justify-center flex-shrink-0">
-                  <i className={`fas ${icon} text-[#D63B1F] text-[11px]`}></i>
-                </div>
+                <div className="w-6 h-6 rounded-full bg-[rgba(214,59,31,0.08)] flex items-center justify-center flex-shrink-0"><i className={`fas ${icon} text-[#D63B1F] text-[11px]`}></i></div>
                 <span className="text-sm text-[#5C5A55]">{text}</span>
               </li>
             ))}
           </ul>
-
-          {error && (
-            <div className="mb-4 px-3 py-2.5 bg-[rgba(214,59,31,0.07)] border border-[rgba(214,59,31,0.18)] text-[#D63B1F] rounded-lg text-xs">{error}</div>
-          )}
-
-          <button
-            onClick={handleActivate}
-            disabled={activating}
-            className="w-full py-3 text-sm font-semibold text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            {activating ? (
-              <><i className="fas fa-spinner fa-spin"></i> Activating…</>
-            ) : (
-              <><i className="fas fa-bolt"></i> Activate Now &amp; Start Sending</>
-            )}
+          {error && <div className="mb-4 px-3 py-2.5 bg-[rgba(214,59,31,0.07)] border border-[rgba(214,59,31,0.18)] text-[#D63B1F] rounded-lg text-xs">{error}</div>}
+          <button onClick={handleActivate} disabled={activating} className="w-full py-3 text-sm font-semibold text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+            {activating ? <><i className="fas fa-spinner fa-spin"></i> Activating…</> : <><i className="fas fa-bolt"></i> Activate Now &amp; Start Sending</>}
           </button>
-          <button
-            onClick={onClose}
-            className="w-full mt-2.5 py-2 text-sm text-[#9B9890] hover:text-[#5C5A55] transition-colors"
-          >
-            Continue trial
-          </button>
+          <button onClick={onClose} className="w-full mt-2.5 py-2 text-sm text-[#9B9890] hover:text-[#5C5A55] transition-colors">Continue trial</button>
         </div>
       </div>
     </div>
@@ -1172,12 +1503,8 @@ function ErrorModal({ title, message, onClose }) {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-sm">
-        <div className="px-5 py-4 border-b border-[#E3E1DB]">
-          <h3 className="text-sm font-semibold text-[#131210]">{title}</h3>
-        </div>
-        <div className="px-5 py-4">
-          <p className="text-sm text-[#5C5A55]">{message}</p>
-        </div>
+        <div className="px-5 py-4 border-b border-[#E3E1DB]"><h3 className="text-sm font-semibold text-[#131210]">{title}</h3></div>
+        <div className="px-5 py-4"><p className="text-sm text-[#5C5A55]">{message}</p></div>
         <div className="px-5 py-3 border-t border-[#E3E1DB] flex justify-end">
           <button onClick={onClose} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Close</button>
         </div>
@@ -1190,14 +1517,8 @@ function DeleteConfirmationModal({ campaignName, onConfirm, onCancel }) {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-sm">
-        <div className="px-5 py-4 border-b border-[#E3E1DB]">
-          <h3 className="text-sm font-semibold text-[#131210]">Delete Campaign</h3>
-        </div>
-        <div className="px-5 py-4">
-          <p className="text-sm text-[#5C5A55]">
-            Delete <span className="font-medium text-[#131210]">"{campaignName}"</span>? This cannot be undone.
-          </p>
-        </div>
+        <div className="px-5 py-4 border-b border-[#E3E1DB]"><h3 className="text-sm font-semibold text-[#131210]">Delete Campaign</h3></div>
+        <div className="px-5 py-4"><p className="text-sm text-[#5C5A55]">Delete <span className="font-medium text-[#131210]">"{campaignName}"</span>? This cannot be undone.</p></div>
         <div className="px-5 py-3 border-t border-[#E3E1DB] flex justify-end gap-2">
           <button onClick={onCancel} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
           <button onClick={onConfirm} className="px-3 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c4351b] rounded-md">Delete</button>

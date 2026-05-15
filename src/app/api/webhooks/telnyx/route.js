@@ -288,18 +288,20 @@ async function handleIncomingMessage(event) {
       // Update follow-up state (customer sent a message)
       await updateFollowupState(conversation.id, scenario.id, 'customer')
 
-      // Execute scenario asynchronously (don't block webhook response)
-      executeScenario(scenario, messageRecord, conversation)
-        .then(result => {
-          if (result.success) {
-            console.log('Scenario executed successfully:', { scenarioId: scenario.id, replySent: !!result.reply })
-          } else {
-            console.error('Scenario execution failed:', { scenarioId: scenario.id, error: result.error })
-          }
-        })
-        .catch(err => {
-          console.error('Scenario execution error:', { scenarioId: scenario.id, error: err.message })
-        })
+      // Execute scenario inline. Previously this was fire-and-forget, but on
+      // serverless platforms the function process can be killed right after the
+      // HTTP response is returned — silently aborting the AI reply mid-flight.
+      // Telnyx accepts webhooks that take up to 15s; AI generation is well under that.
+      try {
+        const result = await executeScenario(scenario, messageRecord, conversation)
+        if (result.success) {
+          console.log('Scenario executed successfully:', { scenarioId: scenario.id, replySent: !!result.reply })
+        } else {
+          console.error('Scenario execution failed:', { scenarioId: scenario.id, error: result.error })
+        }
+      } catch (err) {
+        console.error('Scenario execution error:', { scenarioId: scenario.id, error: err.message })
+      }
     } else {
       console.log('No matching scenario found for this message')
     }

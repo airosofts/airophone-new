@@ -524,10 +524,43 @@ function ContactRestrictionPicker({ contactLists, selectedListIds, onListToggle,
       )}
 
       {(selectedListIds.length > 0 || individualContacts.length > 0) && (
-        <p className="text-[11px] text-[#D63B1F] mt-1.5">
-          <i className="fas fa-filter mr-1"></i>
-          Restricted to {[selectedListIds.length > 0 && `${selectedListIds.length} list${selectedListIds.length > 1 ? 's' : ''}`, individualContacts.length > 0 && `${individualContacts.length} number${individualContacts.length > 1 ? 's' : ''}`].filter(Boolean).join(' + ')}
-        </p>
+        <div className="mt-2.5 p-3 bg-[rgba(214,59,31,0.06)] border border-[rgba(214,59,31,0.2)] rounded-lg">
+          <div className="flex items-start justify-between gap-2 mb-1.5">
+            <p className="text-[12px] font-semibold text-[#D63B1F]">
+              <i className="fas fa-filter mr-1"></i> AI will only reply to:
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                selectedListIds.forEach(id => onListToggle(id, false))
+                individualContacts.forEach(c => onRemoveContact(c.phone))
+              }}
+              className="text-[11px] text-[#9B9890] hover:text-[#D63B1F]"
+            >
+              Clear all
+            </button>
+          </div>
+          <ul className="text-[12px] text-[#5C5A55] space-y-0.5 leading-relaxed">
+            {selectedListIds.length > 0 && (
+              <li>
+                • Contacts in: <span className="font-medium text-[#131210]">{
+                  selectedListIds
+                    .map(id => contactLists.find(cl => cl.id === id)?.name)
+                    .filter(Boolean)
+                    .join(', ')
+                }</span>
+              </li>
+            )}
+            {individualContacts.length > 0 && (
+              <li>
+                • {individualContacts.length} individually-pinned number{individualContacts.length > 1 ? 's' : ''}
+              </li>
+            )}
+          </ul>
+          <p className="text-[11px] text-[#9B9890] mt-1.5 italic">
+            Anyone else who texts this scenario&rsquo;s phone number will be ignored.
+          </p>
+        </div>
       )}
     </div>
   )

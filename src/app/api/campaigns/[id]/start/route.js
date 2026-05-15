@@ -172,10 +172,37 @@ async function processCampaignMessages(campaign, contacts, userId, workspaceId, 
   let failedCount = 0
 
   for (const contact of contacts) {
+    let claimedRowId = null
     try {
       // Normalize phone numbers
       const normalizedContactNumber = normalizePhoneNumber(contact.phone_number)
       const normalizedSenderNumber = normalizePhoneNumber(campaign.sender_number)
+
+      // ATOMIC PER-CONTACT CLAIM. The UNIQUE(campaign_id, contact_id) constraint
+      // on campaign_messages makes this insert the single source of truth: a
+      // racing second sender (different instance, retry, manual restart) gets
+      // 23505 and skips this contact. Recipient can never receive duplicates.
+      const { data: claim, error: claimErr } = await supabaseAdmin
+        .from('campaign_messages')
+        .insert({
+          campaign_id: campaign.id,
+          contact_id: contact.id,
+          status: 'sending',
+          sent_at: new Date().toISOString(),
+        })
+        .select('id')
+        .single()
+
+      if (claimErr) {
+        if (claimErr.code === '23505') {
+          // Another sender already handled this contact in this campaign — skip
+          console.log(`[campaign] Skipping ${normalizedContactNumber} — already claimed`)
+          continue
+        }
+        console.error('[campaign] Failed to claim contact:', claimErr)
+        continue
+      }
+      claimedRowId = claim.id
 
       // Replace tags in message template
       let personalizedMessage = campaign.message_template
@@ -294,15 +321,11 @@ async function processCampaignMessages(campaign, contacts, userId, workspaceId, 
           })
           .eq('id', conversation.id)
 
-        // Create campaign message tracking
+        // Mark the claim row as sent (already inserted at top of loop)
         await supabaseAdmin
           .from('campaign_messages')
-          .insert({
-            campaign_id: campaign.id,
-            contact_id: contact.id,
-            status: 'sent',
-            sent_at: new Date().toISOString()
-          })
+          .update({ status: 'sent', sent_at: new Date().toISOString() })
+          .eq('id', claimedRowId)
 
         // Log message transaction for tracking (using tiered pricing rate)
         await supabaseAdmin
@@ -321,18 +344,13 @@ async function processCampaignMessages(campaign, contacts, userId, workspaceId, 
 
         sentCount++
       } else {
-        // Create failed campaign message tracking
+        // Mark the claim row as failed
         await supabaseAdmin
           .from('campaign_messages')
-          .insert({
-            campaign_id: campaign.id,
-            contact_id: contact.id,
-            status: 'failed',
-            error_message: result.error
-          })
+          .update({ status: 'failed', error_message: result.error })
+          .eq('id', claimedRowId)
 
         // Don't charge for failed messages
-        // Just log the failure in campaign_messages table
         console.log(`Message failed to ${normalizedContactNumber}: ${result.error}`)
 
         failedCount++
@@ -355,17 +373,14 @@ async function processCampaignMessages(campaign, contacts, userId, workspaceId, 
     } catch (error) {
       console.error(`Error sending message to ${contact.phone_number}:`, error)
 
-      // Create failed campaign message tracking
-      await supabaseAdmin
-        .from('campaign_messages')
-        .insert({
-          campaign_id: campaign.id,
-          contact_id: contact.id,
-          status: 'failed',
-          error_message: error.message
-        })
+      // Mark the claimed row as failed (if we got far enough to claim it)
+      if (claimedRowId) {
+        await supabaseAdmin
+          .from('campaign_messages')
+          .update({ status: 'failed', error_message: error.message })
+          .eq('id', claimedRowId)
+      }
 
-      // Don't charge for failed messages
       failedCount++
     }
   }

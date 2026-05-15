@@ -10,6 +10,32 @@ import {
   toggleManualOverride
 } from '@/lib/followup-service'
 
+// Strip out automated/transactional messages (OTP codes, verification SMS,
+// shipping alerts, etc.) so they don't pollute the AI's conversation context.
+// These messages share the same phone number as a real conversation but have
+// nothing to do with the scenario the AI is supposed to engage with.
+const AUTOMATED_PATTERNS = [
+  /verification code/i,
+  /\bverify\b.*\bcode\b/i,
+  /\bone[\s-]?time\b.*\bcode\b/i,
+  /\bOTP\b/i,
+  /your .* code is\b/i,
+  /your code is\b/i,
+  /^\s*\d{4,8}\s*(is your)?/i,           // "1234 is your" / bare "123456"
+  /do not (share|reply)/i,
+  /this code (will )?expires?/i,
+  /\bvalid for \d+ (min|hour)/i,
+  /^STOP/i,                                // STOP carrier auto-replies
+  /reply (STOP|HELP)/i,
+]
+
+function isAutomatedMessage(body) {
+  if (!body) return false
+  const s = String(body).trim()
+  if (s.length < 6) return false
+  return AUTOMATED_PATTERNS.some(rx => rx.test(s))
+}
+
 // Canonical custom_fields format is {key: value}. Some legacy rows were saved
 // from the inbox panel as [{id,label,type,value}]; coerce those on read.
 function normalizeCustomFields(cf) {
@@ -173,8 +199,20 @@ export async function executeScenario(scenario, message, conversation) {
       throw new Error(`Failed to fetch conversation history: ${messagesError.message}`)
     }
 
-    // Format conversation history for AI
-    const conversationHistory = messages.map(msg => ({
+    // Format conversation history for AI — filter out OTP / verification / carrier
+    // automated noise so the model isn't trying to reconcile "Your X code is 1234"
+    // as part of the real conversation.
+    const filteredMessages = messages.filter(m => {
+      // Keep all outbound (our AI's prior replies) for context continuity
+      if (m.direction === 'outbound') return true
+      return !isAutomatedMessage(m.body)
+    })
+    const droppedCount = messages.length - filteredMessages.length
+    if (droppedCount > 0) {
+      console.log(`[scenario] Filtered ${droppedCount} automated message(s) from history`)
+    }
+
+    const conversationHistory = filteredMessages.map(msg => ({
       direction: msg.direction,
       body: msg.body,
       from: msg.from_number,
@@ -213,15 +251,26 @@ export async function executeScenario(scenario, message, conversation) {
       ...customFields,
     } : {}
 
-    // Substitute known tags; remove unknown ones so AI doesn't see raw {{placeholders}}
-    instructions = instructions.replace(/\{\{(\w+)\}\}/g, (match, key) =>
-      substitutions[key] !== undefined ? substitutions[key] : ''
-    )
+    // Substitute known tags; remove unknown ones so AI doesn't see raw {{placeholders}}.
+    // Track unresolved tokens so we can warn — broken-sentence instructions
+    // ("I am buying in .") confuse the AI and produce off-script replies.
+    const unresolvedTokens = new Set()
+    instructions = instructions.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+      const val = substitutions[key]
+      if (val === undefined || val === '') {
+        unresolvedTokens.add(key)
+        return ''
+      }
+      return val
+    })
 
     if (contactRecord) {
-      console.log(`[scenario] Substituted contact data for ${message.from_number}: ${JSON.stringify(substitutions)}`)
+      console.log(`[scenario] Substituted contact data for ${message.from_number}`)
     } else {
       console.log(`[scenario] No contact found for ${message.from_number}, placeholders removed`)
+    }
+    if (unresolvedTokens.size > 0) {
+      console.warn(`[scenario] Unresolved tokens for ${message.from_number}: ${[...unresolvedTokens].join(', ')} — instructions may read awkwardly`)
     }
 
     // Build AI prompt

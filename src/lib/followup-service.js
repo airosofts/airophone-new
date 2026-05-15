@@ -207,6 +207,8 @@ export async function processScheduledFollowups() {
         ),
         scenarios (
           id,
+          instructions,
+          workspace_id,
           enable_business_hours,
           business_hours_start,
           business_hours_end,
@@ -275,11 +277,13 @@ export async function processScheduledFollowups() {
         continue
       }
 
-      // Send follow-up message
+      // Send follow-up message — pass scenario persona so the AI stays in character
       const result = await sendFollowupMessage(
         followupState.conversation_id,
         followupState.scenario_id,
         stage.instructions,
+        followupState.scenarios?.instructions || '',
+        followupState.scenarios?.workspace_id || null,
         nextStage
       )
 
@@ -322,10 +326,36 @@ export async function processScheduledFollowups() {
   }
 }
 
+// OTP / verification / carrier auto-reply patterns — kept here to avoid
+// pulling the heavier import from scenario-service.
+const FOLLOWUP_AUTOMATED_PATTERNS = [
+  /verification code/i,
+  /\bverify\b.*\bcode\b/i,
+  /\bone[\s-]?time\b.*\bcode\b/i,
+  /\bOTP\b/i,
+  /your .* code is\b/i,
+  /your code is\b/i,
+  /^\s*\d{4,8}\s*(is your)?/i,
+  /do not (share|reply)/i,
+  /this code (will )?expires?/i,
+  /\bvalid for \d+ (min|hour)/i,
+  /^STOP/i,
+  /reply (STOP|HELP)/i,
+]
+function isAutomatedFollowupMessage(body) {
+  if (!body) return false
+  const s = String(body).trim()
+  if (s.length < 6) return false
+  return FOLLOWUP_AUTOMATED_PATTERNS.some(rx => rx.test(s))
+}
+
 /**
- * Send a follow-up message using AI
+ * Send a follow-up message using AI.
+ * `stageInstructions` is the stage-specific nudge text; `scenarioInstructions`
+ * is the parent scenario's persona — both are sent to the AI so it stays in
+ * character instead of generating generic "you there?" messages.
  */
-async function sendFollowupMessage(conversationId, scenarioId, instructions, stage) {
+async function sendFollowupMessage(conversationId, scenarioId, stageInstructions, scenarioInstructions, workspaceId, stage) {
   try {
     // Get conversation details and history
     const { data: conversation } = await supabaseAdmin
@@ -338,15 +368,58 @@ async function sendFollowupMessage(conversationId, scenarioId, instructions, sta
       return { success: false, error: 'Conversation not found' }
     }
 
-    const { data: messages } = await supabaseAdmin
+    const { data: rawMessages } = await supabaseAdmin
       .from('messages')
       .select('*')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: true })
 
-    // Generate AI response using follow-up instructions
+    // Drop OTP / verification noise from history
+    const messages = (rawMessages || []).filter(m =>
+      m.direction === 'outbound' || !isAutomatedFollowupMessage(m.body)
+    )
+
+    // Look up contact for {{token}} substitution
+    let combinedInstructions = [scenarioInstructions || '', stageInstructions || '']
+      .filter(Boolean)
+      .join('\n\n--- FOLLOW-UP STAGE ' + stage + ' INSTRUCTIONS ---\n')
+
+    if (workspaceId && conversation.phone_number) {
+      const { data: contact } = await supabaseAdmin
+        .from('contacts')
+        .select('first_name, last_name, business_name, phone_number, email, city, state, country, custom_fields')
+        .eq('workspace_id', workspaceId)
+        .eq('phone_number', conversation.phone_number)
+        .maybeSingle()
+      if (contact) {
+        const subs = {
+          first_name: contact.first_name || '',
+          last_name: contact.last_name || '',
+          business_name: contact.business_name || '',
+          phone_number: contact.phone_number || '',
+          email: contact.email || '',
+          city: contact.city || '',
+          state: contact.state || '',
+          country: contact.country || '',
+          ...(Array.isArray(contact.custom_fields) ? {} : (contact.custom_fields || {})),
+        }
+        const unresolved = new Set()
+        combinedInstructions = combinedInstructions.replace(/\{\{(\w+)\}\}/g, (_, key) => {
+          if (subs[key] === undefined || subs[key] === '') {
+            unresolved.add(key)
+            return ''
+          }
+          return subs[key]
+        })
+        if (unresolved.size > 0) {
+          console.warn(`[followup] Unresolved tokens: ${[...unresolved].join(', ')} (conversation ${conversationId})`)
+        }
+      }
+    }
+
+    // Generate AI response using combined instructions
     const { getAIResponse } = await import('./openai')
-    const aiResult = await getAIResponse(messages || [], instructions)
+    const aiResult = await getAIResponse(messages, combinedInstructions)
 
     if (!aiResult.success) {
       return { success: false, error: aiResult.error }

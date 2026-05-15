@@ -15,7 +15,7 @@ export async function getAIResponse(conversationHistory, scenarioInstructions) {
       },
       ...conversationHistory.map(msg => ({
         role: msg.direction === 'inbound' ? 'user' : 'assistant',
-        content: msg.body
+        content: msg.body || ''
       }))
     ]
 
