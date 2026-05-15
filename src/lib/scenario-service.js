@@ -222,24 +222,52 @@ export async function executeScenario(scenario, message, conversation) {
 
     executionLog.conversation_history = conversationHistory
 
-    // Look up the contact and substitute {{key}} tokens in instructions
+    // Look up the contact and substitute {{key}} tokens in instructions.
+    // A phone can exist in multiple lists (each as its own contacts row), and
+    // older rows might be missing the custom fields the user added later. We
+    // prefer the row that's actually in this scenario's restricted lists; if
+    // none match (or scenario is unrestricted), pick the row with the most
+    // populated custom_fields so we don't get stuck on an empty older entry.
     let instructions = scenario.instructions
-    const { data: contactRecord, error: contactLookupError } = await supabaseAdmin
+    const { data: allMatches, error: contactLookupError } = await supabaseAdmin
       .from('contacts')
-      .select('first_name, last_name, business_name, phone_number, email, city, state, country, custom_fields')
+      .select('id, first_name, last_name, business_name, phone_number, email, city, state, country, custom_fields, contact_list_id, updated_at')
       .eq('workspace_id', scenario.workspace_id)
       .eq('phone_number', message.from_number)
-      .limit(1)
-      .single()
 
-    if (contactLookupError && contactLookupError.code !== 'PGRST116') {
+    if (contactLookupError) {
       console.error('Error looking up contact for substitution:', contactLookupError.message)
+    }
+
+    const restrictedListIds = Array.isArray(scenario.restrict_to_contact_lists) ? scenario.restrict_to_contact_lists : []
+    let contactRecord = null
+    if (allMatches?.length) {
+      // Prefer contacts in the scenario's allowed lists
+      const inAllowedList = restrictedListIds.length
+        ? allMatches.filter(c => restrictedListIds.includes(c.contact_list_id))
+        : allMatches
+      const pool = inAllowedList.length ? inAllowedList : allMatches
+      // Of those, pick the one with the most populated custom_fields keys
+      contactRecord = pool.reduce((best, cur) => {
+        const score = (cur.custom_fields && !Array.isArray(cur.custom_fields))
+          ? Object.values(cur.custom_fields).filter(v => v !== null && v !== '').length
+          : 0
+        const bestScore = (best.custom_fields && !Array.isArray(best.custom_fields))
+          ? Object.values(best.custom_fields).filter(v => v !== null && v !== '').length
+          : -1
+        return score > bestScore ? cur : best
+      }, pool[0])
+      console.log(`[scenario] Contact lookup for ${message.from_number}: ${allMatches.length} row(s), picked id=${contactRecord.id} (list=${contactRecord.contact_list_id})`)
     }
 
     // Defensive: ContactPanel.js historically stored custom_fields as an array
     // of {id,label,type,value} — coerce to {key:value} so {{tokens}} resolve.
     const customFields = normalizeCustomFields(contactRecord?.custom_fields)
-    const substitutions = contactRecord ? {
+
+    // Build substitution table. Each key is also indexed under its lowercase
+    // form so {{States}}, {{STATES}}, and {{states}} all resolve identically —
+    // common source of confusion when a CSV header has different casing.
+    const rawSubs = contactRecord ? {
       first_name: contactRecord.first_name || '',
       last_name: contactRecord.last_name || '',
       business_name: contactRecord.business_name || '',
@@ -250,27 +278,41 @@ export async function executeScenario(scenario, message, conversation) {
       country: contactRecord.country || '',
       ...customFields,
     } : {}
+    const substitutions = {}
+    for (const [k, v] of Object.entries(rawSubs)) {
+      substitutions[k] = v
+      substitutions[k.toLowerCase()] = v
+    }
 
     // Substitute known tags; remove unknown ones so AI doesn't see raw {{placeholders}}.
     // Track unresolved tokens so we can warn — broken-sentence instructions
     // ("I am buying in .") confuse the AI and produce off-script replies.
     const unresolvedTokens = new Set()
+    const resolvedTokens = new Set()
     instructions = instructions.replace(/\{\{(\w+)\}\}/g, (match, key) => {
-      const val = substitutions[key]
-      if (val === undefined || val === '') {
+      // Try exact, then lowercase
+      let val = substitutions[key]
+      if (val === undefined || val === '' || val === null) val = substitutions[key.toLowerCase()]
+      if (val === undefined || val === '' || val === null) {
         unresolvedTokens.add(key)
         return ''
       }
-      return val
+      resolvedTokens.add(key)
+      return String(val)
     })
 
-    if (contactRecord) {
-      console.log(`[scenario] Substituted contact data for ${message.from_number}`)
-    } else {
-      console.log(`[scenario] No contact found for ${message.from_number}, placeholders removed`)
-    }
+    console.log('[scenario] Substitution debug', {
+      sender: message.from_number,
+      contact_found: !!contactRecord,
+      contact_id: contactRecord?.id || null,
+      contact_list_id: contactRecord?.contact_list_id || null,
+      available_custom_keys: Object.keys(customFields),
+      resolved: [...resolvedTokens],
+      unresolved: [...unresolvedTokens],
+    })
+
     if (unresolvedTokens.size > 0) {
-      console.warn(`[scenario] Unresolved tokens for ${message.from_number}: ${[...unresolvedTokens].join(', ')} — instructions may read awkwardly`)
+      console.warn(`[scenario] Unresolved tokens for ${message.from_number}: ${[...unresolvedTokens].join(', ')} — message will read awkwardly. Check that this contact's custom_fields contains those keys.`)
     }
 
     // Build AI prompt
