@@ -162,6 +162,23 @@ async function handleIncomingMessage(event) {
 
     console.log(`Incoming message from ${fromNumber} to ${toNumber}`)
 
+    // Idempotency check: Telnyx retries webhooks if our endpoint takes too long
+    // (>15s) or returns a 5xx. Without this, we'd insert the same inbound twice
+    // AND fire the AI scenario twice. The DB UNIQUE INDEX on telnyx_message_id
+    // is the source of truth — the check below is a fast-path early exit so we
+    // don't redundantly try to claim the conversation row first.
+    if (telnyxMessageId) {
+      const { data: existing } = await supabaseAdmin
+        .from('messages')
+        .select('id, conversation_id')
+        .eq('telnyx_message_id', telnyxMessageId)
+        .maybeSingle()
+      if (existing) {
+        console.log(`[webhook] Duplicate inbound (Telnyx retry) for ${telnyxMessageId} — skipping`)
+        return
+      }
+    }
+
     // Get or create conversation
     const conversation = await getOrCreateConversation(fromNumber, toNumber)
 
@@ -186,6 +203,13 @@ async function handleIncomingMessage(event) {
       .single()
 
     if (error) {
+      // Race condition fallback — if the UNIQUE index caught a parallel retry
+      // between our SELECT above and this INSERT, the duplicate must be the
+      // already-processed one. Bail silently.
+      if (error.code === '23505') {
+        console.log(`[webhook] Duplicate inbound caught by UNIQUE index for ${telnyxMessageId} — skipping`)
+        return
+      }
       console.error('Error creating inbound message:', error)
       return
     }

@@ -223,7 +223,12 @@ function LoginForm() {
             </div>
 
             <div className="mb-4">
-              <label style={{ display: 'block', fontFamily: C.mono, fontSize: '10.5px', color: C.text2, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 7 }}>Password</label>
+              <div className="flex items-center justify-between" style={{ marginBottom: 7 }}>
+                <label style={{ fontFamily: C.mono, fontSize: '10.5px', color: C.text2, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Password</label>
+                <Link href="/forgot-password" style={{ fontFamily: C.mono, fontSize: '10.5px', color: C.red, letterSpacing: '0.04em', textTransform: 'uppercase', textDecoration: 'none' }}>
+                  Forgot?
+                </Link>
+              </div>
               <div className="relative">
                 <input type={showPassword ? 'text' : 'password'} required value={password}
                   onChange={(e) => setPassword(e.target.value)}
