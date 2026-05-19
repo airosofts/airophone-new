@@ -263,11 +263,27 @@ export default function ManageNumbers() {
         // Hide success message after 5 seconds
         setTimeout(() => setShowSuccess(false), 5000)
       } else {
-        setShowError({
-          title: 'Purchase Failed',
-          message: data.error || data.message || 'Failed to purchase number',
-          details: data.details
-        })
+        // Telnyx code 10027 = "We don't recognize the number(s)". In practice
+        // this means the number was sold to someone else or rotated out of
+        // their inventory in the seconds between listing and click. Drop it
+        // from the local list so the user doesn't retry the same one. No
+        // credits were charged — the Telnyx purchase fails before deduction.
+        const telnyxCode = Array.isArray(data.details) ? data.details[0]?.code : null
+        if (telnyxCode === '10027') {
+          setAvailableNumbers(prev =>
+            prev.filter(n => n.phone_number !== number.phone_number)
+          )
+          setShowError({
+            title: 'Number No Longer Available',
+            message: `${formatPhoneNumber(number.phone_number)} was taken or removed from Telnyx's inventory just now. Please try a different number.`,
+          })
+        } else {
+          setShowError({
+            title: 'Purchase Failed',
+            message: data.error || data.message || 'Failed to purchase number',
+            details: data.details
+          })
+        }
       }
     } catch (error) {
       console.error('Purchase error:', error)

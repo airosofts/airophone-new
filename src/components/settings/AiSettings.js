@@ -85,7 +85,7 @@ export default function AiSettings() {
                   value={minDelay}
                   onChange={(e) => setMinDelay(e.target.value)}
                   disabled={loading}
-                  className="w-full px-3 py-2 border border-[#E3E1DB] rounded-md text-sm focus:outline-none focus:border-[#D63B1F] focus:ring-1 focus:ring-[#D63B1F]/20 disabled:bg-[#F7F6F3] disabled:text-[#9B9890]"
+                  className="w-full pl-3 pr-10 py-2 border border-[#E3E1DB] rounded-md text-sm focus:outline-none focus:border-[#D63B1F] focus:ring-1 focus:ring-[#D63B1F]/20 disabled:bg-[#F7F6F3] disabled:text-[#9B9890] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   placeholder="0"
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#9B9890] pointer-events-none">sec</span>
@@ -101,7 +101,7 @@ export default function AiSettings() {
                   value={maxDelay}
                   onChange={(e) => setMaxDelay(e.target.value)}
                   disabled={loading}
-                  className="w-full px-3 py-2 border border-[#E3E1DB] rounded-md text-sm focus:outline-none focus:border-[#D63B1F] focus:ring-1 focus:ring-[#D63B1F]/20 disabled:bg-[#F7F6F3] disabled:text-[#9B9890]"
+                  className="w-full pl-3 pr-10 py-2 border border-[#E3E1DB] rounded-md text-sm focus:outline-none focus:border-[#D63B1F] focus:ring-1 focus:ring-[#D63B1F]/20 disabled:bg-[#F7F6F3] disabled:text-[#9B9890] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   placeholder="0"
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#9B9890] pointer-events-none">sec</span>

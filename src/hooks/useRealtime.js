@@ -91,6 +91,7 @@ export function useRealtimeMessages(conversationId) {
   const fetchMessages = useCallback(async () => {
     if (!conversationId) {
       setMessages([])
+      setLoading(false)
       return
     }
 
@@ -116,14 +117,24 @@ export function useRealtimeMessages(conversationId) {
       return // Exit immediately after setting cache
     }
 
-    // First load - fetch from server
-    try {
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: true })
+    // First load — show spinner only here (cache hits stay instant).
+    setLoading(true)
 
+    const fetchOnce = () => supabase
+      .from('messages')
+      .select('*')
+      .eq('conversation_id', conversationId)
+      .order('created_at', { ascending: true })
+
+    try {
+      // Retry once after a brief backoff. Without this, a single Supabase blip
+      // leaves the chat panel blank with no UI signal — the rare empty-chat bug.
+      let { data, error } = await fetchOnce()
+      if (error) {
+        console.warn('[messages] fetch failed, retrying:', error.message)
+        await new Promise(r => setTimeout(r, 500))
+        ;({ data, error } = await fetchOnce())
+      }
       if (error) throw error
 
       if (currentConversationIdRef.current === conversationId) {
@@ -135,9 +146,13 @@ export function useRealtimeMessages(conversationId) {
         setMessages(data || [])
       }
     } catch (error) {
-      console.error('Error fetching messages:', error)
+      // Don't clobber to [] — leave whatever's there (could be a realtime
+      // INSERT that landed mid-fetch). If nothing was there, loading=false
+      // will let the UI's empty/error state render.
+      console.error('Error fetching messages (after retry):', error)
+    } finally {
       if (currentConversationIdRef.current === conversationId) {
-        setMessages([])
+        setLoading(false)
       }
     }
   }, [conversationId])
