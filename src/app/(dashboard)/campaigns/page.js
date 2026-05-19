@@ -775,11 +775,75 @@ function SearchableDropdown({ value, onChange, options, placeholder, renderOptio
 }
 
 function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCreated }) {
-  const [formData, setFormData] = useState({ name: '', message: '', contactListId: '', phoneNumberId: '', scheduleTime: '', scheduleType: 'immediate' })
+  const [formData, setFormData] = useState({
+    name: '', message: '', contactListId: '', phoneNumberId: '',
+    scheduleTime: '', scheduleType: 'immediate',
+    // Phase 2 — Monday source
+    source: 'contacts',          // 'contacts' | 'monday'
+    mondayBoardId: '', mondayBoardName: '',
+    mondayGroupIds: [],          // empty array == "all groups"
+    mondayPhoneColumnId: '',
+  })
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [created, setCreated] = useState(false)
   const messageRef = useRef(null)
+
+  // Monday integration state
+  const [mondayConnected, setMondayConnected] = useState(false)
+  const [mondayBoards, setMondayBoards] = useState([])
+  const [mondayGroups, setMondayGroups] = useState([])
+  const [mondayColumns, setMondayColumns] = useState([])
+  const [mondayLoading, setMondayLoading] = useState({ boards: false, groups: false, columns: false })
+
+  // Fetch connection status on mount — gates whether the Monday source option is shown.
+  useEffect(() => {
+    let alive = true
+    fetchWithWorkspace('/api/integrations/monday')
+      .then(r => r.json())
+      .then(d => { if (alive) setMondayConnected(!!d?.connected) })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [])
+
+  // Fetch boards when user first switches to the Monday source (cache after).
+  useEffect(() => {
+    if (formData.source !== 'monday' || !mondayConnected || mondayBoards.length > 0) return
+    setMondayLoading(p => ({ ...p, boards: true }))
+    fetchWithWorkspace('/api/integrations/monday/boards')
+      .then(r => r.json())
+      .then(d => setMondayBoards(d?.boards || []))
+      .catch(() => setMondayBoards([]))
+      .finally(() => setMondayLoading(p => ({ ...p, boards: false })))
+  }, [formData.source, mondayConnected, mondayBoards.length])
+
+  // Fetch groups + columns when a board is selected. Reset both first so
+  // a flicker of stale data from a previously-picked board can't slip through.
+  useEffect(() => {
+    if (!formData.mondayBoardId) {
+      setMondayGroups([]); setMondayColumns([])
+      return
+    }
+    setMondayLoading(p => ({ ...p, groups: true, columns: true }))
+    setMondayGroups([]); setMondayColumns([])
+    Promise.all([
+      fetchWithWorkspace(`/api/integrations/monday/boards/${formData.mondayBoardId}/groups`).then(r => r.json()),
+      fetchWithWorkspace(`/api/integrations/monday/boards/${formData.mondayBoardId}/columns`).then(r => r.json()),
+    ])
+      .then(([gData, cData]) => {
+        const cols = cData?.columns || []
+        setMondayGroups(gData?.groups || [])
+        setMondayColumns(cols)
+        // Auto-select the first `phone` type column if user hasn't picked one yet.
+        const phoneCol = cols.find(c => c.isPhoneType)
+        if (phoneCol && !formData.mondayPhoneColumnId) {
+          setFormData(f => ({ ...f, mondayPhoneColumnId: phoneCol.id }))
+        }
+      })
+      .catch(() => { setMondayGroups([]); setMondayColumns([]) })
+      .finally(() => setMondayLoading(p => ({ ...p, groups: false, columns: false })))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.mondayBoardId])
 
   const insertPlaceholder = (tag) => {
     const ta = messageRef.current
@@ -808,7 +872,12 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
     const newErrors = {}
     if (!formData.name.trim()) newErrors.name = 'Campaign name is required'
     if (!formData.message.trim()) newErrors.message = 'Message is required'
-    if (!formData.contactListId) newErrors.contactListId = 'Contact list is required'
+    if (formData.source === 'contacts') {
+      if (!formData.contactListId) newErrors.contactListId = 'Contact list is required'
+    } else {
+      if (!formData.mondayBoardId) newErrors.mondayBoardId = 'Board is required'
+      if (!formData.mondayPhoneColumnId) newErrors.mondayPhoneColumnId = 'Phone number column is required'
+    }
     if (!formData.phoneNumberId) newErrors.phoneNumberId = 'Phone number is required'
     if (formData.scheduleType === 'scheduled' && !formData.scheduleTime) newErrors.scheduleTime = 'Schedule time is required'
     setErrors(newErrors)
@@ -822,11 +891,50 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
     try {
       const selectedPn = phoneNumbers.find(pn => pn.id === formData.phoneNumberId)
       const senderNumber = selectedPn?.phone_number || selectedPn?.phoneNumber
-      const payload = { name: formData.name, message_template: formData.message, contact_list_ids: [formData.contactListId], sender_number: senderNumber, delay_between_messages: 1000 }
+
+      // Monday-sourced campaigns still get a (synthetic empty) contact_list_ids
+      // because the column is NOT NULL in the schema. The send loop checks for
+      // a campaign_monday_links row first and ignores contact_list_ids when one
+      // is present.
+      const payload = {
+        name: formData.name,
+        message_template: formData.message,
+        contact_list_ids: formData.source === 'contacts' ? [formData.contactListId] : [],
+        sender_number: senderNumber,
+        delay_between_messages: 1000,
+      }
       const response = await apiPost('/api/campaigns', payload)
       const data = await response.json()
-      if (data.success) { setCreated(true) }
-      else { setErrors({ submit: data.error || 'Failed to create campaign' }) }
+
+      if (!data.success) {
+        setErrors({ submit: data.error || 'Failed to create campaign' })
+        return
+      }
+
+      // If Monday source, persist the link to the new campaign.
+      if (formData.source === 'monday') {
+        const newCampaignId = data.campaign?.id || data.id || data.campaignId
+        if (!newCampaignId) {
+          setErrors({ submit: 'Campaign created but ID was missing — refresh and link the board manually.' })
+          return
+        }
+        const linkRes = await fetchWithWorkspace(`/api/campaigns/${newCampaignId}/monday-link`, {
+          method: 'POST',
+          body: JSON.stringify({
+            board_id: formData.mondayBoardId,
+            board_name: formData.mondayBoardName,
+            group_ids: formData.mondayGroupIds,
+            phone_column_id: formData.mondayPhoneColumnId,
+          }),
+        })
+        const linkData = await linkRes.json()
+        if (!linkRes.ok || !linkData.success) {
+          setErrors({ submit: `Campaign created but linking the Monday board failed: ${linkData.error || 'unknown error'}` })
+          return
+        }
+      }
+
+      setCreated(true)
     } catch {
       setErrors({ submit: 'Failed to create campaign. Please try again.' })
     } finally {
@@ -871,23 +979,165 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
               <textarea ref={messageRef} value={formData.message} onChange={(e) => setFormData({ ...formData, message: e.target.value })} placeholder="Type your SMS message here…" className="w-full flex-1 px-4 py-3 border border-[#D4D1C9] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F] resize-none min-h-[200px]" />
               <div className="flex flex-wrap items-center gap-2 mt-3">
                 <span className="text-xs text-[#9B9890] font-medium">Insert placeholder:</span>
-                {['{first_name}', '{last_name}', '{business_name}', '{email}', '{phone}', '{city}', '{state}', '{country}'].map(tag => (
-                  <button key={tag} type="button" onClick={() => insertPlaceholder(tag)} className="px-2.5 py-1 text-xs bg-[#EFEDE8] hover:bg-[#fdecea] hover:text-[#D63B1F] hover:border-[#D63B1F] text-[#5C5A55] rounded-md border border-[#E3E1DB] font-mono transition-colors">{tag}</button>
-                ))}
+                {formData.source === 'monday' ? (
+                  mondayColumns.length === 0 ? (
+                    <span className="text-xs text-[#9B9890] italic">Pick a board to see available columns</span>
+                  ) : (
+                    mondayColumns
+                      .filter(c => c.placeholder)
+                      .map(c => {
+                        const tag = `{{${c.placeholder}}}`
+                        return (
+                          <button key={c.id} type="button" onClick={() => insertPlaceholder(tag)} title={`${c.title} (${c.type})`} className="px-2.5 py-1 text-xs bg-[#EFEDE8] hover:bg-[#fdecea] hover:text-[#D63B1F] hover:border-[#D63B1F] text-[#5C5A55] rounded-md border border-[#E3E1DB] font-mono transition-colors">{tag}</button>
+                        )
+                      })
+                  )
+                ) : (
+                  ['{first_name}', '{last_name}', '{business_name}', '{email}', '{phone}', '{city}', '{state}', '{country}'].map(tag => (
+                    <button key={tag} type="button" onClick={() => insertPlaceholder(tag)} className="px-2.5 py-1 text-xs bg-[#EFEDE8] hover:bg-[#fdecea] hover:text-[#D63B1F] hover:border-[#D63B1F] text-[#5C5A55] rounded-md border border-[#E3E1DB] font-mono transition-colors">{tag}</button>
+                  ))
+                )}
               </div>
               {errors.message && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.message}</p>}
             </div>
           </div>
 
           <div data-tour="campaign-modal-settings" className="w-96 flex flex-col px-8 py-6 overflow-y-auto space-y-5 flex-shrink-0">
+
+            {/* Source toggle — only show Monday option if integration is connected */}
             <div>
-              <label className="block text-sm font-medium text-[#5C5A55] mb-2">Contact List *</label>
-              <SearchableDropdown value={formData.contactListId} onChange={(v) => setFormData(f => ({ ...f, contactListId: v }))} options={contactListOptions} placeholder="Select a list" error={errors.contactListId}
-                renderSelected={(o) => o.label}
-                renderOption={(o) => (<div><p className="text-sm font-medium text-[#131210]">{o.label}</p><p className="text-xs text-[#9B9890] mt-0.5">{o.count} contacts</p></div>)}
-              />
-              {errors.contactListId && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.contactListId}</p>}
+              <label className="block text-sm font-medium text-[#5C5A55] mb-2">Source *</label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFormData(f => ({ ...f, source: 'contacts' }))}
+                  className={`flex-1 px-3 py-2 text-xs font-medium rounded-md border transition-colors ${formData.source === 'contacts' ? 'bg-[#fdecea] border-[#D63B1F] text-[#D63B1F]' : 'bg-[#FFFFFF] border-[#E3E1DB] text-[#5C5A55] hover:bg-[#F7F6F3]'}`}
+                >
+                  Contacts list
+                </button>
+                <button
+                  type="button"
+                  onClick={() => mondayConnected && setFormData(f => ({ ...f, source: 'monday' }))}
+                  disabled={!mondayConnected}
+                  title={mondayConnected ? '' : 'Connect Monday.com in Settings → Integrations first'}
+                  className={`flex-1 px-3 py-2 text-xs font-medium rounded-md border transition-colors ${formData.source === 'monday' ? 'bg-[#fdecea] border-[#D63B1F] text-[#D63B1F]' : 'bg-[#FFFFFF] border-[#E3E1DB] text-[#5C5A55] hover:bg-[#F7F6F3]'} disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#FFFFFF]`}
+                >
+                  Monday board
+                </button>
+              </div>
+              {!mondayConnected && (
+                <p className="text-[11px] text-[#9B9890] mt-1.5">
+                  Connect <a href="/settings?section=integrations" className="text-[#D63B1F] hover:underline">Monday.com</a> to send campaigns from a board.
+                </p>
+              )}
             </div>
+
+            {formData.source === 'contacts' ? (
+              <div>
+                <label className="block text-sm font-medium text-[#5C5A55] mb-2">Contact List *</label>
+                <SearchableDropdown value={formData.contactListId} onChange={(v) => setFormData(f => ({ ...f, contactListId: v }))} options={contactListOptions} placeholder="Select a list" error={errors.contactListId}
+                  renderSelected={(o) => o.label}
+                  renderOption={(o) => (<div><p className="text-sm font-medium text-[#131210]">{o.label}</p><p className="text-xs text-[#9B9890] mt-0.5">{o.count} contacts</p></div>)}
+                />
+                {errors.contactListId && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.contactListId}</p>}
+              </div>
+            ) : (
+              <>
+                {/* Board picker */}
+                <div>
+                  <label className="block text-sm font-medium text-[#5C5A55] mb-2">Board *</label>
+                  <SearchableDropdown
+                    value={formData.mondayBoardId}
+                    onChange={(v) => {
+                      const board = mondayBoards.find(b => String(b.id) === String(v))
+                      setFormData(f => ({
+                        ...f,
+                        mondayBoardId: v,
+                        mondayBoardName: board?.name || '',
+                        mondayGroupIds: [],
+                        mondayPhoneColumnId: '',
+                      }))
+                    }}
+                    options={mondayBoards.map(b => ({ value: String(b.id), label: b.name, count: b.items_count || 0, searchText: b.name }))}
+                    placeholder={mondayLoading.boards ? 'Loading boards…' : (mondayBoards.length === 0 ? 'No boards found' : 'Select a board')}
+                    error={errors.mondayBoardId}
+                    renderSelected={(o) => o.label}
+                    renderOption={(o) => (<div><p className="text-sm font-medium text-[#131210]">{o.label}</p><p className="text-xs text-[#9B9890] mt-0.5">{o.count} items</p></div>)}
+                  />
+                  {errors.mondayBoardId && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.mondayBoardId}</p>}
+                </div>
+
+                {/* Groups multi-select — empty selection means "all groups" */}
+                {formData.mondayBoardId && (
+                  <div>
+                    <label className="block text-sm font-medium text-[#5C5A55] mb-2">Groups</label>
+                    {mondayLoading.groups ? (
+                      <p className="text-xs text-[#9B9890]">Loading groups…</p>
+                    ) : mondayGroups.length === 0 ? (
+                      <p className="text-xs text-[#9B9890]">No groups on this board.</p>
+                    ) : (
+                      <div className="border border-[#E3E1DB] rounded-lg max-h-44 overflow-y-auto divide-y divide-[#F0EEE9]">
+                        <label className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-[#F7F6F3] transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={formData.mondayGroupIds.length === 0}
+                            onChange={() => setFormData(f => ({ ...f, mondayGroupIds: [] }))}
+                            className="accent-[#D63B1F]"
+                          />
+                          <span className="text-sm font-medium text-[#131210]">All groups</span>
+                        </label>
+                        {mondayGroups.map(g => (
+                          <label key={g.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-[#F7F6F3] transition-colors">
+                            <input
+                              type="checkbox"
+                              checked={formData.mondayGroupIds.includes(g.id)}
+                              onChange={(e) => {
+                                setFormData(f => {
+                                  const next = e.target.checked
+                                    ? [...f.mondayGroupIds, g.id]
+                                    : f.mondayGroupIds.filter(x => x !== g.id)
+                                  return { ...f, mondayGroupIds: next }
+                                })
+                              }}
+                              className="accent-[#D63B1F]"
+                            />
+                            <span className="text-sm text-[#131210]">{g.title}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Phone column picker */}
+                {formData.mondayBoardId && (
+                  <div>
+                    <label className="block text-sm font-medium text-[#5C5A55] mb-2">Phone Number Column *</label>
+                    <SearchableDropdown
+                      value={formData.mondayPhoneColumnId}
+                      onChange={(v) => setFormData(f => ({ ...f, mondayPhoneColumnId: v }))}
+                      options={mondayColumns.map(c => ({
+                        value: c.id,
+                        label: c.title,
+                        type: c.type,
+                        searchText: `${c.title} ${c.type}`,
+                      }))}
+                      placeholder={mondayLoading.columns ? 'Loading columns…' : 'Select the phone column'}
+                      error={errors.mondayPhoneColumnId}
+                      renderSelected={(o) => o.label}
+                      renderOption={(o) => (
+                        <div>
+                          <p className="text-sm font-medium text-[#131210]">{o.label}</p>
+                          <p className="text-xs text-[#9B9890] mt-0.5 font-mono">{o.type}</p>
+                        </div>
+                      )}
+                    />
+                    {errors.mondayPhoneColumnId && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.mondayPhoneColumnId}</p>}
+                    <p className="text-[11px] text-[#9B9890] mt-1.5">Items missing a phone in this column will be skipped at send time.</p>
+                  </div>
+                )}
+              </>
+            )}
             <div>
               <label className="block text-sm font-medium text-[#5C5A55] mb-2">Phone Number *</label>
               <SearchableDropdown value={formData.phoneNumberId} onChange={(v) => setFormData(f => ({ ...f, phoneNumberId: v }))} options={phoneNumberOptions} placeholder="Select a number" error={errors.phoneNumberId}

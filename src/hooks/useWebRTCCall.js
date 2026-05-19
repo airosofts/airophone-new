@@ -397,6 +397,21 @@ const handleCallUpdate = (call) => {
     return // Don't process as main call
   }
   
+  // Defensive: clear zombie refs from a previous call whose terminal event
+  // was missed by the SDK. Trust callStatusRef as the source of truth — if it
+  // says idle (or never advanced), but currentCallRef / isCallActiveRef are
+  // still set, the next incoming call would be silently dropped by the gate
+  // below. Clearing here lets the new call ring.
+  if (
+    (!callStatusRef.current || callStatusRef.current === 'idle') &&
+    (currentCallRef.current || isCallActiveRef.current)
+  ) {
+    console.warn('[WebRTC] Clearing zombie call refs before processing incoming')
+    currentCallRef.current = null
+    isCallActiveRef.current = false
+    incomingCallRef.current = null
+  }
+
   // Incoming call detection via telnyx.notification / callUpdate.
   // NOTE: `telnyx.call.receive` does NOT exist in @telnyx/webrtc v2.x —
   // telnyx.notification with type=callUpdate is the ONLY incoming call event.

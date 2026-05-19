@@ -6,6 +6,7 @@ import telnyx from '@/lib/telnyx'
 import { normalizePhoneNumber } from '@/lib/phone-utils'
 import { getUserFromRequest, getWorkspaceFromRequest } from '@/lib/session-helper'
 import { getWorkspaceMessageRate, calculateMessageCost } from '@/lib/pricing'
+import { listAllItems, extractPhone, columnTitleToPlaceholder, listColumns } from '@/lib/monday'
 
 export async function POST(request, { params }) {
   try {
@@ -62,30 +63,97 @@ export async function POST(request, { params }) {
       )
     }
 
-    // Get contacts from selected lists (workspace-filtered)
-    const { data: rawContacts, error: contactsError } = await supabaseAdmin
-      .from('contacts')
-      .select('*')
-      .eq('workspace_id', workspace.workspaceId)
-      .in('contact_list_id', campaign.contact_list_ids)
+    // ── Load recipients from either Monday or the contacts table ───────────
+    // If a campaign_monday_links row exists, source items from Monday and
+    // ignore contact_list_ids entirely. Otherwise fall back to the existing
+    // contacts path. Either way we end up with a unified `recipients` array.
+    const { data: mondayLink } = await supabaseAdmin
+      .from('campaign_monday_links')
+      .select('board_id, group_ids, phone_column_id')
+      .eq('campaign_id', campaignId)
+      .maybeSingle()
 
-    if (contactsError) {
-      console.error('Error fetching contacts:', contactsError)
-      return NextResponse.json(
-        { error: 'Failed to fetch contacts' },
-        { status: 500 }
-      )
-    }
-
-    // Dedupe by normalized phone number — same contact may appear in multiple selected lists
+    let recipients = []   // [{ key: {contact_id|monday_item_id}, phone, vars, displayName }]
     const seenPhones = new Set()
-    const contacts = []
-    for (const c of (rawContacts || [])) {
-      const normalized = normalizePhoneNumber(c.phone_number)
-      if (!normalized || seenPhones.has(normalized)) continue
-      seenPhones.add(normalized)
-      contacts.push(c)
+
+    if (mondayLink) {
+      let items, columns
+      try {
+        columns = await listColumns(workspace.workspaceId, mondayLink.board_id)
+        items = await listAllItems(workspace.workspaceId, mondayLink.board_id, {
+          groupIds: mondayLink.group_ids,
+        })
+      } catch (err) {
+        console.error('[campaign/start] Monday fetch failed:', err.message)
+        return NextResponse.json(
+          { error: 'Failed to fetch Monday items. Reconnect Monday or check the board still exists.' },
+          { status: 502 }
+        )
+      }
+
+      // Pre-compute column id → placeholder slug map for fast lookup
+      const colSlugById = new Map(columns.map(c => [c.id, columnTitleToPlaceholder(c.title)]))
+
+      for (const item of items) {
+        const phoneCv = item.column_values.find(cv => cv.id === mondayLink.phone_column_id)
+        const rawPhone = extractPhone(phoneCv)
+        const normalized = normalizePhoneNumber(rawPhone)
+        if (!normalized || seenPhones.has(normalized)) continue
+        seenPhones.add(normalized)
+
+        const vars = { name: item.name || '' }
+        for (const cv of item.column_values) {
+          const slug = colSlugById.get(cv.id)
+          if (slug) vars[slug] = cv.text || ''
+        }
+
+        recipients.push({
+          key: { monday_item_id: String(item.id) },
+          phone: normalized,
+          vars,
+          displayName: item.name || null,
+        })
+      }
+    } else {
+      // Get contacts from selected lists (workspace-filtered)
+      const { data: rawContacts, error: contactsError } = await supabaseAdmin
+        .from('contacts')
+        .select('*')
+        .eq('workspace_id', workspace.workspaceId)
+        .in('contact_list_id', campaign.contact_list_ids)
+
+      if (contactsError) {
+        console.error('Error fetching contacts:', contactsError)
+        return NextResponse.json(
+          { error: 'Failed to fetch contacts' },
+          { status: 500 }
+        )
+      }
+
+      for (const c of (rawContacts || [])) {
+        const normalized = normalizePhoneNumber(c.phone_number)
+        if (!normalized || seenPhones.has(normalized)) continue
+        seenPhones.add(normalized)
+        recipients.push({
+          key: { contact_id: c.id },
+          phone: normalized,
+          vars: {
+            first_name: c.first_name || '',
+            last_name: c.last_name || '',
+            business_name: c.business_name || '',
+            phone: c.phone_number || '',
+            email: c.email || '',
+            city: c.city || '',
+            state: c.state || '',
+            country: c.country || '',
+          },
+          displayName: c.business_name || null,
+        })
+      }
     }
+
+    // Kept for downstream code that reads `contacts.length` (cost check uses it).
+    const contacts = recipients
 
     // Get current message rate for this workspace based on tiered pricing
     const messageCount = contacts.length
@@ -167,26 +235,36 @@ export async function POST(request, { params }) {
   }
 }
 
+function hydrateTemplate(template, vars) {
+  if (!template) return ''
+  // Support both legacy single-brace {first_name} (contacts path) and
+  // double-brace {{first_name}} (Monday path). Unknown keys become empty string.
+  return template
+    .replace(/\{\{(\w+)\}\}/g, (_, k) => (vars[k] ?? ''))
+    .replace(/\{(\w+)\}/g, (_, k) => (vars[k] ?? ''))
+}
+
 async function processCampaignMessages(campaign, contacts, userId, workspaceId, messageRate) {
   let sentCount = 0
   let failedCount = 0
 
-  for (const contact of contacts) {
+  for (const recipient of contacts) {
     let claimedRowId = null
     try {
-      // Normalize phone numbers
-      const normalizedContactNumber = normalizePhoneNumber(contact.phone_number)
+      const normalizedContactNumber = recipient.phone
       const normalizedSenderNumber = normalizePhoneNumber(campaign.sender_number)
 
-      // ATOMIC PER-CONTACT CLAIM. The UNIQUE(campaign_id, contact_id) constraint
-      // on campaign_messages makes this insert the single source of truth: a
-      // racing second sender (different instance, retry, manual restart) gets
-      // 23505 and skips this contact. Recipient can never receive duplicates.
+      // ATOMIC PER-RECIPIENT CLAIM. Both UNIQUE(campaign_id, contact_id) (for
+      // the contacts path) and UNIQUE(campaign_id, monday_item_id) (for the
+      // Monday path) make this insert the single source of truth: a racing
+      // second sender (different instance, retry, manual restart) gets 23505
+      // and skips. Recipient can never receive duplicates.
       const { data: claim, error: claimErr } = await supabaseAdmin
         .from('campaign_messages')
         .insert({
           campaign_id: campaign.id,
-          contact_id: contact.id,
+          contact_id: recipient.key.contact_id || null,
+          monday_item_id: recipient.key.monday_item_id || null,
           status: 'sending',
           sent_at: new Date().toISOString(),
         })
@@ -195,25 +273,15 @@ async function processCampaignMessages(campaign, contacts, userId, workspaceId, 
 
       if (claimErr) {
         if (claimErr.code === '23505') {
-          // Another sender already handled this contact in this campaign — skip
           console.log(`[campaign] Skipping ${normalizedContactNumber} — already claimed`)
           continue
         }
-        console.error('[campaign] Failed to claim contact:', claimErr)
+        console.error('[campaign] Failed to claim recipient:', claimErr)
         continue
       }
       claimedRowId = claim.id
 
-      // Replace tags in message template
-      let personalizedMessage = campaign.message_template
-      personalizedMessage = personalizedMessage.replace(/{first_name}/g, contact.first_name || '')
-      personalizedMessage = personalizedMessage.replace(/{last_name}/g, contact.last_name || '')
-      personalizedMessage = personalizedMessage.replace(/{business_name}/g, contact.business_name || '')
-      personalizedMessage = personalizedMessage.replace(/{phone}/g, contact.phone_number || '')
-      personalizedMessage = personalizedMessage.replace(/{email}/g, contact.email || '')
-      personalizedMessage = personalizedMessage.replace(/{city}/g, contact.city || '')
-      personalizedMessage = personalizedMessage.replace(/{state}/g, contact.state || '')
-      personalizedMessage = personalizedMessage.replace(/{country}/g, contact.country || '')
+      const personalizedMessage = hydrateTemplate(campaign.message_template, recipient.vars)
 
       // Get or create conversation — must match BOTH phone_number and from_number
       // so messages always appear under the correct sending line in the inbox.
@@ -241,7 +309,7 @@ async function processCampaignMessages(campaign, contacts, userId, workspaceId, 
           .from('conversations')
           .insert({
             phone_number: normalizedContactNumber,
-            name: contact.business_name || null,
+            name: recipient.displayName || null,
             from_number: normalizedSenderNumber,
             workspace_id: workspaceId,
             created_by: userId
@@ -371,7 +439,7 @@ async function processCampaignMessages(campaign, contacts, userId, workspaceId, 
       }
 
     } catch (error) {
-      console.error(`Error sending message to ${contact.phone_number}:`, error)
+      console.error(`Error sending message to ${recipient?.phone}:`, error)
 
       // Mark the claimed row as failed (if we got far enough to claim it)
       if (claimedRowId) {

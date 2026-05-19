@@ -2,10 +2,16 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Phone, PhoneOff, Mic, MicOff, Pause, Play, Grid3X3,
   UserPlus, ArrowRightLeft, X, Minus, Search, User, Loader2
 } from 'lucide-react'
+
+// Max-safe z-index ensures the popup floats above every other overlay —
+// the blocked-subscription banner (9999), product tour (9999), mention
+// autocomplete (9999), etc. all use lower values.
+const POPUP_Z = 2147483647
 
 export default function CallInterface({
   callStatus,
@@ -25,6 +31,9 @@ export default function CallInterface({
 }) {
   const [isMinimized, setIsMinimized] = useState(false)
   const [incomingDismissed, setIncomingDismissed] = useState(false)
+  // SSR guard for createPortal — document is undefined during server render.
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
   const [showDialpad, setShowDialpad] = useState(false)
   const [showAddParticipant, setShowAddParticipant] = useState(false)
   const [showTransfer, setShowTransfer] = useState(false)
@@ -254,8 +263,10 @@ export default function CallInterface({
     )
     const lineName = matchedLine?.custom_name || (formatPhoneNumber ? formatPhoneNumber(toNumber) : toNumber)
 
-    return (
-      <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+    if (!mounted) return null
+
+    return createPortal(
+      <div style={{ position: 'fixed', inset: 0, zIndex: POPUP_Z, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
         <div style={{
           width: 320, background: '#FFFFFF', pointerEvents: 'auto',
           border: '1px solid #E3E1DB', borderRadius: 16,
@@ -356,7 +367,8 @@ export default function CallInterface({
             </button>
           </div>
         </div>
-      </div>
+      </div>,
+      document.body
     )
   }
 

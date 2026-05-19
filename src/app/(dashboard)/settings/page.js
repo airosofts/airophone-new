@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import ManageNumbers from '@/components/settings/ManageNumbers'
 import MessageTemplates from '@/components/settings/MessageTemplates'
 import ApiKeys from '@/components/settings/ApiKeys'
@@ -9,6 +9,7 @@ import AiSettings from '@/components/settings/AiSettings'
 import CallForwarding from '@/components/settings/CallForwarding'
 import WorkspaceMembers from '@/components/settings/WorkspaceMembers'
 import Referrals from '@/components/settings/Referrals'
+import Integrations from '@/components/settings/Integrations'
 
 const sections = [
   {
@@ -18,6 +19,7 @@ const sections = [
       { id: 'members',    name: 'Team Members',      icon: 'fa-users',       desc: 'Invite and manage access' },
       { id: 'templates',  name: 'Message Templates', icon: 'fa-layer-group', desc: 'Reusable message templates' },
       { id: 'apikeys',    name: 'API Keys',           icon: 'fa-plug',        desc: 'External integrations' },
+      { id: 'integrations', name: 'Integrations',     icon: 'fa-puzzle-piece', desc: 'Monday.com and more' },
       { id: 'blocklist',  name: 'Blocklist',          icon: 'fa-ban',         desc: 'Blocked numbers' },
       { id: 'ai',         name: 'AI Settings',        icon: 'fa-robot',       desc: 'Reply delay and behavior' },
       { id: 'forwarding', name: 'Call Forwarding',    icon: 'fa-phone-alt',   desc: 'Forward incoming calls' },
@@ -46,6 +48,7 @@ const iconColors = {
   members:       { bg: 'bg-[rgba(214,59,31,0.08)]', text: 'text-[#D63B1F]' },
   templates:     { bg: 'bg-[rgba(214,59,31,0.08)]', text: 'text-[#D63B1F]' },
   apikeys:       { bg: 'bg-[rgba(214,59,31,0.08)]', text: 'text-[#D63B1F]' },
+  integrations:  { bg: 'bg-[rgba(214,59,31,0.08)]', text: 'text-[#D63B1F]' },
   blocklist:     { bg: 'bg-[rgba(214,59,31,0.08)]', text: 'text-[#D63B1F]' },
   ai:            { bg: 'bg-[rgba(214,59,31,0.08)]', text: 'text-[#D63B1F]' },
   forwarding:    { bg: 'bg-[rgba(214,59,31,0.08)]', text: 'text-[#D63B1F]' },
@@ -58,6 +61,17 @@ const iconColors = {
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('numbers')
   const [mobileShowContent, setMobileShowContent] = useState(false)
+
+  // Open a specific section via ?section=integrations (used by the Monday
+  // OAuth callback to land users back on the right tab after authorizing).
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const section = new URLSearchParams(window.location.search).get('section')
+    if (section) {
+      setActiveTab(section)
+      setMobileShowContent(true)
+    }
+  }, [])
 
   const allItems = sections.flatMap(s => s.items)
   const currentItem = allItems.find(i => i.id === activeTab)
@@ -161,6 +175,7 @@ export default function SettingsPage() {
           {activeTab === 'members'    && <WorkspaceMembers />}
           {activeTab === 'templates'  && <MessageTemplates />}
           {activeTab === 'apikeys'    && <ApiKeys />}
+          {activeTab === 'integrations' && <Integrations />}
           {activeTab === 'blocklist'  && <Blocklist />}
           {activeTab === 'ai'         && <AiSettings />}
           {activeTab === 'forwarding' && <CallForwarding />}

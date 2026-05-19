@@ -23,8 +23,11 @@ export function CallProvider({ children }) {
     <CallContext.Provider value={callHook}>
       {children}
       {callHook && (
-        // Render at the top of the stacking context so it floats above all modals
-        <div style={{ position: 'relative', zIndex: 9000 }}>
+        // CallInterface portals its incoming popup to document.body so the
+        // wrapper's stacking context no longer matters for that case. We still
+        // bump the wrapper to max-safe so the active-call card (which isn't
+        // portaled) also floats above any future overlays.
+        <div style={{ position: 'relative', zIndex: 2147483647 }}>
           <CallInterface
             callStatus={callHook.callStatus}
             currentCall={callHook.currentCall}
