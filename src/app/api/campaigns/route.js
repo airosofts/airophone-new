@@ -87,8 +87,14 @@ export async function POST(request) {
       message_template,
       sender_number,
       contact_list_ids,
-      delay_between_messages
+      delay_between_messages,
+      source
     } = body
+
+    // Monday-sourced campaigns get their recipients from a board (linked right
+    // after creation via /campaigns/[id]/monday-link), not from contact lists —
+    // so the contact-list validation and counting below don't apply to them.
+    const isMondaySource = source === 'monday'
 
     // Validate required fields
     if (!name?.trim()) {
@@ -112,35 +118,42 @@ export async function POST(request) {
       )
     }
 
-    if (!contact_list_ids || contact_list_ids.length === 0) {
-      return NextResponse.json(
-        { error: 'At least one contact list must be selected' },
-        { status: 400 }
-      )
-    }
+    let totalRecipients = 0
 
-    // Get total recipients count from selected contact lists (workspace-filtered)
-    const { data: contacts, error: contactsError } = await supabaseAdmin
-      .from('contacts')
-      .select('id', { count: 'exact' })
-      .eq('workspace_id', workspace.workspaceId)
-      .in('contact_list_id', contact_list_ids)
+    if (isMondaySource) {
+      // Recipient count is unknown until send time (items are pulled from
+      // Monday then). Leave it at 0 — the start route reflects the real count.
+    } else {
+      if (!contact_list_ids || contact_list_ids.length === 0) {
+        return NextResponse.json(
+          { error: 'At least one contact list must be selected' },
+          { status: 400 }
+        )
+      }
 
-    if (contactsError) {
-      console.error('Error counting contacts:', contactsError)
-      return NextResponse.json(
-        { error: 'Failed to count recipients', details: contactsError.message },
-        { status: 500 }
-      )
-    }
+      // Get total recipients count from selected contact lists (workspace-filtered)
+      const { data: contacts, error: contactsError } = await supabaseAdmin
+        .from('contacts')
+        .select('id', { count: 'exact' })
+        .eq('workspace_id', workspace.workspaceId)
+        .in('contact_list_id', contact_list_ids)
 
-    const totalRecipients = contacts?.length || 0
+      if (contactsError) {
+        console.error('Error counting contacts:', contactsError)
+        return NextResponse.json(
+          { error: 'Failed to count recipients', details: contactsError.message },
+          { status: 500 }
+        )
+      }
 
-    if (totalRecipients === 0) {
-      return NextResponse.json(
-        { error: 'Selected contact lists have no contacts' },
-        { status: 400 }
-      )
+      totalRecipients = contacts?.length || 0
+
+      if (totalRecipients === 0) {
+        return NextResponse.json(
+          { error: 'Selected contact lists have no contacts' },
+          { status: 400 }
+        )
+      }
     }
 
     // Create campaign

@@ -69,7 +69,7 @@ export async function POST(request, { params }) {
     // contacts path. Either way we end up with a unified `recipients` array.
     const { data: mondayLink } = await supabaseAdmin
       .from('campaign_monday_links')
-      .select('board_id, group_ids, phone_column_id')
+      .select('board_id, group_ids, item_ids, phone_column_id')
       .eq('campaign_id', campaignId)
       .maybeSingle()
 
@@ -94,7 +94,14 @@ export async function POST(request, { params }) {
       // Pre-compute column id → placeholder slug map for fast lookup
       const colSlugById = new Map(columns.map(c => [c.id, columnTitleToPlaceholder(c.title)]))
 
+      // item_ids null/empty == "all items"; otherwise restrict to the picked rows.
+      const allowedItemIds =
+        Array.isArray(mondayLink.item_ids) && mondayLink.item_ids.length > 0
+          ? new Set(mondayLink.item_ids.map(String))
+          : null
+
       for (const item of items) {
+        if (allowedItemIds && !allowedItemIds.has(String(item.id))) continue
         const phoneCv = item.column_values.find(cv => cv.id === mondayLink.phone_column_id)
         const rawPhone = extractPhone(phoneCv)
         const normalized = normalizePhoneNumber(rawPhone)

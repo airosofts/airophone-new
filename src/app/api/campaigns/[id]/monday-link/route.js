@@ -33,7 +33,7 @@ export async function GET(request, { params }) {
 
   const { data, error } = await supabaseAdmin
     .from('campaign_monday_links')
-    .select('board_id, board_name, group_ids, phone_column_id, created_at, updated_at')
+    .select('board_id, board_name, group_ids, item_ids, phone_column_id, created_at, updated_at')
     .eq('campaign_id', campaignId)
     .maybeSingle()
 
@@ -65,7 +65,7 @@ export async function POST(request, { params }) {
   }
 
   const body = await request.json()
-  const { board_id, board_name, group_ids, phone_column_id } = body
+  const { board_id, board_name, group_ids, item_ids, phone_column_id } = body
 
   if (!board_id || !phone_column_id) {
     return NextResponse.json(
@@ -78,6 +78,11 @@ export async function POST(request, { params }) {
   const normalizedGroupIds =
     Array.isArray(group_ids) && group_ids.length > 0 ? group_ids.map(String) : null
 
+  // item_ids: null/undefined/empty array all mean "all items in the selected
+  // groups". Normalize to null so board rows added later are still included.
+  const normalizedItemIds =
+    Array.isArray(item_ids) && item_ids.length > 0 ? item_ids.map(String) : null
+
   const now = new Date().toISOString()
   const { error: upsertErr } = await supabaseAdmin
     .from('campaign_monday_links')
@@ -87,6 +92,7 @@ export async function POST(request, { params }) {
         board_id: String(board_id),
         board_name: board_name || null,
         group_ids: normalizedGroupIds,
+        item_ids: normalizedItemIds,
         phone_column_id: String(phone_column_id),
         updated_at: now,
       },

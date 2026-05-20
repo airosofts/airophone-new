@@ -783,6 +783,9 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
     mondayBoardId: '', mondayBoardName: '',
     mondayGroupIds: [],          // empty array == "all groups"
     mondayPhoneColumnId: '',
+    mondayItemIds: [],           // selected rows; all-selected == "all items"
+    mondayStatusColumnId: '',    // optional: filter rows by a status column
+    mondayStatusValues: [],      // which status values to include
   })
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -794,7 +797,9 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
   const [mondayBoards, setMondayBoards] = useState([])
   const [mondayGroups, setMondayGroups] = useState([])
   const [mondayColumns, setMondayColumns] = useState([])
-  const [mondayLoading, setMondayLoading] = useState({ boards: false, groups: false, columns: false })
+  const [mondayItems, setMondayItems] = useState([])
+  const [mondayItemSearch, setMondayItemSearch] = useState('')
+  const [mondayLoading, setMondayLoading] = useState({ boards: false, groups: false, columns: false, items: false })
 
   // Fetch connection status on mount — gates whether the Monday source option is shown.
   useEffect(() => {
@@ -845,6 +850,36 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.mondayBoardId])
 
+  // Fetch the board's items (rows) once board, groups and phone column are set,
+  // so the user can pick which rows to send to. Default selection = all rows.
+  // Re-runs when the group filter changes (different groups → different rows).
+  useEffect(() => {
+    if (formData.source !== 'monday' || !formData.mondayBoardId || !formData.mondayPhoneColumnId) {
+      setMondayItems([])
+      return
+    }
+    setMondayLoading(p => ({ ...p, items: true }))
+    setMondayItemSearch('')
+    const qs = new URLSearchParams()
+    if (formData.mondayGroupIds.length > 0) qs.set('groups', formData.mondayGroupIds.join(','))
+    qs.set('phone_column_id', formData.mondayPhoneColumnId)
+    fetchWithWorkspace(`/api/integrations/monday/boards/${formData.mondayBoardId}/items?${qs}`)
+      .then(r => r.json())
+      .then(d => {
+        const items = d?.items || []
+        setMondayItems(items)
+        setFormData(f => ({
+          ...f,
+          mondayItemIds: items.map(i => i.id),
+          mondayStatusColumnId: '',
+          mondayStatusValues: [],
+        }))
+      })
+      .catch(() => { setMondayItems([]); setFormData(f => ({ ...f, mondayItemIds: [] })) })
+      .finally(() => setMondayLoading(p => ({ ...p, items: false })))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.source, formData.mondayBoardId, formData.mondayGroupIds.join(','), formData.mondayPhoneColumnId])
+
   const insertPlaceholder = (tag) => {
     const ta = messageRef.current
     const current = formData.message || ''
@@ -868,6 +903,41 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
   const contactListOptions = contactLists.map(cl => ({ value: cl.id, label: cl.name, count: cl.contactCount ?? cl.contact_count ?? 0, searchText: cl.name }))
   const phoneNumberOptions = phoneNumbers.map(pn => ({ value: pn.id, number: pn.phone_number || pn.phoneNumber, name: pn.custom_name || pn.prefix || '', searchText: `${pn.custom_name || ''} ${pn.phone_number || pn.phoneNumber || ''}` }))
 
+  // ── Monday status-column filter ─────────────────────────────────────────────
+  // Lets the user narrow recipients to rows with a given status (e.g.
+  // Stage = Qualified). Purely a selection helper — the result is captured in
+  // mondayItemIds, so it needs no separate persistence or send-loop logic.
+  const mondayStatusColumns = mondayColumns.filter(c => c.type === 'status' || c.type === 'dropdown')
+  const statusColId = formData.mondayStatusColumnId
+  const statusValueOptions = statusColId
+    ? [...new Set(mondayItems.map(it => (it.columns || {})[statusColId]).filter(v => v && v.trim()))].sort()
+    : []
+  const statusFilterActive = !!statusColId && formData.mondayStatusValues.length > 0
+  // The recipient pool — all items, or just those matching the chosen statuses.
+  const recipientPool = statusFilterActive
+    ? mondayItems.filter(it => formData.mondayStatusValues.includes((it.columns || {})[statusColId]))
+    : mondayItems
+
+  const applyStatusColumn = (colId) => {
+    setFormData(f => ({
+      ...f,
+      mondayStatusColumnId: colId,
+      mondayStatusValues: [],
+      mondayItemIds: mondayItems.map(i => i.id), // no values picked yet → whole board
+    }))
+  }
+  const toggleStatusValue = (val) => {
+    setFormData(f => {
+      const nextValues = f.mondayStatusValues.includes(val)
+        ? f.mondayStatusValues.filter(v => v !== val)
+        : [...f.mondayStatusValues, val]
+      const pool = nextValues.length > 0
+        ? mondayItems.filter(it => nextValues.includes((it.columns || {})[f.mondayStatusColumnId]))
+        : mondayItems
+      return { ...f, mondayStatusValues: nextValues, mondayItemIds: pool.map(i => i.id) }
+    })
+  }
+
   const validateForm = () => {
     const newErrors = {}
     if (!formData.name.trim()) newErrors.name = 'Campaign name is required'
@@ -877,6 +947,9 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
     } else {
       if (!formData.mondayBoardId) newErrors.mondayBoardId = 'Board is required'
       if (!formData.mondayPhoneColumnId) newErrors.mondayPhoneColumnId = 'Phone number column is required'
+      if (mondayItems.length > 0 && formData.mondayItemIds.length === 0) {
+        newErrors.mondayItemIds = 'Select at least one recipient.'
+      }
     }
     if (!formData.phoneNumberId) newErrors.phoneNumberId = 'Phone number is required'
     if (formData.scheduleType === 'scheduled' && !formData.scheduleTime) newErrors.scheduleTime = 'Schedule time is required'
@@ -902,6 +975,9 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
         contact_list_ids: formData.source === 'contacts' ? [formData.contactListId] : [],
         sender_number: senderNumber,
         delay_between_messages: 1000,
+        // Tells the create endpoint to skip contact-list validation — a Monday
+        // campaign's recipients come from the board, linked right after this.
+        source: formData.source,
       }
       const response = await apiPost('/api/campaigns', payload)
       const data = await response.json()
@@ -918,12 +994,18 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
           setErrors({ submit: 'Campaign created but ID was missing — refresh and link the board manually.' })
           return
         }
+        // If every row is selected, send item_ids empty → stored as "all", so
+        // rows added to the board later are still included. Otherwise lock in
+        // the explicit subset the user picked.
+        const allSelected =
+          mondayItems.length > 0 && formData.mondayItemIds.length === mondayItems.length
         const linkRes = await fetchWithWorkspace(`/api/campaigns/${newCampaignId}/monday-link`, {
           method: 'POST',
           body: JSON.stringify({
             board_id: formData.mondayBoardId,
             board_name: formData.mondayBoardName,
             group_ids: formData.mondayGroupIds,
+            item_ids: allSelected ? [] : formData.mondayItemIds,
             phone_column_id: formData.mondayPhoneColumnId,
           }),
         })
@@ -1134,6 +1216,132 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
                     />
                     {errors.mondayPhoneColumnId && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.mondayPhoneColumnId}</p>}
                     <p className="text-[11px] text-[#9B9890] mt-1.5">Items missing a phone in this column will be skipped at send time.</p>
+                  </div>
+                )}
+
+                {/* Recipient (row) picker — choose which Monday items to send to */}
+                {formData.mondayBoardId && formData.mondayPhoneColumnId && (
+                  <div>
+                    <label className="block text-sm font-medium text-[#5C5A55] mb-2">
+                      Recipients
+                      {mondayItems.length > 0 && (
+                        <span className="ml-1.5 text-xs font-normal text-[#9B9890]">
+                          {formData.mondayItemIds.length} of {recipientPool.length} selected
+                        </span>
+                      )}
+                    </label>
+                    {mondayLoading.items ? (
+                      <p className="text-xs text-[#9B9890]">Loading items…</p>
+                    ) : mondayItems.length === 0 ? (
+                      <p className="text-xs text-[#9B9890]">No items in the selected group(s).</p>
+                    ) : (
+                      <>
+                        {/* Status-column filter */}
+                        {mondayStatusColumns.length > 0 && (
+                          <div className="mb-3 p-3 border border-[#E3E1DB] rounded-lg bg-[#F7F6F3]">
+                            <div className="flex items-center justify-between gap-2 mb-2">
+                              <span className="text-xs font-medium text-[#5C5A55]">Filter by status</span>
+                              {statusFilterActive && (
+                                <button
+                                  type="button"
+                                  onClick={() => applyStatusColumn('')}
+                                  className="text-[11px] text-[#D63B1F] hover:underline"
+                                >
+                                  Clear filter
+                                </button>
+                              )}
+                            </div>
+                            <select
+                              value={formData.mondayStatusColumnId}
+                              onChange={(e) => applyStatusColumn(e.target.value)}
+                              className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm bg-[#FFFFFF] focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F]"
+                            >
+                              <option value="">No status filter — all rows</option>
+                              {mondayStatusColumns.map(c => (
+                                <option key={c.id} value={c.id}>{c.title}</option>
+                              ))}
+                            </select>
+                            {statusColId && (
+                              statusValueOptions.length === 0 ? (
+                                <p className="text-[11px] text-[#9B9890] mt-2">No values found in this column.</p>
+                              ) : (
+                                <div className="flex flex-wrap gap-1.5 mt-2">
+                                  {statusValueOptions.map(val => {
+                                    const on = formData.mondayStatusValues.includes(val)
+                                    return (
+                                      <button
+                                        key={val}
+                                        type="button"
+                                        onClick={() => toggleStatusValue(val)}
+                                        className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${on ? 'bg-[#fdecea] border-[#D63B1F] text-[#D63B1F]' : 'bg-[#FFFFFF] border-[#E3E1DB] text-[#5C5A55] hover:bg-[#EFEDE8]'}`}
+                                      >
+                                        {val}
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              )
+                            )}
+                          </div>
+                        )}
+
+                        <input
+                          type="text"
+                          value={mondayItemSearch}
+                          onChange={(e) => setMondayItemSearch(e.target.value)}
+                          placeholder="Search items…"
+                          className="w-full mb-2 px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F]"
+                        />
+                        {recipientPool.length === 0 ? (
+                          <p className="text-xs text-[#9B9890]">No rows match this status filter.</p>
+                        ) : (
+                        <div className="border border-[#E3E1DB] rounded-lg max-h-60 overflow-y-auto divide-y divide-[#F0EEE9]">
+                          <label className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-[#F7F6F3] sticky top-0 bg-[#FFFFFF] border-b border-[#E3E1DB]">
+                            <input
+                              type="checkbox"
+                              checked={recipientPool.length > 0 && formData.mondayItemIds.length === recipientPool.length}
+                              ref={el => { if (el) el.indeterminate = formData.mondayItemIds.length > 0 && formData.mondayItemIds.length < recipientPool.length }}
+                              onChange={(e) => {
+                                setFormData(f => ({ ...f, mondayItemIds: e.target.checked ? recipientPool.map(i => i.id) : [] }))
+                              }}
+                              className="accent-[#D63B1F]"
+                            />
+                            <span className="text-sm font-medium text-[#131210]">Select all</span>
+                          </label>
+                          {recipientPool
+                            .filter(it => {
+                              const q = mondayItemSearch.trim().toLowerCase()
+                              if (!q) return true
+                              return (it.name || '').toLowerCase().includes(q) || (it.phone || '').toLowerCase().includes(q)
+                            })
+                            .map(it => (
+                              <label key={it.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-[#F7F6F3]">
+                                <input
+                                  type="checkbox"
+                                  checked={formData.mondayItemIds.includes(it.id)}
+                                  onChange={(e) => {
+                                    setFormData(f => {
+                                      const next = e.target.checked
+                                        ? [...f.mondayItemIds, it.id]
+                                        : f.mondayItemIds.filter(x => x !== it.id)
+                                      return { ...f, mondayItemIds: next }
+                                    })
+                                  }}
+                                  className="accent-[#D63B1F] shrink-0"
+                                />
+                                <span className="min-w-0 flex-1">
+                                  <span className="block text-sm text-[#131210] truncate">{it.name}</span>
+                                  {it.phone
+                                    ? <span className="block text-xs text-[#9B9890] font-mono truncate">{it.phone}</span>
+                                    : <span className="block text-xs text-[#D63B1F]">No phone — will be skipped</span>}
+                                </span>
+                              </label>
+                            ))}
+                        </div>
+                        )}
+                        {errors.mondayItemIds && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.mondayItemIds}</p>}
+                      </>
+                    )}
                   </div>
                 )}
               </>
