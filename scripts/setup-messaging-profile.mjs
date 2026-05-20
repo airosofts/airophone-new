@@ -1,6 +1,6 @@
 // One-time script: create messaging profile + assign number
 // Usage: node scripts/setup-messaging-profile.mjs
-
+///ok
 const TELNYX_API_KEY = process.env.TELNYX_API_KEY
 const PROFILE_ID = '40019d93-2652-4934-931d-1434bc9f811e'  // hamzasofts profile
 const CAMPAIGN_ID = '4b300199-1bcf-170e-e865-65d3d884f545'
