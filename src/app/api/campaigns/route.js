@@ -46,9 +46,23 @@ export async function GET(request) {
       if (lists) lists.forEach(l => { contactListMap[l.id] = l.name })
     }
 
+    // Resolve Monday board links — a Monday-sourced campaign has no contact
+    // list, so the UI shows the board name instead.
+    const campaignIds = (campaigns || []).map(c => c.id)
+    let mondayLinkMap = {}
+    if (campaignIds.length > 0) {
+      const { data: links } = await supabaseAdmin
+        .from('campaign_monday_links')
+        .select('campaign_id, board_name')
+        .in('campaign_id', campaignIds)
+      if (links) links.forEach(l => { mondayLinkMap[l.campaign_id] = l.board_name })
+    }
+
     const campaignsWithNames = (campaigns || []).map(c => ({
       ...c,
-      contact_list_names: (c.contact_list_ids || []).map(id => contactListMap[id]).filter(Boolean)
+      contact_list_names: (c.contact_list_ids || []).map(id => contactListMap[id]).filter(Boolean),
+      source: mondayLinkMap[c.id] !== undefined ? 'monday' : 'contacts',
+      monday_board_name: mondayLinkMap[c.id] || null,
     }))
 
     return NextResponse.json({

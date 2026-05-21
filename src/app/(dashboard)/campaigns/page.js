@@ -425,7 +425,11 @@ export default function CampaignsPage() {
                               <i className="fas fa-users text-[10px]"></i>
                               <span>{campaign.total_recipients ?? 0} recipients</span>
                             </span>
-                            <span className="truncate hidden xs:block">{campaign.contact_list_names?.join(', ') || '—'}</span>
+                            <span className="truncate hidden xs:block">
+                              {campaign.source === 'monday'
+                                ? (campaign.monday_board_name || 'Monday board')
+                                : (campaign.contact_list_names?.join(', ') || '—')}
+                            </span>
                           </div>
                           <div className="flex items-center gap-0.5 shrink-0">
                             <button title="View" onClick={(e) => { e.stopPropagation(); setSelectedCampaign(campaign); setShowViewCampaign(true) }} className="p-2 text-[#9B9890] hover:text-[#5C5A55] rounded-lg transition-colors"><i className="fas fa-eye text-xs"></i></button>
@@ -460,8 +464,15 @@ export default function CampaignsPage() {
                               <p className="text-xs text-[#9B9890] truncate max-w-xs mt-0.5">{campaign.message_template}</p>
                             </td>
                             <td className="px-5 py-3"><span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${status.className}`}>{status.label}</span></td>
-                            <td className="px-5 py-3 text-sm text-[#5C5A55]">{campaign.contact_list_names?.join(', ') || 'Unknown'}</td>
-                            <td className="px-5 py-3 text-sm text-[#5C5A55]">{campaign.total_recipients}</td>
+                            <td className="px-5 py-3 text-sm text-[#5C5A55]">
+                              {campaign.source === 'monday' ? (
+                                <span className="inline-flex items-center gap-1.5">
+                                  {campaign.monday_board_name || 'Monday board'}
+                                  <span className="text-[10px] font-mono uppercase tracking-wider text-[#9B9890] bg-[#EFEDE8] px-1.5 py-0.5 rounded">Monday</span>
+                                </span>
+                              ) : (campaign.contact_list_names?.join(', ') || 'Unknown')}
+                            </td>
+                            <td className="px-5 py-3 text-sm text-[#5C5A55]">{campaign.total_recipients ?? 0}</td>
                             <td className="px-5 py-3 text-sm text-[#9B9890] whitespace-nowrap">{formatDate(campaign.created_at)}</td>
                             <td className="px-5 py-3 text-right">
                               <div className="flex items-center justify-end gap-1">
@@ -1486,9 +1497,11 @@ function ViewCampaignModal({ campaign, contactLists, phoneNumbers, isTrial, onCl
               <div><p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Message</p><p className="text-sm text-[#5C5A55] bg-[#F7F6F3] border border-[#E3E1DB] rounded px-3 py-2 whitespace-pre-wrap">{campaign.message_template}</p></div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {[
-                  { label: 'Contact List', value: campaign.contact_list_names?.join(', ') || 'Unknown' },
+                  campaign.source === 'monday'
+                    ? { label: 'Monday Board', value: campaign.monday_board_name || 'Monday board' }
+                    : { label: 'Contact List', value: campaign.contact_list_names?.join(', ') || 'Unknown' },
                   { label: 'Sender Number', value: campaign.sender_number || 'Unknown' },
-                  { label: 'Recipients', value: campaign.total_recipients },
+                  { label: 'Recipients', value: campaign.total_recipients ?? 0 },
                   { label: 'Created', value: formatDate(campaign.created_at) },
                 ].map((item) => (
                   <div key={item.label}><p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">{item.label}</p><p className="text-sm text-[#5C5A55]">{item.value}</p></div>

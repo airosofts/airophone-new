@@ -202,9 +202,17 @@ export async function POST(request, { params }) {
 
     // Atomically claim the campaign — only proceed if it's still in draft.
     // This prevents a double-click / concurrent request from spawning two senders.
+    // Also stamp the real recipient count here. For contact campaigns it was
+    // set (pre-dedupe) at creation; for Monday campaigns it was 0 because the
+    // count isn't known until items are pulled. messageCount is the accurate,
+    // de-duplicated number for both paths.
     const { data: claimed, error: claimError } = await supabaseAdmin
       .from('campaigns')
-      .update({ status: 'running', started_at: new Date().toISOString() })
+      .update({
+        status: 'running',
+        started_at: new Date().toISOString(),
+        total_recipients: messageCount,
+      })
       .eq('id', campaignId)
       .eq('status', 'draft')
       .select('id')
