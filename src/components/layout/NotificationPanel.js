@@ -18,6 +18,9 @@ export default function NotificationPanel({ onNavigateToConversation }) {
       const res = await apiGet('/api/notifications')
       const data = await res.json()
       if (data.success) {
+        // Degraded = Supabase was briefly unreachable. Keep the last-known list
+        // instead of flashing the bell to empty; the next 30s poll will recover.
+        if (data.degraded) return
         setNotifications(data.notifications || [])
         setUnreadCount(data.unreadCount || 0)
       }

@@ -14,10 +14,23 @@ function requireKey() {
 }
 
 // Normalize a phone number → "8382048923" (10 digits, no + or country code).
+// Used for the /sender-numbers/verify endpoint.
 function toLocalDigits(phone) {
   const digits = String(phone || '').replace(/\D/g, '')
   if (digits.length === 11 && digits.startsWith('1')) return digits.slice(1)
   return digits
+}
+
+// Normalize a phone number → E.164 "+18382048923".
+// VoiceDrop's /ringless_voicemail API rejects bare digits with "Invalid payload"
+// — it requires E.164. Sending "8382048923" was the cause of the delivery failures.
+function toE164(phone) {
+  const raw = String(phone || '').trim()
+  const digits = raw.replace(/\D/g, '')
+  if (!digits) return ''
+  if (digits.length === 10) return `+1${digits}`              // US 10-digit
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}` // US with country code
+  return raw.startsWith('+') ? `+${digits}` : `+${digits}`    // already international / other
 }
 
 async function vdPost(path, body) {
@@ -85,17 +98,29 @@ export async function verifySenderConfirm(phoneNumber, code) {
 // recordingUrl must be publicly accessible — use uploadAudio() to get a VoiceDrop-hosted URL.
 // VoiceDrop's /ringless_voicemail response has no job ID; delivery status arrives via webhook only.
 export async function sendStaticVoicemail({ recordingUrl, from, to, statusWebhookUrl }) {
+  const fromE164 = toE164(from)
+  const toE164Num = toE164(to)
+
+  // Fail fast with a clear reason rather than letting VoiceDrop reject the
+  // request as a vague "Invalid payload".
+  if (!recordingUrl) {
+    return { ok: false, status: 0, data: { status: 'error', message: 'Missing recording_url' } }
+  }
+  if (fromE164.replace(/\D/g, '').length < 11 || toE164Num.replace(/\D/g, '').length < 11) {
+    return { ok: false, status: 0, data: { status: 'error', message: `Invalid phone number (from=${fromE164}, to=${toE164Num})` } }
+  }
+
   const result = await vdPost('/ringless_voicemail', {
     recording_url: recordingUrl,
-    from: toLocalDigits(from),
-    to: toLocalDigits(to),
+    from: fromE164,
+    to: toE164Num,
     validate_recipient_phone: false,
     send_status_to_webhook: statusWebhookUrl || undefined,
   })
 
   console.log('[voicedrop:send]', {
-    to: toLocalDigits(to),
-    from: toLocalDigits(from),
+    to: toE164Num,
+    from: fromE164,
     httpOk: result.ok,
     httpStatus: result.status,
     response: result.data,

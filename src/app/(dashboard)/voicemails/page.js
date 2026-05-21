@@ -45,6 +45,24 @@ export default function VoicemailsPage() {
 
   useEffect(() => { load() }, [load])
 
+  // Lightweight campaigns-only refresh — no spinner, used by the live poll.
+  const refreshCampaigns = useCallback(async () => {
+    try {
+      const res = await apiGet('/api/voicemail-campaigns')
+      const data = await res.json()
+      if (data.success) setCampaigns(data.campaigns || [])
+    } catch { /* transient network blip — next tick retries */ }
+  }, [])
+
+  // While any campaign is still 'running', poll every 4s so the status flips to
+  // completed/failed — and sent/failed counts tick up — without a manual refresh.
+  useEffect(() => {
+    const hasRunning = campaigns.some(c => c.status === 'running')
+    if (!hasRunning) return
+    const id = setInterval(refreshCampaigns, 4000)
+    return () => clearInterval(id)
+  }, [campaigns, refreshCampaigns])
+
   return (
     <div className="h-full bg-[#F7F6F3] overflow-auto">
       <div className="p-4 md:p-6 max-w-5xl">
@@ -83,7 +101,12 @@ export default function VoicemailsPage() {
                       <p className="text-[11px] text-[#9B9890]">{fmtDate(c.created_at)}</p>
                     </div>
                     <span className="text-[12.5px] text-[#5C5A55] font-mono">{c.sender_number}</span>
-                    <span><span className={`px-2 py-0.5 text-[11px] font-medium rounded-full ${badge.cls}`}>{badge.label}</span></span>
+                    <span>
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded-full ${badge.cls}`}>
+                        {c.status === 'running' && <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse" />}
+                        {badge.label}
+                      </span>
+                    </span>
                     <span className="text-[12.5px] text-[#5C5A55]">
                       <span className="text-[#16a34a] font-medium">{c.sent_count || 0}</span>
                       <span className="text-[#9B9890]"> / </span>
