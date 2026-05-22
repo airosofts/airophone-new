@@ -84,7 +84,7 @@ export default function AutomationsPage() {
 
   return (
     <div className="h-full bg-[#F7F6F3] overflow-y-auto">
-      <div className="max-w-4xl mx-auto px-6 py-8">
+      <div className="px-6 py-8">
 
         <div className="flex items-center justify-between gap-4 mb-1">
           <h1 className="text-xl font-semibold text-[#131210]">Automations</h1>
