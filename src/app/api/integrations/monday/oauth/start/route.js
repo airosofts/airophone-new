@@ -9,15 +9,11 @@
 import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { getUserFromRequest } from '@/lib/session-helper'
+import { mondayRedirectUri } from '@/lib/monday'
 
 const MONDAY_AUTHORIZE_URL = 'https://auth.monday.com/oauth2/authorize'
 // Read-only scopes — listing boards/groups/columns/items, account info.
 const SCOPES = ['boards:read', 'me:read', 'account:read', 'workspaces:read'].join(' ')
-
-function buildRedirectUri(request) {
-  const url = new URL(request.url)
-  return `${url.protocol}//${url.host}/api/integrations/monday/oauth/callback`
-}
 
 export async function GET(request) {
   const user = getUserFromRequest(request)
@@ -34,7 +30,7 @@ export async function GET(request) {
   }
 
   const state = crypto.randomBytes(24).toString('hex')
-  const redirectUri = buildRedirectUri(request)
+  const redirectUri = mondayRedirectUri(request)
 
   const authorizeUrl = new URL(MONDAY_AUTHORIZE_URL)
   authorizeUrl.searchParams.set('client_id', clientId)

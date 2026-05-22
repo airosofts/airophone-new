@@ -160,3 +160,19 @@ export function columnTitleToPlaceholder(title) {
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
 }
+
+// The OAuth redirect_uri must be byte-identical between the /start request
+// (sent to Monday's authorize page) and the /callback request (sent in the
+// token exchange) — and must exactly match a URL registered on the Monday app.
+//
+// `new URL(request.url)` is unreliable behind Vercel's proxy: it can report
+// `http:` or an internal host. The `host` header is what the client actually
+// hit (e.g. app.airophone.com), and protocol is https everywhere except local
+// dev. This function is the single source of truth for both routes.
+export function mondayRedirectUri(request) {
+  const path = '/api/integrations/monday/oauth/callback'
+  const host = request.headers.get('host') || new URL(request.url).host
+  const isLocal = host.startsWith('localhost') || host.startsWith('127.0.0.1')
+  const proto = isLocal ? 'http' : (request.headers.get('x-forwarded-proto') || 'https')
+  return `${proto}://${host}${path}`
+}

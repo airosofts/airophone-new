@@ -8,6 +8,7 @@
 
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
+import { mondayRedirectUri } from '@/lib/monday'
 
 const MONDAY_TOKEN_URL = 'https://auth.monday.com/oauth2/token'
 const MONDAY_GRAPHQL_URL = 'https://api.monday.com/v2'
@@ -17,11 +18,6 @@ function settingsRedirect(request, params) {
   url.searchParams.set('section', 'integrations')
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
   return NextResponse.redirect(url)
-}
-
-function buildRedirectUri(request) {
-  const url = new URL(request.url)
-  return `${url.protocol}//${url.host}/api/integrations/monday/oauth/callback`
 }
 
 export async function GET(request) {
@@ -74,7 +70,7 @@ export async function GET(request) {
         client_id: clientId,
         client_secret: clientSecret,
         code,
-        redirect_uri: buildRedirectUri(request),
+        redirect_uri: mondayRedirectUri(request),
       }),
     })
     tokenJson = await tokenRes.json()
