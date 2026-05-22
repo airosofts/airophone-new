@@ -8,13 +8,16 @@
 
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
-import { mondayRedirectUri } from '@/lib/monday'
+import { mondayRedirectUri, appOrigin } from '@/lib/monday'
 
 const MONDAY_TOKEN_URL = 'https://auth.monday.com/oauth2/token'
 const MONDAY_GRAPHQL_URL = 'https://api.monday.com/v2'
 
 function settingsRedirect(request, params) {
-  const url = new URL('/settings', request.url)
+  // Build from the same reliable origin used for the redirect_uri — not
+  // request.url, which behind a proxy can point at the wrong host/port and
+  // strand the user on a dead URL after a successful connect.
+  const url = new URL('/settings', appOrigin(request))
   url.searchParams.set('section', 'integrations')
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
   return NextResponse.redirect(url)
