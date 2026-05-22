@@ -34,6 +34,11 @@ const NAV_ICONS = {
       <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
     </svg>
   ),
+  '/automations': (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/>
+    </svg>
+  ),
   '/voicemails': (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="6" cy="14" r="4"/>
@@ -223,6 +228,7 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
     { name: 'Campaigns', href: '/campaigns' },
     { name: 'Voicemails', href: '/voicemails' },
     { name: 'AI Scenarios', href: '/scenarios' },
+    { name: 'Automations', href: '/automations' },
     { name: 'Analytics', href: '/analytics' },
     { name: 'Billing', href: '/billing' },
     { name: 'Settings', href: '/settings' },

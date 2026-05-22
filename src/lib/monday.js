@@ -133,6 +133,41 @@ export async function listAllItems(workspaceId, boardId, { groupIds = null, maxI
   return items
 }
 
+// Fetch a single item with its column values — used by the automation webhook
+// when Monday only hands us an item id.
+export async function getItem(workspaceId, itemId) {
+  const data = await mondayGraphQL(workspaceId, `
+    query ($ids: [ID!]) {
+      items(ids: $ids) {
+        id
+        name
+        group { id title }
+        column_values { id type text value }
+      }
+    }
+  `, { ids: [String(itemId)] })
+  return data?.items?.[0] || null
+}
+
+// ── Webhooks ─────────────────────────────────────────────────────────────────
+// Register a webhook on a board. `event` is a Monday event enum, e.g.
+// 'create_item', 'change_column_value', 'move_item_to_group'. Returns the
+// webhook id, which must be stored so it can be deleted later.
+export async function createWebhook(workspaceId, boardId, url, event) {
+  const data = await mondayGraphQL(workspaceId, `
+    mutation ($boardId: ID!, $url: String!, $event: WebhookEventType!) {
+      create_webhook(board_id: $boardId, url: $url, event: $event) { id board_id }
+    }
+  `, { boardId: String(boardId), url, event })
+  return data?.create_webhook?.id ? String(data.create_webhook.id) : null
+}
+
+export async function deleteWebhook(workspaceId, webhookId) {
+  await mondayGraphQL(workspaceId, `
+    mutation ($id: ID!) { delete_webhook(id: $id) { id } }
+  `, { id: String(webhookId) })
+}
+
 // ── Value extraction ────────────────────────────────────────────────────────
 
 // Monday's `phone` column stores `{"phone":"+15551234","countryShortName":"US"}`
