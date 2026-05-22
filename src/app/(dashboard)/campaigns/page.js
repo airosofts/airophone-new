@@ -849,8 +849,7 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
     mondayGroupIds: [],          // empty array == "all groups"
     mondayPhoneColumnId: '',
     mondayItemIds: [],           // selected rows; all-selected == "all items"
-    mondayStatusColumnId: '',    // optional: filter rows by a status column
-    mondayStatusValues: [],      // which status values to include
+    mondayFilters: [],           // [{ columnId, values: [] }] — AND across, OR within
   })
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -940,8 +939,7 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
         setFormData(f => ({
           ...f,
           mondayItemIds: items.map(i => i.id),
-          mondayStatusColumnId: '',
-          mondayStatusValues: [],
+          mondayFilters: [],
         }))
       })
       .catch(() => { setMondayItems([]); setFormData(f => ({ ...f, mondayItemIds: [] })) })
@@ -976,36 +974,36 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
   // Lets the user narrow recipients to rows with a given status (e.g.
   // Stage = Qualified). Purely a selection helper — the result is captured in
   // mondayItemIds, so it needs no separate persistence or send-loop logic.
-  const mondayStatusColumns = mondayColumns.filter(c => c.type === 'status' || c.type === 'dropdown')
-  const statusColId = formData.mondayStatusColumnId
-  const statusValueOptions = statusColId
-    ? [...new Set(mondayItems.map(it => (it.columns || {})[statusColId]).filter(v => v && v.trim()))].sort()
-    : []
-  const statusFilterActive = !!statusColId && formData.mondayStatusValues.length > 0
-  // The recipient pool — all items, or just those matching the chosen statuses.
-  const recipientPool = statusFilterActive
-    ? mondayItems.filter(it => formData.mondayStatusValues.includes((it.columns || {})[statusColId]))
-    : mondayItems
+  // A filter with no column or no values picked is inactive (matches all).
+  const matchesFilters = (it, filters) => {
+    const cols = it.columns || {}
+    return filters.every(f => !f.columnId || f.values.length === 0 || f.values.includes(cols[f.columnId]))
+  }
+  // The recipient pool — rows matching EVERY active filter.
+  const recipientPool = mondayItems.filter(it => matchesFilters(it, formData.mondayFilters))
 
-  const applyStatusColumn = (colId) => {
-    setFormData(f => ({
-      ...f,
-      mondayStatusColumnId: colId,
-      mondayStatusValues: [],
-      mondayItemIds: mondayItems.map(i => i.id), // no values picked yet → whole board
+  // Distinct values present in a column, for the value picker.
+  const columnValueOptions = (colId) => colId
+    ? [...new Set(mondayItems.map(it => (it.columns || {})[colId]).filter(v => v && String(v).trim()))].sort()
+    : []
+
+  // Any filter change re-selects the whole matching pool (user can fine-tune after).
+  const commitFilters = (nextFilters) => {
+    const pool = mondayItems.filter(it => matchesFilters(it, nextFilters))
+    setFormData(f => ({ ...f, mondayFilters: nextFilters, mondayItemIds: pool.map(i => i.id) }))
+  }
+  const addFilter = () =>
+    setFormData(f => ({ ...f, mondayFilters: [...f.mondayFilters, { columnId: '', values: [] }] }))
+  const removeFilter = (idx) =>
+    commitFilters(formData.mondayFilters.filter((_, i) => i !== idx))
+  const setFilterColumn = (idx, colId) =>
+    commitFilters(formData.mondayFilters.map((f, i) => i === idx ? { columnId: colId, values: [] } : f))
+  const toggleFilterValue = (idx, val) =>
+    commitFilters(formData.mondayFilters.map((f, i) => {
+      if (i !== idx) return f
+      const values = f.values.includes(val) ? f.values.filter(v => v !== val) : [...f.values, val]
+      return { ...f, values }
     }))
-  }
-  const toggleStatusValue = (val) => {
-    setFormData(f => {
-      const nextValues = f.mondayStatusValues.includes(val)
-        ? f.mondayStatusValues.filter(v => v !== val)
-        : [...f.mondayStatusValues, val]
-      const pool = nextValues.length > 0
-        ? mondayItems.filter(it => nextValues.includes((it.columns || {})[f.mondayStatusColumnId]))
-        : mondayItems
-      return { ...f, mondayStatusValues: nextValues, mondayItemIds: pool.map(i => i.id) }
-    })
-  }
 
   const STEP_LABELS = ['Basics', 'Audience', 'Message', 'Review']
 
@@ -1362,51 +1360,59 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
                       <p className="text-xs text-[#9B9890]">No items in the selected group(s).</p>
                     ) : (
                       <>
-                        {/* Status-column filter */}
-                        {mondayStatusColumns.length > 0 && (
+                        {/* Multi-column filters — AND across columns, OR within values */}
+                        {mondayColumns.length > 0 && (
                           <div className="mb-3 p-3 border border-[#E3E1DB] rounded-lg bg-[#F7F6F3]">
                             <div className="flex items-center justify-between gap-2 mb-2">
-                              <span className="text-xs font-medium text-[#5C5A55]">Filter by status</span>
-                              {statusFilterActive && (
-                                <button
-                                  type="button"
-                                  onClick={() => applyStatusColumn('')}
-                                  className="text-[11px] text-[#D63B1F] hover:underline"
-                                >
-                                  Clear filter
-                                </button>
-                              )}
+                              <span className="text-xs font-medium text-[#5C5A55]">Filters</span>
+                              <button type="button" onClick={addFilter} className="text-[11px] text-[#D63B1F] hover:underline">
+                                + Add filter
+                              </button>
                             </div>
-                            <select
-                              value={formData.mondayStatusColumnId}
-                              onChange={(e) => applyStatusColumn(e.target.value)}
-                              className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm bg-[#FFFFFF] focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F]"
-                            >
-                              <option value="">No status filter — all rows</option>
-                              {mondayStatusColumns.map(c => (
-                                <option key={c.id} value={c.id}>{c.title}</option>
-                              ))}
-                            </select>
-                            {statusColId && (
-                              statusValueOptions.length === 0 ? (
-                                <p className="text-[11px] text-[#9B9890] mt-2">No values found in this column.</p>
-                              ) : (
-                                <div className="flex flex-wrap gap-1.5 mt-2">
-                                  {statusValueOptions.map(val => {
-                                    const on = formData.mondayStatusValues.includes(val)
-                                    return (
-                                      <button
-                                        key={val}
-                                        type="button"
-                                        onClick={() => toggleStatusValue(val)}
-                                        className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${on ? 'bg-[#fdecea] border-[#D63B1F] text-[#D63B1F]' : 'bg-[#FFFFFF] border-[#E3E1DB] text-[#5C5A55] hover:bg-[#EFEDE8]'}`}
-                                      >
-                                        {val}
-                                      </button>
-                                    )
-                                  })}
-                                </div>
-                              )
+                            {formData.mondayFilters.length === 0 ? (
+                              <p className="text-[11px] text-[#9B9890]">No filters — all rows included.</p>
+                            ) : (
+                              <div className="space-y-2">
+                                {formData.mondayFilters.map((flt, idx) => {
+                                  const vals = columnValueOptions(flt.columnId)
+                                  return (
+                                    <div key={idx} className="p-2 bg-[#FFFFFF] border border-[#E3E1DB] rounded-md">
+                                      <div className="flex items-center gap-2">
+                                        <select
+                                          value={flt.columnId}
+                                          onChange={(e) => setFilterColumn(idx, e.target.value)}
+                                          className="flex-1 min-w-0 px-2 py-1.5 border border-[#D4D1C9] rounded text-xs bg-[#FFFFFF] focus:outline-none focus:border-[#D63B1F]"
+                                        >
+                                          <option value="">Choose a column…</option>
+                                          {mondayColumns.map(c => (
+                                            <option key={c.id} value={c.id}>{c.title}</option>
+                                          ))}
+                                        </select>
+                                        <button type="button" onClick={() => removeFilter(idx)} title="Remove filter" className="shrink-0 text-[#9B9890] hover:text-[#D63B1F] p-1">
+                                          <i className="fas fa-times text-xs" />
+                                        </button>
+                                      </div>
+                                      {flt.columnId && (
+                                        vals.length === 0 ? (
+                                          <p className="text-[11px] text-[#9B9890] mt-1.5">No values in this column.</p>
+                                        ) : (
+                                          <div className="flex flex-wrap gap-1.5 mt-2">
+                                            {vals.map(val => {
+                                              const on = flt.values.includes(val)
+                                              return (
+                                                <button key={val} type="button" onClick={() => toggleFilterValue(idx, val)}
+                                                  className={`px-2 py-0.5 text-xs rounded border transition-colors ${on ? 'bg-[#fdecea] border-[#D63B1F] text-[#D63B1F]' : 'bg-[#FFFFFF] border-[#E3E1DB] text-[#5C5A55] hover:bg-[#EFEDE8]'}`}>
+                                                  {val}
+                                                </button>
+                                              )
+                                            })}
+                                          </div>
+                                        )
+                                      )}
+                                    </div>
+                                  )
+                                })}
+                              </div>
                             )}
                           </div>
                         )}
@@ -1532,7 +1538,13 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
                   ['Recipients', String(recipientCount)],
                   ['Sends from', pn ? (pn.name ? `${pn.name} — ${pn.number}` : pn.number) : '—'],
                 ]
+                // Resolved recipient list (Monday path — the picked rows).
+                const previewItems = formData.source === 'monday'
+                  ? mondayItems.filter(it => formData.mondayItemIds.includes(it.id))
+                  : []
+                const PREVIEW_CAP = 50
                 return (
+                  <>
                   <div className="border border-[#E3E1DB] rounded-lg divide-y divide-[#F0EEE9] mb-4">
                     {rows.map(([k, v]) => (
                       <div key={k} className="flex items-start justify-between gap-4 px-4 py-2.5">
@@ -1545,6 +1557,34 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
                       <p className="text-sm text-[#5C5A55] whitespace-pre-wrap">{formData.message || '—'}</p>
                     </div>
                   </div>
+
+                  {formData.source === 'monday' && (
+                    <div className="mb-4">
+                      <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1.5">
+                        Will send to {previewItems.length} recipient{previewItems.length !== 1 ? 's' : ''}
+                      </p>
+                      {previewItems.length === 0 ? (
+                        <p className="text-xs text-[#D63B1F]">No recipients selected — go back to step 2.</p>
+                      ) : (
+                        <div className="border border-[#E3E1DB] rounded-lg max-h-52 overflow-y-auto divide-y divide-[#F0EEE9]">
+                          {previewItems.slice(0, PREVIEW_CAP).map(it => (
+                            <div key={it.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                              <span className="text-sm text-[#131210] truncate">{it.name}</span>
+                              <span className={`text-xs font-mono shrink-0 ${it.phone ? 'text-[#9B9890]' : 'text-[#D63B1F]'}`}>
+                                {it.phone || 'no phone — skipped'}
+                              </span>
+                            </div>
+                          ))}
+                          {previewItems.length > PREVIEW_CAP && (
+                            <div className="px-3 py-2 text-xs text-[#9B9890] text-center">
+                              + {previewItems.length - PREVIEW_CAP} more
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  </>
                 )
               })()}
 
