@@ -2,6 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { fetchWithWorkspace } from '@/lib/api-client'
+import SearchableDropdown from '@/components/SearchableDropdown'
+
+// Phone number rows come back with either snake_case or camelCase keys
+// depending on the source — normalize here.
+const phoneOf = (p) => p?.phone_number || p?.phoneNumber || ''
+const nameOf = (p) => p?.custom_name || p?.prefix || ''
 
 const TRIGGER_LABELS = {
   create_item: 'New item created',
@@ -72,7 +78,8 @@ export default function AutomationsPage() {
   const phoneLabel = (id) => {
     const p = phoneNumbers.find(x => String(x.id) === String(id))
     if (!p) return '—'
-    return p.custom_name ? `${p.custom_name} (${p.phone_number})` : p.phone_number
+    const num = phoneOf(p), nm = nameOf(p)
+    return nm ? `${nm} (${num})` : num
   }
 
   return (
@@ -262,14 +269,18 @@ function CreateAutomationModal({ phoneNumbers, onClose, onCreated }) {
 
           <div>
             <label className={labelCls}>Monday board *</label>
-            <select className={inputCls} value={form.boardId}
-              onChange={e => {
-                const b = boards.find(x => String(x.id) === e.target.value)
-                setForm(f => ({ ...f, boardId: e.target.value, boardName: b?.name || '', phoneColumnId: '' }))
-              }}>
-              <option value="">{loadingBoards ? 'Loading boards…' : 'Select a board'}</option>
-              {boards.map(b => <option key={b.id} value={String(b.id)}>{b.name}</option>)}
-            </select>
+            <SearchableDropdown
+              value={form.boardId}
+              onChange={(v) => {
+                const b = boards.find(x => String(x.id) === String(v))
+                setForm(f => ({ ...f, boardId: v, boardName: b?.name || '', phoneColumnId: '' }))
+              }}
+              options={boards.map(b => ({ value: String(b.id), label: b.name, searchText: b.name }))}
+              placeholder={loadingBoards ? 'Loading boards…' : 'Select a board'}
+              loading={loadingBoards}
+              renderSelected={(o) => o.label}
+              renderOption={(o) => <p className="text-sm text-[#131210]">{o.label}</p>}
+            />
           </div>
 
           <div>
@@ -283,25 +294,41 @@ function CreateAutomationModal({ phoneNumbers, onClose, onCreated }) {
           {form.boardId && (
             <div>
               <label className={labelCls}>Phone number column *</label>
-              <select className={inputCls} value={form.phoneColumnId}
-                onChange={e => setForm(f => ({ ...f, phoneColumnId: e.target.value }))}>
-                <option value="">{loadingColumns ? 'Loading columns…' : 'Select the phone column'}</option>
-                {columns.map(c => <option key={c.id} value={c.id}>{c.title} ({c.type})</option>)}
-              </select>
+              <SearchableDropdown
+                value={form.phoneColumnId}
+                onChange={(v) => setForm(f => ({ ...f, phoneColumnId: v }))}
+                options={columns.map(c => ({ value: c.id, label: c.title, type: c.type, searchText: `${c.title} ${c.type}` }))}
+                placeholder={loadingColumns ? 'Loading columns…' : 'Select the phone column'}
+                loading={loadingColumns}
+                renderSelected={(o) => o.label}
+                renderOption={(o) => (
+                  <div>
+                    <p className="text-sm text-[#131210]">{o.label}</p>
+                    <p className="text-xs text-[#9B9890] font-mono mt-0.5">{o.type}</p>
+                  </div>
+                )}
+              />
             </div>
           )}
 
           <div>
             <label className={labelCls}>Sender number *</label>
-            <select className={inputCls} value={form.senderPhoneNumberId}
-              onChange={e => setForm(f => ({ ...f, senderPhoneNumberId: e.target.value }))}>
-              <option value="">Select a number</option>
-              {phoneNumbers.map(p => (
-                <option key={p.id} value={String(p.id)}>
-                  {p.custom_name ? `${p.custom_name} — ${p.phone_number}` : p.phone_number}
-                </option>
-              ))}
-            </select>
+            <SearchableDropdown
+              value={form.senderPhoneNumberId}
+              onChange={(v) => setForm(f => ({ ...f, senderPhoneNumberId: v }))}
+              options={phoneNumbers.map(p => {
+                const num = phoneOf(p), nm = nameOf(p)
+                return { value: String(p.id), name: nm, number: num, searchText: `${nm} ${num}` }
+              })}
+              placeholder="Select a number"
+              renderSelected={(o) => o.name ? `${o.name} — ${o.number}` : o.number}
+              renderOption={(o) => (
+                <div>
+                  {o.name && <p className="text-sm font-medium text-[#131210]">{o.name}</p>}
+                  <p className={`text-sm ${o.name ? 'text-[#9B9890]' : 'text-[#131210]'}`}>{o.number}</p>
+                </div>
+              )}
+            />
             <p className="text-[11px] text-[#9B9890] mt-1.5">
               Replies are handled by whichever AI scenario is assigned to this number.
             </p>
