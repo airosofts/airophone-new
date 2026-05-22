@@ -2,6 +2,7 @@
 'use client'
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { getCurrentUser } from '@/lib/auth'
 import { apiGet, apiPost, fetchWithWorkspace } from '@/lib/api-client'
 import { formatInTimeZone } from 'date-fns-tz'
@@ -724,24 +725,68 @@ export default function CampaignsPage() {
   )
 }
 
-function SearchableDropdown({ value, onChange, options, placeholder, renderOption, renderSelected, error }) {
+function SearchableDropdown({ value, onChange, options, placeholder, renderOption, renderSelected, error, loading }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const [rect, setRect] = useState(null)      // input position, for the portaled panel
+  const [mounted, setMounted] = useState(false)
   const ref = useRef(null)
   const inputRef = useRef(null)
+  const panelRef = useRef(null)
+
+  useEffect(() => { setMounted(true) }, [])
 
   const selected = options.find(o => o.value === value)
   const filtered = options.filter(o => (o.searchText || '').toLowerCase().includes(search.toLowerCase()))
 
+  // Close on click outside — must also ignore clicks inside the portaled panel.
   useEffect(() => {
     const handler = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) { setOpen(false); setSearch('') }
+      if (ref.current?.contains(e.target)) return
+      if (panelRef.current?.contains(e.target)) return
+      setOpen(false); setSearch('')
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
+  // The panel is portaled to <body> with fixed positioning so a scrolling /
+  // overflow-clipped ancestor card can never cut it off. Track the input's
+  // on-screen rect while open (re-measure on scroll/resize).
+  useEffect(() => {
+    if (!open) return
+    const measure = () => { if (ref.current) setRect(ref.current.getBoundingClientRect()) }
+    measure()
+    window.addEventListener('scroll', measure, true)
+    window.addEventListener('resize', measure)
+    return () => {
+      window.removeEventListener('scroll', measure, true)
+      window.removeEventListener('resize', measure)
+    }
+  }, [open])
+
   const displayValue = open ? search : (selected ? renderSelected(selected) : '')
+
+  // Decide whether the panel opens down or up, and cap its height to the
+  // available space — so it never overlaps the footer or runs off-screen.
+  let panelStyle = null
+  let panelMaxH = 240
+  if (rect && typeof window !== 'undefined') {
+    const GAP = 6, MARGIN = 12
+    const spaceBelow = window.innerHeight - rect.bottom - GAP - MARGIN
+    const spaceAbove = rect.top - GAP - MARGIN
+    const openUp = spaceBelow < 200 && spaceAbove > spaceBelow
+    panelMaxH = Math.max(120, Math.min(240, openUp ? spaceAbove : spaceBelow))
+    panelStyle = {
+      position: 'fixed',
+      left: rect.left,
+      width: rect.width,
+      zIndex: 2147483000,
+      ...(openUp
+        ? { bottom: window.innerHeight - rect.top + GAP }
+        : { top: rect.bottom + GAP }),
+    }
+  }
 
   return (
     <div className="relative" ref={ref}>
@@ -767,10 +812,18 @@ function SearchableDropdown({ value, onChange, options, placeholder, renderOptio
           <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd"/>
         </svg>
       </div>
-      {open && (
-        <div className="absolute z-50 w-full mt-1 bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg shadow-xl overflow-hidden">
-          <div className="max-h-60 overflow-y-auto">
-            {filtered.length === 0 ? (
+      {open && mounted && rect && createPortal(
+        <div
+          ref={panelRef}
+          style={panelStyle}
+          className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg shadow-xl overflow-hidden"
+        >
+          <div className="overflow-y-auto" style={{ maxHeight: panelMaxH }}>
+            {loading ? (
+              <p className="px-4 py-4 text-sm text-[#9B9890] text-center">
+                <i className="fas fa-spinner fa-spin mr-2" />Loading…
+              </p>
+            ) : filtered.length === 0 ? (
               <p className="px-4 py-4 text-sm text-[#9B9890] text-center">No results found</p>
             ) : filtered.map(o => (
               <button key={o.value} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { onChange(o.value); setOpen(false); setSearch('') }}
@@ -779,7 +832,8 @@ function SearchableDropdown({ value, onChange, options, placeholder, renderOptio
               </button>
             ))}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
@@ -801,6 +855,7 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [created, setCreated] = useState(false)
+  const [step, setStep] = useState(1)        // 4-step wizard: 1 Basics → 4 Review
   const messageRef = useRef(null)
 
   // Monday integration state
@@ -822,16 +877,19 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
     return () => { alive = false }
   }, [])
 
-  // Fetch boards when user first switches to the Monday source (cache after).
+  // Prefetch boards as soon as we know Monday is connected — don't wait for the
+  // user to toggle the source. Monday's API is slow (~1-2s); overlapping the
+  // fetch with the user filling in name/message means boards are usually ready
+  // by the time they click "Monday board".
   useEffect(() => {
-    if (formData.source !== 'monday' || !mondayConnected || mondayBoards.length > 0) return
+    if (!mondayConnected || mondayBoards.length > 0) return
     setMondayLoading(p => ({ ...p, boards: true }))
     fetchWithWorkspace('/api/integrations/monday/boards')
       .then(r => r.json())
       .then(d => setMondayBoards(d?.boards || []))
       .catch(() => setMondayBoards([]))
       .finally(() => setMondayLoading(p => ({ ...p, boards: false })))
-  }, [formData.source, mondayConnected, mondayBoards.length])
+  }, [mondayConnected, mondayBoards.length])
 
   // Fetch groups + columns when a board is selected. Reset both first so
   // a flicker of stale data from a previously-picked board can't slip through.
@@ -949,6 +1007,34 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
     })
   }
 
+  const STEP_LABELS = ['Basics', 'Audience', 'Message', 'Review']
+
+  // Validate only the fields belonging to a given wizard step.
+  const validateStep = (n) => {
+    const e = {}
+    if (n === 1) {
+      if (!formData.name.trim()) e.name = 'Campaign name is required'
+      if (!formData.phoneNumberId) e.phoneNumberId = 'Sender number is required'
+    } else if (n === 2) {
+      if (formData.source === 'contacts') {
+        if (!formData.contactListId) e.contactListId = 'Contact list is required'
+      } else {
+        if (!formData.mondayBoardId) e.mondayBoardId = 'Board is required'
+        if (!formData.mondayPhoneColumnId) e.mondayPhoneColumnId = 'Phone number column is required'
+        if (mondayItems.length > 0 && formData.mondayItemIds.length === 0) e.mondayItemIds = 'Select at least one recipient.'
+      }
+    } else if (n === 3) {
+      if (!formData.message.trim()) e.message = 'Message is required'
+    } else if (n === 4) {
+      if (formData.scheduleType === 'scheduled' && !formData.scheduleTime) e.scheduleTime = 'Schedule time is required'
+    }
+    setErrors(e)
+    return Object.keys(e).length === 0
+  }
+
+  const goNext = () => { if (validateStep(step)) setStep(s => Math.min(4, s + 1)) }
+  const goBack = () => { setErrors({}); setStep(s => Math.max(1, s - 1)) }
+
   const validateForm = () => {
     const newErrors = {}
     if (!formData.name.trim()) newErrors.name = 'Campaign name is required'
@@ -1051,81 +1137,106 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-6">
-      <div className="bg-[#FFFFFF] rounded-xl shadow-2xl flex flex-col" style={{ width: '90vw', maxWidth: '1100px', height: '88vh' }}>
-        <div data-tour="campaign-modal-header" className="flex items-center justify-between px-8 py-5 border-b border-[#E3E1DB] flex-shrink-0">
-          <h3 className="text-lg font-semibold text-[#131210]">New Campaign</h3>
-          <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1.5 hover:bg-[#F7F6F3] rounded-md transition-colors">
+    <div className="fixed inset-0 z-50 bg-[#F7F6F3] flex flex-col">
+      {/* Header */}
+      <header data-tour="campaign-modal-header" className="bg-[#FFFFFF] border-b border-[#E3E1DB] flex-shrink-0">
+        <div className="flex items-center gap-3 px-4 sm:px-8 pt-3.5 pb-2">
+          <button type="button" onClick={onClose} className="p-2 -ml-2 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded-lg transition-colors">
             <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
           </button>
+          <h3 className="text-base sm:text-lg font-semibold text-[#131210]">New Campaign</h3>
         </div>
-
-        <form onSubmit={handleSubmit} className="flex flex-1 min-h-0">
-          <div className="flex-1 flex flex-col px-8 py-6 border-r border-[#E3E1DB] overflow-y-auto space-y-5">
-            <div data-tour="campaign-modal-name">
-              <label className="block text-sm font-medium text-[#5C5A55] mb-2">Campaign Name *</label>
-              <input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="e.g., Summer Sale Campaign" className="w-full px-4 py-3 border border-[#D4D1C9] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F]" />
-              {errors.name && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.name}</p>}
-            </div>
-            <div data-tour="campaign-modal-message" className="flex-1 flex flex-col">
-              <label className="block text-sm font-medium text-[#5C5A55] mb-2">Message *</label>
-              <textarea ref={messageRef} value={formData.message} onChange={(e) => setFormData({ ...formData, message: e.target.value })} placeholder="Type your SMS message here…" className="w-full flex-1 px-4 py-3 border border-[#D4D1C9] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F] resize-none min-h-[200px]" />
-              <div className="flex flex-wrap items-center gap-2 mt-3">
-                <span className="text-xs text-[#9B9890] font-medium">Insert placeholder:</span>
-                {formData.source === 'monday' ? (
-                  mondayColumns.length === 0 ? (
-                    <span className="text-xs text-[#9B9890] italic">Pick a board to see available columns</span>
-                  ) : (
-                    mondayColumns
-                      .filter(c => c.placeholder)
-                      .map(c => {
-                        const tag = `{{${c.placeholder}}}`
-                        return (
-                          <button key={c.id} type="button" onClick={() => insertPlaceholder(tag)} title={`${c.title} (${c.type})`} className="px-2.5 py-1 text-xs bg-[#EFEDE8] hover:bg-[#fdecea] hover:text-[#D63B1F] hover:border-[#D63B1F] text-[#5C5A55] rounded-md border border-[#E3E1DB] font-mono transition-colors">{tag}</button>
-                        )
-                      })
-                  )
-                ) : (
-                  ['{first_name}', '{last_name}', '{business_name}', '{email}', '{phone}', '{city}', '{state}', '{country}'].map(tag => (
-                    <button key={tag} type="button" onClick={() => insertPlaceholder(tag)} className="px-2.5 py-1 text-xs bg-[#EFEDE8] hover:bg-[#fdecea] hover:text-[#D63B1F] hover:border-[#D63B1F] text-[#5C5A55] rounded-md border border-[#E3E1DB] font-mono transition-colors">{tag}</button>
-                  ))
-                )}
+        {/* Step indicator */}
+        <div className="flex items-center gap-1 sm:gap-2 px-4 sm:px-8 pb-3 overflow-x-auto">
+          {STEP_LABELS.map((label, i) => {
+            const n = i + 1
+            const active = step === n
+            const done = step > n
+            return (
+              <div key={label} className="flex items-center gap-1 sm:gap-2 shrink-0">
+                <div className={`flex items-center gap-2 px-2.5 py-1 rounded-md ${active ? 'bg-[#fdecea]' : ''}`}>
+                  <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-semibold ${active ? 'bg-[#D63B1F] text-white' : done ? 'bg-[#1F8C4A] text-white' : 'bg-[#EFEDE8] text-[#9B9890]'}`}>{n}</span>
+                  <span className={`text-xs font-medium ${active ? 'text-[#D63B1F]' : done ? 'text-[#5C5A55]' : 'text-[#9B9890]'}`}>{label}</span>
+                </div>
+                {n < 4 && <span className="w-4 sm:w-8 h-px bg-[#E3E1DB]" />}
               </div>
-              {errors.message && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.message}</p>}
-            </div>
-          </div>
+            )
+          })}
+        </div>
+      </header>
 
-          <div data-tour="campaign-modal-settings" className="w-96 flex flex-col px-8 py-6 overflow-y-auto space-y-5 flex-shrink-0">
+      <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-3xl mx-auto px-4 sm:px-8 py-6 sm:py-8 space-y-5">
 
-            {/* Source toggle — only show Monday option if integration is connected */}
-            <div>
-              <label className="block text-sm font-medium text-[#5C5A55] mb-2">Source *</label>
-              <div className="flex gap-2">
+            {/* ─── Step 1: Basics ─── */}
+            {step === 1 && (
+            <section className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-xl p-5 sm:p-6">
+              <h4 className="text-sm font-semibold text-[#131210] mb-1">Basics</h4>
+              <p className="text-xs text-[#9B9890] mb-4">Name your campaign and pick the number it sends from.</p>
+              <div className="space-y-4">
+                <div data-tour="campaign-modal-name">
+                  <label className="block text-sm font-medium text-[#5C5A55] mb-2">Campaign Name *</label>
+                  <input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="e.g., Summer Sale Campaign" className="w-full px-4 py-3 border border-[#D4D1C9] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F]" />
+                  {errors.name && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.name}</p>}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-[#5C5A55] mb-2">Send from number *</label>
+                  <SearchableDropdown value={formData.phoneNumberId} onChange={(v) => setFormData(f => ({ ...f, phoneNumberId: v }))} options={phoneNumberOptions} placeholder="Select a number" error={errors.phoneNumberId}
+                    renderSelected={(o) => o.name ? `${o.name} — ${o.number}` : o.number}
+                    renderOption={(o) => (<div>{o.name && <p className="text-sm font-medium text-[#131210]">{o.name}</p>}<p className={`text-sm ${o.name ? 'text-[#9B9890]' : 'font-medium text-[#131210]'}`}>{o.number}</p></div>)}
+                  />
+                  {errors.phoneNumberId && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.phoneNumberId}</p>}
+                </div>
+              </div>
+            </section>
+            )}
+
+            {/* ─── Step 2: Audience ─── */}
+            {step === 2 && (
+            <section data-tour="campaign-modal-settings" className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-xl p-5 sm:p-6">
+              <h4 className="text-sm font-semibold text-[#131210] mb-4">Audience</h4>
+
+              {/* Source toggle */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
                   type="button"
                   onClick={() => setFormData(f => ({ ...f, source: 'contacts' }))}
-                  className={`flex-1 px-3 py-2 text-xs font-medium rounded-md border transition-colors ${formData.source === 'contacts' ? 'bg-[#fdecea] border-[#D63B1F] text-[#D63B1F]' : 'bg-[#FFFFFF] border-[#E3E1DB] text-[#5C5A55] hover:bg-[#F7F6F3]'}`}
+                  className={`flex items-start gap-3 p-3.5 rounded-lg border text-left transition-colors ${formData.source === 'contacts' ? 'bg-[#fdecea] border-[#D63B1F]' : 'bg-[#FFFFFF] border-[#E3E1DB] hover:bg-[#F7F6F3]'}`}
                 >
-                  Contacts list
+                  <i className={`fas fa-address-book mt-0.5 ${formData.source === 'contacts' ? 'text-[#D63B1F]' : 'text-[#9B9890]'}`} />
+                  <span className="min-w-0">
+                    <span className={`block text-sm font-medium ${formData.source === 'contacts' ? 'text-[#D63B1F]' : 'text-[#131210]'}`}>Contacts list</span>
+                    <span className="block text-xs text-[#9B9890] mt-0.5">Send to one of your saved lists</span>
+                  </span>
                 </button>
                 <button
                   type="button"
                   onClick={() => mondayConnected && setFormData(f => ({ ...f, source: 'monday' }))}
                   disabled={!mondayConnected}
                   title={mondayConnected ? '' : 'Connect Monday.com in Settings → Integrations first'}
-                  className={`flex-1 px-3 py-2 text-xs font-medium rounded-md border transition-colors ${formData.source === 'monday' ? 'bg-[#fdecea] border-[#D63B1F] text-[#D63B1F]' : 'bg-[#FFFFFF] border-[#E3E1DB] text-[#5C5A55] hover:bg-[#F7F6F3]'} disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#FFFFFF]`}
+                  className={`flex items-start gap-3 p-3.5 rounded-lg border text-left transition-colors ${formData.source === 'monday' ? 'bg-[#fdecea] border-[#D63B1F]' : 'bg-[#FFFFFF] border-[#E3E1DB] hover:bg-[#F7F6F3]'} disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#FFFFFF]`}
                 >
-                  Monday board
+                  <svg width="18" height="18" viewBox="0 0 32 32" fill="none" className="mt-0.5 shrink-0">
+                    <circle cx="6" cy="16" r="5" fill="#FF3D57" />
+                    <circle cx="16" cy="16" r="5" fill="#FFCB00" />
+                    <circle cx="26" cy="16" r="5" fill="#00CA72" />
+                  </svg>
+                  <span className="min-w-0">
+                    <span className={`block text-sm font-medium ${formData.source === 'monday' ? 'text-[#D63B1F]' : 'text-[#131210]'}`}>Monday board</span>
+                    <span className="block text-xs text-[#9B9890] mt-0.5">Send from a Monday.com board</span>
+                  </span>
                 </button>
               </div>
               {!mondayConnected && (
-                <p className="text-[11px] text-[#9B9890] mt-1.5">
+                <p className="text-[11px] text-[#9B9890] mt-2">
                   Connect <a href="/settings?section=integrations" className="text-[#D63B1F] hover:underline">Monday.com</a> to send campaigns from a board.
                 </p>
               )}
-            </div>
 
-            {formData.source === 'contacts' ? (
+              <div className="mt-5">
+              {formData.source === 'contacts' ? (
               <div>
                 <label className="block text-sm font-medium text-[#5C5A55] mb-2">Contact List *</label>
                 <SearchableDropdown value={formData.contactListId} onChange={(v) => setFormData(f => ({ ...f, contactListId: v }))} options={contactListOptions} placeholder="Select a list" error={errors.contactListId}
@@ -1135,7 +1246,8 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
                 {errors.contactListId && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.contactListId}</p>}
               </div>
             ) : (
-              <>
+              <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Board picker */}
                 <div>
                   <label className="block text-sm font-medium text-[#5C5A55] mb-2">Board *</label>
@@ -1153,54 +1265,13 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
                     }}
                     options={mondayBoards.map(b => ({ value: String(b.id), label: b.name, count: b.items_count || 0, searchText: b.name }))}
                     placeholder={mondayLoading.boards ? 'Loading boards…' : (mondayBoards.length === 0 ? 'No boards found' : 'Select a board')}
+                    loading={mondayLoading.boards}
                     error={errors.mondayBoardId}
                     renderSelected={(o) => o.label}
                     renderOption={(o) => (<div><p className="text-sm font-medium text-[#131210]">{o.label}</p><p className="text-xs text-[#9B9890] mt-0.5">{o.count} items</p></div>)}
                   />
                   {errors.mondayBoardId && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.mondayBoardId}</p>}
                 </div>
-
-                {/* Groups multi-select — empty selection means "all groups" */}
-                {formData.mondayBoardId && (
-                  <div>
-                    <label className="block text-sm font-medium text-[#5C5A55] mb-2">Groups</label>
-                    {mondayLoading.groups ? (
-                      <p className="text-xs text-[#9B9890]">Loading groups…</p>
-                    ) : mondayGroups.length === 0 ? (
-                      <p className="text-xs text-[#9B9890]">No groups on this board.</p>
-                    ) : (
-                      <div className="border border-[#E3E1DB] rounded-lg max-h-44 overflow-y-auto divide-y divide-[#F0EEE9]">
-                        <label className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-[#F7F6F3] transition-colors">
-                          <input
-                            type="checkbox"
-                            checked={formData.mondayGroupIds.length === 0}
-                            onChange={() => setFormData(f => ({ ...f, mondayGroupIds: [] }))}
-                            className="accent-[#D63B1F]"
-                          />
-                          <span className="text-sm font-medium text-[#131210]">All groups</span>
-                        </label>
-                        {mondayGroups.map(g => (
-                          <label key={g.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-[#F7F6F3] transition-colors">
-                            <input
-                              type="checkbox"
-                              checked={formData.mondayGroupIds.includes(g.id)}
-                              onChange={(e) => {
-                                setFormData(f => {
-                                  const next = e.target.checked
-                                    ? [...f.mondayGroupIds, g.id]
-                                    : f.mondayGroupIds.filter(x => x !== g.id)
-                                  return { ...f, mondayGroupIds: next }
-                                })
-                              }}
-                              className="accent-[#D63B1F]"
-                            />
-                            <span className="text-sm text-[#131210]">{g.title}</span>
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
 
                 {/* Phone column picker */}
                 {formData.mondayBoardId && (
@@ -1216,6 +1287,7 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
                         searchText: `${c.title} ${c.type}`,
                       }))}
                       placeholder={mondayLoading.columns ? 'Loading columns…' : 'Select the phone column'}
+                      loading={mondayLoading.columns}
                       error={errors.mondayPhoneColumnId}
                       renderSelected={(o) => o.label}
                       renderOption={(o) => (
@@ -1229,8 +1301,51 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
                     <p className="text-[11px] text-[#9B9890] mt-1.5">Items missing a phone in this column will be skipped at send time.</p>
                   </div>
                 )}
+              </div>
 
-                {/* Recipient (row) picker — choose which Monday items to send to */}
+              {/* Groups multi-select — empty selection means "all groups" */}
+              {formData.mondayBoardId && (
+                <div>
+                  <label className="block text-sm font-medium text-[#5C5A55] mb-2">Groups</label>
+                  {mondayLoading.groups ? (
+                    <p className="text-xs text-[#9B9890]">Loading groups…</p>
+                  ) : mondayGroups.length === 0 ? (
+                    <p className="text-xs text-[#9B9890]">No groups on this board.</p>
+                  ) : (
+                    <div className="border border-[#E3E1DB] rounded-lg max-h-44 overflow-y-auto divide-y divide-[#F0EEE9]">
+                      <label className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-[#F7F6F3] transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={formData.mondayGroupIds.length === 0}
+                          onChange={() => setFormData(f => ({ ...f, mondayGroupIds: [] }))}
+                          className="accent-[#D63B1F]"
+                        />
+                        <span className="text-sm font-medium text-[#131210]">All groups</span>
+                      </label>
+                      {mondayGroups.map(g => (
+                        <label key={g.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-[#F7F6F3] transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={formData.mondayGroupIds.includes(g.id)}
+                            onChange={(e) => {
+                              setFormData(f => {
+                                const next = e.target.checked
+                                  ? [...f.mondayGroupIds, g.id]
+                                  : f.mondayGroupIds.filter(x => x !== g.id)
+                                return { ...f, mondayGroupIds: next }
+                              })
+                            }}
+                            className="accent-[#D63B1F]"
+                          />
+                          <span className="text-sm text-[#131210]">{g.title}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Recipient (row) picker — choose which Monday items to send to */}
                 {formData.mondayBoardId && formData.mondayPhoneColumnId && (
                   <div>
                     <label className="block text-sm font-medium text-[#5C5A55] mb-2">
@@ -1355,17 +1470,84 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
                     )}
                   </div>
                 )}
-              </>
+              </div>
             )}
-            <div>
-              <label className="block text-sm font-medium text-[#5C5A55] mb-2">Phone Number *</label>
-              <SearchableDropdown value={formData.phoneNumberId} onChange={(v) => setFormData(f => ({ ...f, phoneNumberId: v }))} options={phoneNumberOptions} placeholder="Select a number" error={errors.phoneNumberId}
-                renderSelected={(o) => o.name ? `${o.name} — ${o.number}` : o.number}
-                renderOption={(o) => (<div>{o.name && <p className="text-sm font-medium text-[#131210]">{o.name}</p>}<p className={`text-sm ${o.name ? 'text-[#9B9890]' : 'font-medium text-[#131210]'}`}>{o.number}</p></div>)}
-              />
-              {errors.phoneNumberId && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.phoneNumberId}</p>}
-            </div>
-            <div>
+              </div>
+            </section>
+            )}
+
+            {/* ─── Step 3: Message ─── */}
+            {step === 3 && (
+            <section className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-xl p-5 sm:p-6">
+              <h4 className="text-sm font-semibold text-[#131210] mb-1">Message</h4>
+              <p className="text-xs text-[#9B9890] mb-4">Write the SMS. Use placeholders to personalize each message.</p>
+              <div data-tour="campaign-modal-message">
+                <label className="block text-sm font-medium text-[#5C5A55] mb-2">Message *</label>
+                <textarea ref={messageRef} value={formData.message} onChange={(e) => setFormData({ ...formData, message: e.target.value })} placeholder="Type your SMS message here…" rows={6} className="w-full px-4 py-3 border border-[#D4D1C9] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F] resize-y min-h-[140px]" />
+                <div className="flex flex-wrap items-center gap-2 mt-3">
+                  <span className="text-xs text-[#9B9890] font-medium">Insert placeholder:</span>
+                  {formData.source === 'monday' ? (
+                    mondayColumns.filter(c => c.placeholder).length === 0 ? (
+                      <span className="text-xs text-[#9B9890] italic">Pick a board to see available columns</span>
+                    ) : (
+                      mondayColumns
+                        .filter(c => c.placeholder)
+                        .filter((c, i, arr) => arr.findIndex(x => x.placeholder === c.placeholder) === i)
+                        .map(c => {
+                          const tag = `{{${c.placeholder}}}`
+                          return (
+                            <button key={c.id} type="button" onClick={() => insertPlaceholder(tag)} title={`${c.title} (${c.type})`} className="px-2.5 py-1 text-xs bg-[#EFEDE8] hover:bg-[#fdecea] hover:text-[#D63B1F] hover:border-[#D63B1F] text-[#5C5A55] rounded-md border border-[#E3E1DB] font-mono transition-colors">{tag}</button>
+                          )
+                        })
+                    )
+                  ) : (
+                    ['{first_name}', '{last_name}', '{business_name}', '{email}', '{phone}', '{city}', '{state}', '{country}'].map(tag => (
+                      <button key={tag} type="button" onClick={() => insertPlaceholder(tag)} className="px-2.5 py-1 text-xs bg-[#EFEDE8] hover:bg-[#fdecea] hover:text-[#D63B1F] hover:border-[#D63B1F] text-[#5C5A55] rounded-md border border-[#E3E1DB] font-mono transition-colors">{tag}</button>
+                    ))
+                  )}
+                </div>
+                {errors.message && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.message}</p>}
+              </div>
+            </section>
+            )}
+
+            {/* ─── Step 4: Review & send ─── */}
+            {step === 4 && (
+            <section className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-xl p-5 sm:p-6">
+              <h4 className="text-sm font-semibold text-[#131210] mb-1">Review &amp; send</h4>
+              <p className="text-xs text-[#9B9890] mb-4">Check the details, then send now or schedule for later.</p>
+
+              {(() => {
+                const list = contactListOptions.find(o => o.value === formData.contactListId)
+                const pn = phoneNumberOptions.find(o => o.value === formData.phoneNumberId)
+                const audienceLabel = formData.source === 'monday'
+                  ? `Monday — ${formData.mondayBoardName || 'board'}`
+                  : (list?.label || '—')
+                const recipientCount = formData.source === 'monday'
+                  ? formData.mondayItemIds.length
+                  : (list?.count ?? 0)
+                const rows = [
+                  ['Campaign', formData.name || '—'],
+                  ['Audience', audienceLabel],
+                  ['Recipients', String(recipientCount)],
+                  ['Sends from', pn ? (pn.name ? `${pn.name} — ${pn.number}` : pn.number) : '—'],
+                ]
+                return (
+                  <div className="border border-[#E3E1DB] rounded-lg divide-y divide-[#F0EEE9] mb-4">
+                    {rows.map(([k, v]) => (
+                      <div key={k} className="flex items-start justify-between gap-4 px-4 py-2.5">
+                        <span className="text-xs text-[#9B9890] uppercase tracking-wider">{k}</span>
+                        <span className="text-sm text-[#131210] text-right">{v}</span>
+                      </div>
+                    ))}
+                    <div className="px-4 py-2.5">
+                      <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Message</p>
+                      <p className="text-sm text-[#5C5A55] whitespace-pre-wrap">{formData.message || '—'}</p>
+                    </div>
+                  </div>
+                )
+              })()}
+
               <label className="block text-sm font-medium text-[#5C5A55] mb-2">Schedule</label>
               <div className="space-y-2.5">
                 <label className="flex items-center gap-3 p-3 border border-[#E3E1DB] rounded-lg cursor-pointer hover:bg-[#F7F6F3] transition-colors">
@@ -1377,25 +1559,36 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
                   <div><p className="text-sm font-medium text-[#131210]">Schedule for Later</p><p className="text-xs text-[#9B9890]">Pick a date and time</p></div>
                 </label>
               </div>
-            </div>
-            {formData.scheduleType === 'scheduled' && (
-              <div>
-                <label className="block text-sm font-medium text-[#5C5A55] mb-2">Schedule Time *</label>
-                <input type="datetime-local" value={formData.scheduleTime} onChange={(e) => setFormData({ ...formData, scheduleTime: e.target.value })} className="w-full px-4 py-3 border border-[#D4D1C9] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F]" />
-                {errors.scheduleTime && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.scheduleTime}</p>}
-              </div>
+              {formData.scheduleType === 'scheduled' && (
+                <div className="mt-3">
+                  <label className="block text-sm font-medium text-[#5C5A55] mb-2">Schedule Time *</label>
+                  <input type="datetime-local" value={formData.scheduleTime} onChange={(e) => setFormData({ ...formData, scheduleTime: e.target.value })} className="w-full px-4 py-3 border border-[#D4D1C9] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F]" />
+                  {errors.scheduleTime && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.scheduleTime}</p>}
+                </div>
+              )}
+            </section>
             )}
-            {errors.submit && <div className="bg-[rgba(214,59,31,0.07)] border border-[rgba(214,59,31,0.14)] text-[#D63B1F] px-4 py-3 rounded-lg text-sm">{errors.submit}</div>}
-          </div>
-        </form>
 
-        <div className="flex items-center justify-end gap-3 px-8 py-4 border-t border-[#E3E1DB] flex-shrink-0">
-          <button type="button" onClick={onClose} className="px-5 py-2.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3] transition-colors">Cancel</button>
-          <button type="submit" form="campaign-form" disabled={isSubmitting} onClick={handleSubmit} className="px-6 py-2.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg disabled:opacity-50 transition-colors">
-            {isSubmitting ? <><i className="fas fa-spinner fa-spin mr-2"></i>Creating…</> : 'Create Campaign'}
-          </button>
+            {errors.submit && <div className="mt-5 bg-[rgba(214,59,31,0.07)] border border-[rgba(214,59,31,0.14)] text-[#D63B1F] px-4 py-3 rounded-lg text-sm">{errors.submit}</div>}
+          </div>
         </div>
-      </div>
+
+        {/* Footer — Back / Next / Create */}
+        <div className="flex items-center justify-between gap-3 px-4 sm:px-8 py-3.5 bg-[#FFFFFF] border-t border-[#E3E1DB] flex-shrink-0">
+          <button type="button" onClick={step === 1 ? onClose : goBack} className="px-5 py-2.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3] transition-colors">
+            {step === 1 ? 'Cancel' : 'Back'}
+          </button>
+          {step < 4 ? (
+            <button type="button" onClick={goNext} className="px-6 py-2.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg transition-colors">
+              Next
+            </button>
+          ) : (
+            <button type="submit" disabled={isSubmitting} className="px-6 py-2.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg disabled:opacity-50 transition-colors">
+              {isSubmitting ? <><i className="fas fa-spinner fa-spin mr-2"></i>Creating…</> : (formData.scheduleType === 'scheduled' ? 'Schedule Campaign' : 'Create & Send')}
+            </button>
+          )}
+        </div>
+      </form>
     </div>
   )
 }

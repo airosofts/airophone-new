@@ -366,7 +366,8 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Failed to create session token' }, { status: 500 })
     }
 
-    const response = NextResponse.json({ success: true, session })
+    // `token` is also returned in the body for the mobile app (no cookie jar).
+    const response = NextResponse.json({ success: true, session, token })
     response.headers.set('Set-Cookie', buildSessionCookie(token))
     return response
   } catch (error) {

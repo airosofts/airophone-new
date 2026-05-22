@@ -44,11 +44,20 @@ export function buildClearCookie() {
 }
 
 /**
- * Extract token from request cookies
+ * Extract the session token from a request.
+ * Web clients send it as an HttpOnly cookie; the mobile app has no cookie jar,
+ * so it sends the same JWT as an `Authorization: Bearer <token>` header.
  */
 export function getTokenFromRequest(request) {
   const cookie = request.cookies.get(COOKIE_NAME)
-  return cookie?.value || null
+  if (cookie?.value) return cookie.value
+
+  const authHeader = request.headers.get('authorization')
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.slice(7).trim() || null
+  }
+
+  return null
 }
 
 /**

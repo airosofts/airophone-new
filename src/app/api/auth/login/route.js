@@ -80,6 +80,10 @@ export async function POST(request) {
     const response = NextResponse.json({
       message: 'Login successful',
       session,
+      // The web app authenticates via the HttpOnly cookie below; the mobile
+      // app has no cookie jar, so it reads this token and sends it as a
+      // Bearer header. Same JWT, two transports.
+      token,
     })
 
     response.headers.set('Set-Cookie', buildSessionCookie(token))
