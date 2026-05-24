@@ -36,6 +36,16 @@ async function runAutomation(automation, itemId, workspaceHours) {
   const scheduledAt = computeScheduledAt(automation, workspaceHours)
   const dueNow = scheduledAt.getTime() <= Date.now()
 
+  console.log('[monday-webhook] runAutomation', {
+    automation_id: automation.id,
+    item_id: String(itemId),
+    send_delay_seconds: automation.send_delay_seconds,
+    respect_business_hours: automation.respect_business_hours,
+    scheduled_at: scheduledAt.toISOString(),
+    now: new Date().toISOString(),
+    dueNow,
+  })
+
   // Claim the dedup slot — a lead is handled at most once per automation.
   const initialStatus = dueNow ? 'pending' : 'scheduled'
   const { error: claimErr } = await supabaseAdmin
@@ -47,7 +57,10 @@ async function runAutomation(automation, itemId, workspaceHours) {
       scheduled_at: scheduledAt.toISOString(),
     })
   if (claimErr) {
-    if (claimErr.code === '23505') return   // already claimed (sent, pending, scheduled, or failed)
+    if (claimErr.code === '23505') {
+      console.log(`[monday-webhook] skipped — automation ${automation.id} already has a send row for item ${itemId} (unique constraint)`)
+      return
+    }
     console.error('[monday-webhook] dedup claim error:', claimErr)
     return
   }

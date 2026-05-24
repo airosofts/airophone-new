@@ -35,8 +35,17 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Query failed' }, { status: 500 })
   }
   if (!rows || rows.length === 0) {
-    return NextResponse.json({ ok: true, pending: 0, sent: 0, gaveUp: 0 })
+    // Also probe what's queued so we can see why nothing's being processed.
+    const { data: queued } = await supabaseAdmin
+      .from('monday_automation_sends')
+      .select('id, status, scheduled_at, created_at')
+      .in('status', ['pending', 'scheduled'])
+      .order('created_at', { ascending: false })
+      .limit(5)
+    console.log('[process-pending] nothing due', { now: nowIso, queued })
+    return NextResponse.json({ ok: true, pending: 0, sent: 0, gaveUp: 0, queued: queued?.length || 0 })
   }
+  console.log('[process-pending] picked up rows', rows.map(r => ({ id: r.id, status: r.status, scheduled_at: r.scheduled_at })))
 
   // Load automations + their workspace business hours in one go.
   const autoIds = [...new Set(rows.map(r => r.automation_id))]
