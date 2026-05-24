@@ -35,6 +35,41 @@ function delayToSeconds(amount, unit) {
   return n * (UNIT_SECONDS[unit] || 60)
 }
 
+// Branded confirm dialog — replaces the native window.confirm so destructive
+// actions match the rest of the app. Sits in a higher z-layer than the
+// new-automation modal so it appears on top if both happen to be mounted.
+function ConfirmDialog({ open, title, message, confirmLabel = 'Confirm', destructive = false, busy, onConfirm, onCancel }) {
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
+      <div className="bg-[#FFFFFF] rounded-xl shadow-2xl w-full max-w-sm">
+        <div className="px-5 py-4">
+          <h3 className="text-base font-semibold text-[#131210]">{title}</h3>
+          {message && <p className="text-sm text-[#5C5A55] mt-2 leading-relaxed">{message}</p>}
+        </div>
+        <div className="px-5 py-3 border-t border-[#E3E1DB] flex items-center justify-end gap-2">
+          <button
+            onClick={onCancel}
+            disabled={busy}
+            className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3] disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={busy}
+            className={`px-4 py-1.5 text-sm font-medium text-white rounded-lg disabled:opacity-50 ${
+              destructive ? 'bg-[#D63B1F] hover:bg-[#c23119]' : 'bg-[#131210] hover:bg-[#3C3A35]'
+            }`}
+          >
+            {busy ? 'Working…' : confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function AutomationsPage() {
   const [automations, setAutomations] = useState([])
   const [loading, setLoading] = useState(true)
@@ -44,6 +79,8 @@ export default function AutomationsPage() {
   const [busyId, setBusyId] = useState(null)
   // Two-way sync — keyed by board_id
   const [writebackConfigs, setWritebackConfigs] = useState({})
+  // Deletion confirmation — holds the automation pending delete, null otherwise.
+  const [pendingDelete, setPendingDelete] = useState(null)
 
   const load = useCallback(async () => {
     try {
@@ -79,13 +116,19 @@ export default function AutomationsPage() {
     } finally { setBusyId(null) }
   }
 
-  const remove = async (a) => {
-    if (!confirm(`Delete automation "${a.name}"? The Monday webhook will be removed.`)) return
+  const remove = (a) => setPendingDelete(a)
+
+  const confirmDelete = async () => {
+    const a = pendingDelete
+    if (!a) return
     setBusyId(a.id)
     try {
       const res = await fetchWithWorkspace(`/api/automations/${a.id}`, { method: 'DELETE' })
       if (res.ok) setAutomations(prev => prev.filter(x => x.id !== a.id))
-    } finally { setBusyId(null) }
+    } finally {
+      setBusyId(null)
+      setPendingDelete(null)
+    }
   }
 
   const phoneLabel = (id) => {
@@ -199,6 +242,17 @@ export default function AutomationsPage() {
           onCreated={(a) => { setAutomations(prev => [a, ...prev]); setShowCreate(false) }}
         />
       )}
+
+      <ConfirmDialog
+        open={!!pendingDelete}
+        title="Delete automation?"
+        message={pendingDelete ? `"${pendingDelete.name}" will be removed and its Monday webhook deleted. This cannot be undone.` : ''}
+        confirmLabel="Delete"
+        destructive
+        busy={pendingDelete && busyId === pendingDelete.id}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={confirmDelete}
+      />
     </div>
   )
 }
@@ -313,8 +367,9 @@ function BoardWritebackCard({ board, config, onSaved, onCleared }) {
     }
   }
 
-  const clear = async () => {
-    if (!confirm(`Remove two-way sync for "${board.name}"?`)) return
+  const [confirmingClear, setConfirmingClear] = useState(false)
+
+  const doClear = async () => {
     setSaving(true)
     try {
       const res = await fetchWithWorkspace(`/api/automations/writeback?board_id=${encodeURIComponent(board.id)}`, { method: 'DELETE' })
@@ -326,6 +381,7 @@ function BoardWritebackCard({ board, config, onSaved, onCleared }) {
       }
     } finally {
       setSaving(false)
+      setConfirmingClear(false)
     }
   }
 
@@ -376,7 +432,7 @@ function BoardWritebackCard({ board, config, onSaved, onCleared }) {
 
               <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-[#EFEDE8]">
                 {config ? (
-                  <button onClick={clear} disabled={saving} className="text-xs text-[#9B9890] hover:text-[#D63B1F]">
+                  <button onClick={() => setConfirmingClear(true)} disabled={saving} className="text-xs text-[#9B9890] hover:text-[#D63B1F]">
                     Remove rules
                   </button>
                 ) : <span />}
@@ -393,6 +449,17 @@ function BoardWritebackCard({ board, config, onSaved, onCleared }) {
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmingClear}
+        title="Remove two-way sync?"
+        message={`The writeback rules for "${board.name}" will be deleted. Inbound replies and "marked done" events will stop updating this board.`}
+        confirmLabel="Remove"
+        destructive
+        busy={saving}
+        onCancel={() => setConfirmingClear(false)}
+        onConfirm={doClear}
+      />
     </div>
   )
 }
