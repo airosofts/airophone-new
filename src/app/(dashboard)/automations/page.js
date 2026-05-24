@@ -28,6 +28,13 @@ function MondayLogo({ size = 22 }) {
 const inputCls = 'w-full px-3 py-2.5 border border-[#D4D1C9] rounded-lg text-sm bg-[#FFFFFF] focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F]'
 const labelCls = 'block text-sm font-medium text-[#5C5A55] mb-1.5'
 
+// "12 hours" → 43200. Clamps to a non-negative integer.
+const UNIT_SECONDS = { minutes: 60, hours: 3600, days: 86400 }
+function delayToSeconds(amount, unit) {
+  const n = Math.max(0, Math.floor(Number(amount) || 0))
+  return n * (UNIT_SECONDS[unit] || 60)
+}
+
 export default function AutomationsPage() {
   const [automations, setAutomations] = useState([])
   const [loading, setLoading] = useState(true)
@@ -448,7 +455,9 @@ function CreateAutomationModal({ phoneNumbers, onClose, onCreated }) {
     name: '', boardId: '', boardName: '', triggerEvent: 'create_item',
     phoneColumnId: '', messageMode: 'template', messageTemplate: '',
     aiInstructions: '', senderPhoneNumberId: '',
-    sendDelaySeconds: 0,        // immediate by default
+    // Send delay is "amount × unit" in the UI, converted to seconds on submit.
+    delayAmount: 0,
+    delayUnit: 'minutes',
     respectBusinessHours: false,
   })
   const [boards, setBoards] = useState([])
@@ -505,7 +514,7 @@ function CreateAutomationModal({ phoneNumbers, onClose, onCreated }) {
           message_template: form.messageTemplate,
           ai_instructions: form.aiInstructions,
           sender_phone_number_id: form.senderPhoneNumberId,
-          send_delay_seconds: form.sendDelaySeconds,
+          send_delay_seconds: delayToSeconds(form.delayAmount, form.delayUnit),
           respect_business_hours: form.respectBusinessHours,
         }),
       })
@@ -521,7 +530,7 @@ function CreateAutomationModal({ phoneNumbers, onClose, onCreated }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-      <div className="bg-[#FFFFFF] rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+      <div className="bg-[#FFFFFF] rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#E3E1DB]">
           <h3 className="text-base font-semibold text-[#131210]">New Automation</h3>
           <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1">
@@ -650,20 +659,28 @@ function CreateAutomationModal({ phoneNumbers, onClose, onCreated }) {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className={labelCls}>Send delay</label>
-                <select
-                  className={inputCls}
-                  value={form.sendDelaySeconds}
-                  onChange={(e) => setForm(f => ({ ...f, sendDelaySeconds: Number(e.target.value) }))}
-                >
-                  <option value={0}>Immediately</option>
-                  <option value={300}>After 5 minutes</option>
-                  <option value={900}>After 15 minutes</option>
-                  <option value={1800}>After 30 minutes</option>
-                  <option value={3600}>After 1 hour</option>
-                  <option value={14400}>After 4 hours</option>
-                  <option value={86400}>After 1 day</option>
-                </select>
-                <p className="text-[11px] text-[#9B9890] mt-1">Useful when the Monday form fills in columns a beat after item creation.</p>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    max={999}
+                    value={form.delayAmount}
+                    onChange={(e) => setForm(f => ({ ...f, delayAmount: e.target.value }))}
+                    className={`${inputCls} w-20`}
+                  />
+                  <select
+                    value={form.delayUnit}
+                    onChange={(e) => setForm(f => ({ ...f, delayUnit: e.target.value }))}
+                    className={`${inputCls} flex-1`}
+                  >
+                    <option value="minutes">Minutes</option>
+                    <option value="hours">Hours</option>
+                    <option value="days">Days</option>
+                  </select>
+                </div>
+                <p className="text-[11px] text-[#9B9890] mt-1">
+                  Set to <span className="font-mono">0</span> for immediate. Useful when the Monday form fills in columns a beat after item creation.
+                </p>
               </div>
 
               <div>
