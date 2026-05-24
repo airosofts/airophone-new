@@ -545,71 +545,81 @@ function CreateAutomationModal({ phoneNumbers, onClose, onCreated }) {
               onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
           </div>
 
-          <div>
-            <label className={labelCls}>Monday board *</label>
-            <SearchableDropdown
-              value={form.boardId}
-              onChange={(v) => {
-                const b = boards.find(x => String(x.id) === String(v))
-                setForm(f => ({ ...f, boardId: v, boardName: b?.name || '', phoneColumnId: '' }))
-              }}
-              options={boards.map(b => ({ value: String(b.id), label: b.name, searchText: b.name }))}
-              placeholder={loadingBoards ? 'Loading boards…' : 'Select a board'}
-              loading={loadingBoards}
-              renderSelected={(o) => o.label}
-              renderOption={(o) => <p className="text-sm text-[#131210]">{o.label}</p>}
-            />
+          {/* Board + Trigger ────────────────────────────────── */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className={labelCls}>Monday board *</label>
+              <SearchableDropdown
+                value={form.boardId}
+                onChange={(v) => {
+                  const b = boards.find(x => String(x.id) === String(v))
+                  setForm(f => ({ ...f, boardId: v, boardName: b?.name || '', phoneColumnId: '' }))
+                }}
+                options={boards.map(b => ({ value: String(b.id), label: b.name, searchText: b.name }))}
+                placeholder={loadingBoards ? 'Loading boards…' : 'Select a board'}
+                loading={loadingBoards}
+                renderSelected={(o) => o.label}
+                renderOption={(o) => <p className="text-sm text-[#131210]">{o.label}</p>}
+              />
+            </div>
+
+            <div>
+              <label className={labelCls}>Trigger</label>
+              <select className={inputCls} value={form.triggerEvent}
+                onChange={e => setForm(f => ({ ...f, triggerEvent: e.target.value }))}>
+                {Object.entries(TRIGGER_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </div>
           </div>
 
-          <div>
-            <label className={labelCls}>Trigger</label>
-            <select className={inputCls} value={form.triggerEvent}
-              onChange={e => setForm(f => ({ ...f, triggerEvent: e.target.value }))}>
-              {Object.entries(TRIGGER_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
-          </div>
-
-          {form.boardId && (
+          {/* Phone column + Sender number ───────────────────── */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>Phone number column *</label>
+              {form.boardId ? (
+                <SearchableDropdown
+                  value={form.phoneColumnId}
+                  onChange={(v) => setForm(f => ({ ...f, phoneColumnId: v }))}
+                  options={columns.map(c => ({ value: c.id, label: c.title, type: c.type, searchText: `${c.title} ${c.type}` }))}
+                  placeholder={loadingColumns ? 'Loading columns…' : 'Select the phone column'}
+                  loading={loadingColumns}
+                  renderSelected={(o) => o.label}
+                  renderOption={(o) => (
+                    <div>
+                      <p className="text-sm text-[#131210]">{o.label}</p>
+                      <p className="text-xs text-[#9B9890] font-mono mt-0.5">{o.type}</p>
+                    </div>
+                  )}
+                />
+              ) : (
+                <div className="px-3 py-2.5 border border-dashed border-[#D4D1C9] rounded-lg text-sm bg-[#F7F6F3] text-[#9B9890]">
+                  Pick a board first
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className={labelCls}>Sender number *</label>
               <SearchableDropdown
-                value={form.phoneColumnId}
-                onChange={(v) => setForm(f => ({ ...f, phoneColumnId: v }))}
-                options={columns.map(c => ({ value: c.id, label: c.title, type: c.type, searchText: `${c.title} ${c.type}` }))}
-                placeholder={loadingColumns ? 'Loading columns…' : 'Select the phone column'}
-                loading={loadingColumns}
-                renderSelected={(o) => o.label}
+                value={form.senderPhoneNumberId}
+                onChange={(v) => setForm(f => ({ ...f, senderPhoneNumberId: v }))}
+                options={phoneNumbers.map(p => {
+                  const num = phoneOf(p), nm = nameOf(p)
+                  return { value: String(p.id), name: nm, number: num, searchText: `${nm} ${num}` }
+                })}
+                placeholder="Select a number"
+                renderSelected={(o) => o.name ? `${o.name} — ${o.number}` : o.number}
                 renderOption={(o) => (
                   <div>
-                    <p className="text-sm text-[#131210]">{o.label}</p>
-                    <p className="text-xs text-[#9B9890] font-mono mt-0.5">{o.type}</p>
+                    {o.name && <p className="text-sm font-medium text-[#131210]">{o.name}</p>}
+                    <p className={`text-sm ${o.name ? 'text-[#9B9890]' : 'text-[#131210]'}`}>{o.number}</p>
                   </div>
                 )}
               />
+              <p className="text-[11px] text-[#9B9890] mt-1.5">
+                Replies are handled by whichever AI scenario is assigned to this number.
+              </p>
             </div>
-          )}
-
-          <div>
-            <label className={labelCls}>Sender number *</label>
-            <SearchableDropdown
-              value={form.senderPhoneNumberId}
-              onChange={(v) => setForm(f => ({ ...f, senderPhoneNumberId: v }))}
-              options={phoneNumbers.map(p => {
-                const num = phoneOf(p), nm = nameOf(p)
-                return { value: String(p.id), name: nm, number: num, searchText: `${nm} ${num}` }
-              })}
-              placeholder="Select a number"
-              renderSelected={(o) => o.name ? `${o.name} — ${o.number}` : o.number}
-              renderOption={(o) => (
-                <div>
-                  {o.name && <p className="text-sm font-medium text-[#131210]">{o.name}</p>}
-                  <p className={`text-sm ${o.name ? 'text-[#9B9890]' : 'text-[#131210]'}`}>{o.number}</p>
-                </div>
-              )}
-            />
-            <p className="text-[11px] text-[#9B9890] mt-1.5">
-              Replies are handled by whichever AI scenario is assigned to this number.
-            </p>
           </div>
 
           <div>
