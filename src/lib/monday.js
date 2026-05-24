@@ -187,6 +187,34 @@ export async function deleteWebhook(workspaceId, webhookId) {
   `, { id: String(webhookId) })
 }
 
+// ── Two-way writeback ────────────────────────────────────────────────────────
+// Update a single column on a Monday item. `value` must already be the JSON
+// shape Monday expects for that column type:
+//   status:  { "label": "Engaged" }
+//   date:    { "date": "2026-05-25" }
+//   text:    "free text string"
+// We pass it as a JSON-encoded string per Monday's API contract — that's why
+// the mutation's value type is `JSON!`, not the matching column-specific type.
+export async function updateColumnValue(workspaceId, boardId, itemId, columnId, value) {
+  const data = await mondayGraphQL(workspaceId, `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+      change_column_value(
+        board_id: $boardId,
+        item_id: $itemId,
+        column_id: $columnId,
+        value: $value,
+        create_labels_if_missing: true
+      ) { id }
+    }
+  `, {
+    boardId: String(boardId),
+    itemId: String(itemId),
+    columnId,
+    value: JSON.stringify(value),
+  })
+  return data?.change_column_value?.id || null
+}
+
 // ── Value extraction ────────────────────────────────────────────────────────
 
 // Monday's `phone` column stores `{"phone":"+15551234","countryShortName":"US"}`

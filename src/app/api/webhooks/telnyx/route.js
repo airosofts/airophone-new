@@ -224,6 +224,14 @@ async function handleIncomingMessage(event) {
 
     console.log('Inbound message saved successfully:', messageRecord.id)
 
+    // Two-way Monday sync: if this conversation originated from a Monday
+    // automation, update the configured column on the source item (e.g.
+    // status → Engaged, Last Contact → today). Best-effort; never throws.
+    try {
+      const { runWriteback } = await import('@/lib/monday-writeback')
+      runWriteback(conversation.id, 'reply').catch(() => {})
+    } catch { /* keep going — writeback is non-critical */ }
+
     // Deduct credit for received message
     try {
       const digits = normalizePhoneNumber(toNumber)?.replace(/\D/g, '').slice(-10)

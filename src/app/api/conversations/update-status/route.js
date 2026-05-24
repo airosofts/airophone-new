@@ -41,6 +41,15 @@ export async function POST(request) {
       )
     }
 
+    // Two-way Monday sync: when the conversation moves to a "done" state,
+    // update the configured column on the source Monday item.
+    if (status === 'closed' || status === 'done' || status === 'archived') {
+      try {
+        const { runWriteback } = await import('@/lib/monday-writeback')
+        runWriteback(conversationId, 'done').catch(() => {})
+      } catch { /* keep going — writeback is non-critical */ }
+    }
+
     return NextResponse.json({
       success: true,
       conversation: data
