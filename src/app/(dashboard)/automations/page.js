@@ -81,6 +81,8 @@ export default function AutomationsPage() {
   const [writebackConfigs, setWritebackConfigs] = useState({})
   // Deletion confirmation — holds the automation pending delete, null otherwise.
   const [pendingDelete, setPendingDelete] = useState(null)
+  // When set, the create/edit modal opens in EDIT mode pre-filled from this row.
+  const [editing, setEditing] = useState(null)
 
   const load = useCallback(async () => {
     try {
@@ -201,6 +203,13 @@ export default function AutomationsPage() {
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <button
+                      onClick={() => setEditing(a)}
+                      disabled={busyId === a.id}
+                      className="px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3] disabled:opacity-50 transition-colors"
+                    >
+                      Edit
+                    </button>
+                    <button
                       onClick={() => toggleActive(a)}
                       disabled={busyId === a.id}
                       className="px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3] disabled:opacity-50 transition-colors"
@@ -240,6 +249,18 @@ export default function AutomationsPage() {
           phoneNumbers={phoneNumbers}
           onClose={() => setShowCreate(false)}
           onCreated={(a) => { setAutomations(prev => [a, ...prev]); setShowCreate(false) }}
+        />
+      )}
+
+      {editing && (
+        <CreateAutomationModal
+          phoneNumbers={phoneNumbers}
+          automation={editing}
+          onClose={() => setEditing(null)}
+          onCreated={(updated) => {
+            setAutomations(prev => prev.map(x => x.id === updated.id ? { ...x, ...updated } : x))
+            setEditing(null)
+          }}
         />
       )}
 
@@ -517,30 +538,64 @@ function EventEditor({ title, hint, columns, colId, setColId, valueLabel, setVal
   )
 }
 
-function CreateAutomationModal({ phoneNumbers, onClose, onCreated }) {
-  const [form, setForm] = useState({
-    name: '', boardId: '', boardName: '', triggerEvent: 'create_item',
-    phoneColumnId: '', messageMode: 'template', messageTemplate: '',
-    aiInstructions: '', senderPhoneNumberId: '',
-    // Send delay is "amount × unit" in the UI, converted to seconds on submit.
-    delayAmount: 0,
-    delayUnit: 'minutes',
-    respectBusinessHours: false,
-  })
+// Inverse of delayToSeconds — picks the largest unit that divides evenly so a
+// stored "3600" comes back as "1 hour" instead of "60 minutes" when editing.
+function secondsToAmountUnit(s) {
+  const n = Math.max(0, Math.floor(Number(s) || 0))
+  if (n === 0) return { amount: 0, unit: 'minutes' }
+  if (n % UNIT_SECONDS.days === 0)  return { amount: n / UNIT_SECONDS.days,  unit: 'days' }
+  if (n % UNIT_SECONDS.hours === 0) return { amount: n / UNIT_SECONDS.hours, unit: 'hours' }
+  return { amount: Math.floor(n / UNIT_SECONDS.minutes), unit: 'minutes' }
+}
+
+function CreateAutomationModal({ phoneNumbers, automation, onClose, onCreated }) {
+  const isEdit = !!automation
+
+  const initialForm = (() => {
+    if (!automation) {
+      return {
+        name: '', boardId: '', boardName: '', triggerEvent: 'create_item',
+        phoneColumnId: '', messageMode: 'template', messageTemplate: '',
+        aiInstructions: '', senderPhoneNumberId: '',
+        delayAmount: 0,
+        delayUnit: 'minutes',
+        respectBusinessHours: false,
+      }
+    }
+    const { amount, unit } = secondsToAmountUnit(automation.send_delay_seconds)
+    return {
+      name: automation.name || '',
+      boardId: String(automation.board_id || ''),
+      boardName: automation.board_name || '',
+      triggerEvent: automation.trigger_event || 'create_item',
+      phoneColumnId: automation.phone_column_id || '',
+      messageMode: automation.message_mode || 'template',
+      messageTemplate: automation.message_template || '',
+      aiInstructions: automation.ai_instructions || '',
+      senderPhoneNumberId: String(automation.sender_phone_number_id || ''),
+      delayAmount: amount,
+      delayUnit: unit,
+      respectBusinessHours: !!automation.respect_business_hours,
+    }
+  })()
+
+  const [form, setForm] = useState(initialForm)
   const [boards, setBoards] = useState([])
   const [columns, setColumns] = useState([])
-  const [loadingBoards, setLoadingBoards] = useState(true)
+  // Skip the boards fetch in edit mode — board is locked to the existing one.
+  const [loadingBoards, setLoadingBoards] = useState(!isEdit)
   const [loadingColumns, setLoadingColumns] = useState(false)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
+    if (isEdit) return   // board picker hidden in edit mode
     fetchWithWorkspace('/api/integrations/monday/boards')
       .then(r => r.json())
       .then(d => setBoards(d?.boards || []))
       .catch(() => setBoards([]))
       .finally(() => setLoadingBoards(false))
-  }, [])
+  }, [isEdit])
 
   useEffect(() => {
     if (!form.boardId) { setColumns([]); return }
@@ -551,8 +606,12 @@ function CreateAutomationModal({ phoneNumbers, onClose, onCreated }) {
       .then(d => {
         const cols = d?.columns || []
         setColumns(cols)
+        // Auto-pick a phone-type column ONLY if the form doesn't already have
+        // one (in edit mode the saved value must be preserved).
         const phoneCol = cols.find(c => c.isPhoneType)
-        if (phoneCol) setForm(f => ({ ...f, phoneColumnId: phoneCol.id }))
+        if (phoneCol) {
+          setForm(f => f.phoneColumnId ? f : ({ ...f, phoneColumnId: phoneCol.id }))
+        }
       })
       .catch(() => setColumns([]))
       .finally(() => setLoadingColumns(false))
@@ -569,24 +628,37 @@ function CreateAutomationModal({ phoneNumbers, onClose, onCreated }) {
 
     setSubmitting(true)
     try {
-      const res = await fetchWithWorkspace('/api/automations', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: form.name,
-          board_id: form.boardId,
-          board_name: form.boardName,
-          trigger_event: form.triggerEvent,
-          phone_column_id: form.phoneColumnId,
-          message_mode: form.messageMode,
-          message_template: form.messageTemplate,
-          ai_instructions: form.aiInstructions,
-          sender_phone_number_id: form.senderPhoneNumberId,
-          send_delay_seconds: delayToSeconds(form.delayAmount, form.delayUnit),
-          respect_business_hours: form.respectBusinessHours,
-        }),
-      })
+      const url = isEdit ? `/api/automations/${automation.id}` : '/api/automations'
+      const method = isEdit ? 'PATCH' : 'POST'
+      // Edit mode: don't send board/trigger — they're not editable server-side.
+      const payload = isEdit
+        ? {
+            name: form.name,
+            phone_column_id: form.phoneColumnId,
+            message_mode: form.messageMode,
+            message_template: form.messageTemplate,
+            ai_instructions: form.aiInstructions,
+            sender_phone_number_id: form.senderPhoneNumberId,
+            send_delay_seconds: delayToSeconds(form.delayAmount, form.delayUnit),
+            respect_business_hours: form.respectBusinessHours,
+          }
+        : {
+            name: form.name,
+            board_id: form.boardId,
+            board_name: form.boardName,
+            trigger_event: form.triggerEvent,
+            phone_column_id: form.phoneColumnId,
+            message_mode: form.messageMode,
+            message_template: form.messageTemplate,
+            ai_instructions: form.aiInstructions,
+            sender_phone_number_id: form.senderPhoneNumberId,
+            send_delay_seconds: delayToSeconds(form.delayAmount, form.delayUnit),
+            respect_business_hours: form.respectBusinessHours,
+          }
+
+      const res = await fetchWithWorkspace(url, { method, body: JSON.stringify(payload) })
       const data = await res.json()
-      if (!res.ok || !data.success) { setError(data.error || 'Failed to create automation'); return }
+      if (!res.ok || !data.success) { setError(data.error || (isEdit ? 'Failed to save changes' : 'Failed to create automation')); return }
       onCreated(data.automation)
     } catch {
       setError('Something went wrong. Please try again.')
@@ -599,7 +671,7 @@ function CreateAutomationModal({ phoneNumbers, onClose, onCreated }) {
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
       <div className="bg-[#FFFFFF] rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#E3E1DB]">
-          <h3 className="text-base font-semibold text-[#131210]">New Automation</h3>
+          <h3 className="text-base font-semibold text-[#131210]">{isEdit ? 'Edit Automation' : 'New Automation'}</h3>
           <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1">
             <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
           </button>
@@ -616,28 +688,45 @@ function CreateAutomationModal({ phoneNumbers, onClose, onCreated }) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>Monday board *</label>
-              <SearchableDropdown
-                value={form.boardId}
-                onChange={(v) => {
-                  const b = boards.find(x => String(x.id) === String(v))
-                  setForm(f => ({ ...f, boardId: v, boardName: b?.name || '', phoneColumnId: '' }))
-                }}
-                options={boards.map(b => ({ value: String(b.id), label: b.name, searchText: b.name }))}
-                placeholder={loadingBoards ? 'Loading boards…' : 'Select a board'}
-                loading={loadingBoards}
-                renderSelected={(o) => o.label}
-                renderOption={(o) => <p className="text-sm text-[#131210]">{o.label}</p>}
-              />
+              {isEdit ? (
+                <div className="px-3 py-2.5 border border-[#E3E1DB] rounded-lg text-sm bg-[#F7F6F3] text-[#5C5A55]">
+                  {form.boardName || form.boardId}
+                </div>
+              ) : (
+                <SearchableDropdown
+                  value={form.boardId}
+                  onChange={(v) => {
+                    const b = boards.find(x => String(x.id) === String(v))
+                    setForm(f => ({ ...f, boardId: v, boardName: b?.name || '', phoneColumnId: '' }))
+                  }}
+                  options={boards.map(b => ({ value: String(b.id), label: b.name, searchText: b.name }))}
+                  placeholder={loadingBoards ? 'Loading boards…' : 'Select a board'}
+                  loading={loadingBoards}
+                  renderSelected={(o) => o.label}
+                  renderOption={(o) => <p className="text-sm text-[#131210]">{o.label}</p>}
+                />
+              )}
             </div>
 
             <div>
               <label className={labelCls}>Trigger</label>
-              <select className={inputCls} value={form.triggerEvent}
-                onChange={e => setForm(f => ({ ...f, triggerEvent: e.target.value }))}>
-                {Object.entries(TRIGGER_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
+              {isEdit ? (
+                <div className="px-3 py-2.5 border border-[#E3E1DB] rounded-lg text-sm bg-[#F7F6F3] text-[#5C5A55]">
+                  {TRIGGER_LABELS[form.triggerEvent] || form.triggerEvent}
+                </div>
+              ) : (
+                <select className={inputCls} value={form.triggerEvent}
+                  onChange={e => setForm(f => ({ ...f, triggerEvent: e.target.value }))}>
+                  {Object.entries(TRIGGER_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              )}
             </div>
           </div>
+          {isEdit && (
+            <p className="text-[11px] text-[#9B9890] -mt-2">
+              Board and trigger are locked because the Monday webhook is bound to them. To change either, delete this automation and create a new one.
+            </p>
+          )}
 
           {/* Phone column + Sender number ───────────────────── */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -789,7 +878,7 @@ function CreateAutomationModal({ phoneNumbers, onClose, onCreated }) {
           <button onClick={onClose} className="px-4 py-2 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3]">Cancel</button>
           <button onClick={submit} disabled={submitting}
             className="px-5 py-2 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg disabled:opacity-50">
-            {submitting ? 'Creating…' : 'Create Automation'}
+            {submitting ? (isEdit ? 'Saving…' : 'Creating…') : (isEdit ? 'Save changes' : 'Create Automation')}
           </button>
         </div>
       </div>
