@@ -31,8 +31,10 @@ function parseHHMM(s) {
 }
 
 // Is `at` inside the workspace's business hours window?
+// Note: there's no workspace-level on/off — the opt-in lives on the automation.
+// Callers gate on `automation.respect_business_hours` before invoking this.
 export function isInBusinessHours(at, hours) {
-  if (!hours?.business_hours_enabled) return true   // not enabled = always allowed
+  if (!hours) return true   // workspace row missing — fail open
   const tz = hours.business_hours_tz || 'UTC'
   const local = toLocal(at, tz)
   const days = hours.business_days || [1, 2, 3, 4, 5]
@@ -49,7 +51,7 @@ export function isInBusinessHours(at, hours) {
 // Walks forward in 15-minute steps for at most 8 days; falls back to `at`
 // if no window is found (e.g. business_days is empty — shouldn't happen).
 export function nextBusinessTime(at, hours) {
-  if (!hours?.business_hours_enabled) return at
+  if (!hours) return at   // workspace row missing — fall through without snapping
   if (isInBusinessHours(at, hours)) return at
   const start = parseHHMM(hours.business_hours_start)
   const tz = hours.business_hours_tz || 'UTC'

@@ -43,7 +43,6 @@ const DAY_LABELS = [
 const trimSecs = (t) => String(t || '').slice(0, 5)
 
 export default function BusinessHours() {
-  const [enabled, setEnabled] = useState(false)
   const [start, setStart]     = useState('09:00')
   const [end, setEnd]         = useState('18:00')
   const [tz, setTz]           = useState('America/New_York')
@@ -59,7 +58,6 @@ export default function BusinessHours() {
         const res = await fetchWithWorkspace('/api/workspace/business-hours')
         const data = await res.json()
         if (res.ok) {
-          setEnabled(!!data.enabled)
           setStart(trimSecs(data.start))
           setEnd(trimSecs(data.end))
           setTz(data.tz || 'America/New_York')
@@ -85,7 +83,7 @@ export default function BusinessHours() {
     try {
       const res = await fetchWithWorkspace('/api/workspace/business-hours', {
         method: 'PUT',
-        body: JSON.stringify({ enabled, start, end, tz, days }),
+        body: JSON.stringify({ start, end, tz, days }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Failed to save'); return }
@@ -102,22 +100,11 @@ export default function BusinessHours() {
     <div>
       <h2 className="text-xl font-semibold text-[#131210]">Business hours</h2>
       <p className="text-sm text-[#9B9890] mt-1 mb-6">
-        When an automation opts in, sends that would land outside this window queue and fire at the next open.
+        Defines the window automations use when they opt in. Per-automation toggle lives in the integration settings.
       </p>
 
       <div className="space-y-5 max-w-xl">
-        {/* Enable toggle */}
-        <label className="flex items-center gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => setEnabled(e.target.checked)}
-            className="w-4 h-4 accent-[#D63B1F]"
-          />
-          <span className="text-sm font-medium text-[#131210]">Enforce business hours</span>
-        </label>
-
-        <fieldset disabled={!enabled} className={!enabled ? 'opacity-50' : ''}>
+        <fieldset>
           {/* Time range */}
           <div className="grid grid-cols-2 gap-3">
             <div>

@@ -43,9 +43,13 @@ export async function PUT(request) {
   if (!user?.workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await request.json().catch(() => ({}))
-  const { enabled, start, end, tz, days } = body
+  const { start, end, tz, days } = body
+  // The legacy "enforce" toggle no longer exists in the UI — each automation
+  // opts in via its own `respect_business_hours`. Force the column to true so
+  // the helpers always treat this workspace's hours as authoritative when an
+  // automation does opt in.
+  const enabled = true
 
-  if (typeof enabled !== 'boolean') return NextResponse.json({ error: '`enabled` must be boolean' }, { status: 400 })
   if (!TIME_RE.test(String(start))) return NextResponse.json({ error: '`start` must be HH:MM' }, { status: 400 })
   if (!TIME_RE.test(String(end)))   return NextResponse.json({ error: '`end` must be HH:MM' }, { status: 400 })
   if (!isValidTz(tz))               return NextResponse.json({ error: '`tz` must be a valid IANA timezone' }, { status: 400 })
