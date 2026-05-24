@@ -45,15 +45,29 @@ export async function mondayGraphQL(workspaceId, query, variables = {}) {
     headers: {
       'Content-Type': 'application/json',
       Authorization: token,
-      // 2024-01 enables items_page, the cursor-based pagination we rely on.
-      'API-Version': '2024-01',
+      // Bumped from 2024-01 → 2024-10 to match Monday's current stable. Older
+      // versions sometimes return "Unauthorized field or type" for enums whose
+      // shape changed (e.g. WebhookEventType).
+      'API-Version': '2024-10',
     },
     body: JSON.stringify({ query, variables }),
   })
   const body = await res.json().catch(() => ({}))
   if (!res.ok || body.errors) {
+    // Log the FULL response so we can see what Monday actually complained about
+    // — `body.errors[0].message` alone often hides the real cause (extensions,
+    // path, etc.). The error class only surfaces the first message to the UI.
+    console.error('[monday] GraphQL error', JSON.stringify({
+      status: res.status,
+      query: query.replace(/\s+/g, ' ').trim().slice(0, 200),
+      variables,
+      errors: body.errors,
+      error_code: body.error_code,
+      error_message: body.error_message,
+      body,
+    }, null, 2))
     throw new MondayApiError(
-      body.errors?.[0]?.message || `Monday API error (${res.status})`,
+      body.errors?.[0]?.message || body.error_message || `Monday API error (${res.status})`,
       res.status,
       body.errors,
     )

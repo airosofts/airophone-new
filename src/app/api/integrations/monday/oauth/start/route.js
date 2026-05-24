@@ -12,8 +12,9 @@ import { getUserFromRequest } from '@/lib/session-helper'
 import { mondayRedirectUri } from '@/lib/monday'
 
 const MONDAY_AUTHORIZE_URL = 'https://auth.monday.com/oauth2/authorize'
-// Read-only scopes — listing boards/groups/columns/items, account info.
-const SCOPES = ['boards:read', 'me:read', 'account:read', 'workspaces:read'].join(' ')
+// boards/me/account/workspaces:read — listing boards, columns, items, account.
+// webhooks:write — board automations register webhooks via the API.
+const SCOPES = ['boards:read', 'me:read', 'account:read', 'workspaces:read', 'webhooks:write'].join(' ')
 
 export async function GET(request) {
   const user = getUserFromRequest(request)
