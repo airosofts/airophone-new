@@ -35,6 +35,11 @@ async function getAccessToken(workspaceId) {
   if (error) throw error
   const token = data?.credentials?.access_token
   if (!token) throw new MondayNotConnectedError()
+  // Log the granted scopes once per call — invaluable when a mutation fails
+  // with UNAUTHORIZED_FIELD_OR_TYPE (Monday's "your token lacks the scope"
+  // error). If `webhooks:write` is missing here, the user needs to reconnect.
+  const scope = data?.credentials?.scope
+  if (scope) console.log('[monday] using token with scopes:', scope)
   return token
 }
 

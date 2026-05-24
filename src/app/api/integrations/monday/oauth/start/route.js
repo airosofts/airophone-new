@@ -38,6 +38,10 @@ export async function GET(request) {
   authorizeUrl.searchParams.set('redirect_uri', redirectUri)
   authorizeUrl.searchParams.set('state', state)
   authorizeUrl.searchParams.set('scope', SCOPES)
+  // Force the consent screen every time — Monday otherwise silently re-issues
+  // the previously-granted scopes when the user is already authorized, which
+  // means newly-added scopes (e.g. webhooks:write) never get granted.
+  authorizeUrl.searchParams.set('prompt', 'consent')
 
   const response = NextResponse.redirect(authorizeUrl.toString())
 
