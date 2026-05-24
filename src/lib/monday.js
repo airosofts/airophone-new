@@ -107,7 +107,7 @@ export async function listColumns(workspaceId, boardId) {
   const data = await mondayGraphQL(workspaceId, `
     query ($boardId: [ID!]) {
       boards(ids: $boardId) {
-        columns { id title type description }
+        columns { id title type description settings_str }
       }
     }
   `, { boardId: [String(boardId)] })

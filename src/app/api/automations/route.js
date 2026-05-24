@@ -43,6 +43,7 @@ export async function POST(request) {
   const {
     name, board_id, board_name, trigger_event, phone_column_id,
     message_mode, message_template, ai_instructions, sender_phone_number_id,
+    send_delay_seconds, respect_business_hours,
   } = body
 
   // Validation
@@ -101,6 +102,9 @@ export async function POST(request) {
       message_template: message_mode === 'template' ? message_template.trim() : null,
       ai_instructions: message_mode === 'ai' ? ai_instructions.trim() : null,
       sender_phone_number_id: String(sender_phone_number_id),
+      // Scheduling — clamp delay 0–7 days; toggle defaults off.
+      send_delay_seconds: Math.max(0, Math.min(7 * 24 * 60 * 60, Number(send_delay_seconds) || 0)),
+      respect_business_hours: !!respect_business_hours,
       created_by: user.userId,
       created_at: now,
       updated_at: now,

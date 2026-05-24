@@ -448,6 +448,8 @@ function CreateAutomationModal({ phoneNumbers, onClose, onCreated }) {
     name: '', boardId: '', boardName: '', triggerEvent: 'create_item',
     phoneColumnId: '', messageMode: 'template', messageTemplate: '',
     aiInstructions: '', senderPhoneNumberId: '',
+    sendDelaySeconds: 0,        // immediate by default
+    respectBusinessHours: false,
   })
   const [boards, setBoards] = useState([])
   const [columns, setColumns] = useState([])
@@ -503,6 +505,8 @@ function CreateAutomationModal({ phoneNumbers, onClose, onCreated }) {
           message_template: form.messageTemplate,
           ai_instructions: form.aiInstructions,
           sender_phone_number_id: form.senderPhoneNumberId,
+          send_delay_seconds: form.sendDelaySeconds,
+          respect_business_hours: form.respectBusinessHours,
         }),
       })
       const data = await res.json()
@@ -637,6 +641,47 @@ function CreateAutomationModal({ phoneNumbers, onClose, onCreated }) {
                 </p>
               </>
             )}
+          </div>
+
+          {/* ── Timing ─────────────────────────────────────────────── */}
+          <div className="pt-2">
+            <p className="text-xs font-semibold text-[#131210] uppercase tracking-wider mb-2">Timing</p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>Send delay</label>
+                <select
+                  className={inputCls}
+                  value={form.sendDelaySeconds}
+                  onChange={(e) => setForm(f => ({ ...f, sendDelaySeconds: Number(e.target.value) }))}
+                >
+                  <option value={0}>Immediately</option>
+                  <option value={300}>After 5 minutes</option>
+                  <option value={900}>After 15 minutes</option>
+                  <option value={1800}>After 30 minutes</option>
+                  <option value={3600}>After 1 hour</option>
+                  <option value={14400}>After 4 hours</option>
+                  <option value={86400}>After 1 day</option>
+                </select>
+                <p className="text-[11px] text-[#9B9890] mt-1">Useful when the Monday form fills in columns a beat after item creation.</p>
+              </div>
+
+              <div>
+                <label className={labelCls}>Business hours</label>
+                <label className="flex items-center gap-2 px-3 py-2.5 border border-[#D4D1C9] rounded-lg cursor-pointer bg-white">
+                  <input
+                    type="checkbox"
+                    checked={form.respectBusinessHours}
+                    onChange={(e) => setForm(f => ({ ...f, respectBusinessHours: e.target.checked }))}
+                    className="w-4 h-4 accent-[#D63B1F]"
+                  />
+                  <span className="text-sm text-[#131210]">Respect workspace business hours</span>
+                </label>
+                <p className="text-[11px] text-[#9B9890] mt-1">
+                  Configure the schedule in <a href="/settings?section=business-hours" className="text-[#D63B1F] hover:underline">Settings → Business Hours</a>.
+                </p>
+              </div>
+            </div>
           </div>
 
           {error && (

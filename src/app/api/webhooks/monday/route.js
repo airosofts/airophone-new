@@ -14,6 +14,7 @@ import { NextResponse } from 'next/server'
 import { jwtVerify } from 'jose'
 import { supabaseAdmin } from '@/lib/supabase-server'
 import { processAutomationItem } from '@/lib/monday-automation'
+import { computeScheduledAt } from '@/lib/scheduling'
 
 async function verifySignature(request) {
   const secret = process.env.MONDAY_SIGNING_SECRET
@@ -28,16 +29,32 @@ async function verifySignature(request) {
   }
 }
 
-async function runAutomation(automation, itemId) {
-  // Claim the dedup slot first — a lead is handled at most once per automation.
-  // Status starts 'pending'; processAutomationItem resolves it to sent/pending/failed.
+async function runAutomation(automation, itemId, workspaceHours) {
+  // Decide WHEN this should fire. If the automation has a send delay or opts
+  // into business hours, the result may be in the future — in that case we
+  // insert a 'scheduled' row and let the sweeper pick it up at the right time.
+  const scheduledAt = computeScheduledAt(automation, workspaceHours)
+  const dueNow = scheduledAt.getTime() <= Date.now()
+
+  // Claim the dedup slot — a lead is handled at most once per automation.
+  const initialStatus = dueNow ? 'pending' : 'scheduled'
   const { error: claimErr } = await supabaseAdmin
     .from('monday_automation_sends')
-    .insert({ automation_id: automation.id, monday_item_id: String(itemId), status: 'pending' })
+    .insert({
+      automation_id: automation.id,
+      monday_item_id: String(itemId),
+      status: initialStatus,
+      scheduled_at: scheduledAt.toISOString(),
+    })
   if (claimErr) {
-    if (claimErr.code === '23505') return   // already claimed (sent, pending, or failed)
+    if (claimErr.code === '23505') return   // already claimed (sent, pending, scheduled, or failed)
     console.error('[monday-webhook] dedup claim error:', claimErr)
     return
+  }
+
+  if (!dueNow) {
+    console.log(`[monday-webhook] automation ${automation.id} item ${itemId} → scheduled for ${scheduledAt.toISOString()}`)
+    return   // sweeper will process when scheduled_at arrives
   }
 
   const outcome = await processAutomationItem(automation, itemId)
@@ -96,8 +113,20 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Lookup failed' }, { status: 500 })
   }
 
+  // Load workspace business hours once (all automations on a board share a
+  // workspace). Used to compute scheduled_at when any automation opts in.
+  const workspaceHoursByWs = new Map()
+  const wsIds = [...new Set((automations || []).map(a => a.workspace_id))]
+  if (wsIds.length) {
+    const { data: workspaces } = await supabaseAdmin
+      .from('workspaces')
+      .select('id, business_hours_enabled, business_hours_start, business_hours_end, business_hours_tz, business_days')
+      .in('id', wsIds)
+    for (const w of (workspaces || [])) workspaceHoursByWs.set(w.id, w)
+  }
+
   for (const automation of automations || []) {
-    await runAutomation(automation, itemId)
+    await runAutomation(automation, itemId, workspaceHoursByWs.get(automation.workspace_id))
   }
 
   // Always 200 so Monday doesn't retry — per-item state lives in monday_automation_sends.

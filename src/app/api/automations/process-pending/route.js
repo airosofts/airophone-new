@@ -1,16 +1,14 @@
-// Retry sweeper for Monday automations whose lead had no phone when the
-// webhook first fired (the form fills board columns a moment after item
-// creation). Called on a schedule by the followup-cron service.
+// Sweeper for Monday automations. Handles two states:
+//   - 'pending'   — lead had no phone yet; retry until filled or aged out.
+//   - 'scheduled' — has a future scheduled_at (send delay or business hours).
+//                   Process when scheduled_at <= now AND window is open.
 //
-// Auth: Bearer CRON_SECRET — same shared secret the cron service uses.
-//
-// For each 'pending' send row: re-run processAutomationItem. If the phone has
-// since been filled it sends; if the row is older than MAX_WAIT_MIN and still
-// has no phone, give up and mark it 'failed'.
+// Auth: Bearer CRON_SECRET. Called by the followup-cron service.
 
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
 import { processAutomationItem } from '@/lib/monday-automation'
+import { isInBusinessHours, nextBusinessTime } from '@/lib/scheduling'
 
 const MAX_WAIT_MIN = 120   // stop retrying a lead whose phone never arrives
 const BATCH = 100
@@ -22,10 +20,13 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // Pull both 'pending' rows and 'scheduled' rows whose time has arrived.
+  const nowIso = new Date().toISOString()
   const { data: rows, error } = await supabaseAdmin
     .from('monday_automation_sends')
-    .select('id, automation_id, monday_item_id, created_at')
-    .eq('status', 'pending')
+    .select('id, automation_id, monday_item_id, created_at, status, scheduled_at')
+    .in('status', ['pending', 'scheduled'])
+    .or(`status.eq.pending,scheduled_at.lte.${nowIso}`)
     .order('created_at', { ascending: true })
     .limit(BATCH)
 
@@ -37,13 +38,23 @@ export async function POST(request) {
     return NextResponse.json({ ok: true, pending: 0, sent: 0, gaveUp: 0 })
   }
 
-  // Load the automations referenced by this batch in one go.
+  // Load automations + their workspace business hours in one go.
   const autoIds = [...new Set(rows.map(r => r.automation_id))]
   const { data: autos } = await supabaseAdmin
     .from('monday_automations')
     .select('*')
     .in('id', autoIds)
   const autoById = new Map((autos || []).map(a => [a.id, a]))
+
+  const wsIds = [...new Set((autos || []).map(a => a.workspace_id))]
+  const wsHoursById = new Map()
+  if (wsIds.length) {
+    const { data: ws } = await supabaseAdmin
+      .from('workspaces')
+      .select('id, business_hours_enabled, business_hours_start, business_hours_end, business_hours_tz, business_days')
+      .in('id', wsIds)
+    for (const w of (ws || [])) wsHoursById.set(w.id, w)
+  }
 
   let sent = 0, gaveUp = 0, stillPending = 0
   const cutoff = Date.now() - MAX_WAIT_MIN * 60 * 1000
@@ -57,6 +68,21 @@ export async function POST(request) {
         .eq('id', row.id)
       gaveUp++
       continue
+    }
+
+    // Business-hours check for scheduled rows: if the time arrived but the
+    // window is closed (or it's a non-business day), push scheduled_at forward
+    // to the next window open and leave the row alone for now.
+    if (row.status === 'scheduled' && automation.respect_business_hours) {
+      const hours = wsHoursById.get(automation.workspace_id)
+      if (hours && !isInBusinessHours(new Date(), hours)) {
+        const nextAt = nextBusinessTime(new Date(), hours)
+        await supabaseAdmin.from('monday_automation_sends')
+          .update({ scheduled_at: nextAt.toISOString() })
+          .eq('id', row.id)
+        stillPending++
+        continue
+      }
     }
 
     const outcome = await processAutomationItem(automation, row.monday_item_id)

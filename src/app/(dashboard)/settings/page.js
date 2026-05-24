@@ -10,6 +10,7 @@ import CallForwarding from '@/components/settings/CallForwarding'
 import WorkspaceMembers from '@/components/settings/WorkspaceMembers'
 import Referrals from '@/components/settings/Referrals'
 import Integrations from '@/components/settings/Integrations'
+import BusinessHours from '@/components/settings/BusinessHours'
 
 const sections = [
   {
@@ -22,6 +23,7 @@ const sections = [
       { id: 'integrations', name: 'Integrations',     icon: 'fa-puzzle-piece', desc: 'Monday.com and more' },
       { id: 'blocklist',  name: 'Blocklist',          icon: 'fa-ban',         desc: 'Blocked numbers' },
       { id: 'ai',         name: 'AI Settings',        icon: 'fa-robot',       desc: 'Reply delay and behavior' },
+      { id: 'business-hours', name: 'Business Hours', icon: 'fa-business-time', desc: 'When sends are allowed' },
       { id: 'forwarding', name: 'Call Forwarding',    icon: 'fa-phone-alt',   desc: 'Forward incoming calls' },
       { id: 'referrals',  name: 'Referrals',          icon: 'fa-gift',        desc: 'Earn cash for referrals' },
     ],
@@ -51,6 +53,7 @@ const iconColors = {
   integrations:  { bg: 'bg-[rgba(214,59,31,0.08)]', text: 'text-[#D63B1F]' },
   blocklist:     { bg: 'bg-[rgba(214,59,31,0.08)]', text: 'text-[#D63B1F]' },
   ai:            { bg: 'bg-[rgba(214,59,31,0.08)]', text: 'text-[#D63B1F]' },
+  'business-hours': { bg: 'bg-[rgba(214,59,31,0.08)]', text: 'text-[#D63B1F]' },
   forwarding:    { bg: 'bg-[rgba(214,59,31,0.08)]', text: 'text-[#D63B1F]' },
   referrals:     { bg: 'bg-[rgba(214,59,31,0.08)]', text: 'text-[#D63B1F]' },
   profile:       { bg: 'bg-[rgba(214,59,31,0.08)]', text: 'text-[#D63B1F]' },
@@ -178,6 +181,7 @@ export default function SettingsPage() {
           {activeTab === 'integrations' && <Integrations />}
           {activeTab === 'blocklist'  && <Blocklist />}
           {activeTab === 'ai'         && <AiSettings />}
+          {activeTab === 'business-hours' && <BusinessHours />}
           {activeTab === 'forwarding' && <CallForwarding />}
           {activeTab === 'referrals'  && <Referrals />}
 
