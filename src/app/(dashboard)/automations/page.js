@@ -676,12 +676,12 @@ function CreateAutomationModal({ phoneNumbers, onClose, onCreated }) {
                     max={999}
                     value={form.delayAmount}
                     onChange={(e) => setForm(f => ({ ...f, delayAmount: e.target.value }))}
-                    className={`${inputCls} w-20`}
+                    className="w-24 shrink-0 px-3 py-2.5 border border-[#D4D1C9] rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F]"
                   />
                   <select
                     value={form.delayUnit}
                     onChange={(e) => setForm(f => ({ ...f, delayUnit: e.target.value }))}
-                    className={`${inputCls} flex-1`}
+                    className="flex-1 min-w-0 px-3 py-2.5 border border-[#D4D1C9] rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F]"
                   >
                     <option value="minutes">Minutes</option>
                     <option value="hours">Hours</option>
