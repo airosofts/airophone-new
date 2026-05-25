@@ -55,21 +55,55 @@ export async function getOrCreateRecipeConversation({ workspaceId, fromNumber, l
   return created
 }
 
+// Monday sometimes sends a custom field-type value either as the raw value
+// (the uuid we returned from the dropdown) or wrapped — e.g.
+//   "abc-123"
+//   { "value": "abc-123" }
+//   { "value": "abc-123", "title": "+1 555…" }
+//   "{\"value\":\"abc-123\"}"   (stringified)
+// Pull the uuid out of whichever shape arrived.
+function unwrapFieldValue(v) {
+  if (v == null) return null
+  if (typeof v === 'string') {
+    // Try parsing in case monday stringified the object.
+    if (v.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(v)
+        if (parsed && typeof parsed === 'object') return parsed.value ?? null
+      } catch {}
+    }
+    return v
+  }
+  if (typeof v === 'object') return v.value ?? null
+  return String(v)
+}
+
 export async function processRecipeRun({ workspaceId, boardId, itemId, inputFields }) {
-  const { phoneColumnId, senderNumberId, messageTemplate } = inputFields || {}
+  const phoneColumnId = unwrapFieldValue(inputFields?.phoneColumnId)
+  const senderNumberId = unwrapFieldValue(inputFields?.senderNumberId)
+  const messageTemplate = typeof inputFields?.messageTemplate === 'string'
+    ? inputFields.messageTemplate
+    : unwrapFieldValue(inputFields?.messageTemplate)
+
   if (!phoneColumnId || !senderNumberId) {
-    return { status: 'failed', detail: 'Missing input fields' }
+    return { status: 'failed', detail: `Missing input fields (phoneColumnId=${!!phoneColumnId}, senderNumberId=${!!senderNumberId})` }
   }
 
   // Defense in depth: re-verify the sender number belongs to this workspace
   // (the dropdown filters by workspace, but never trust the recipe payload).
   const { data: sender } = await supabaseAdmin
     .from('phone_numbers')
-    .select('id, phone_number, workspace_id')
+    .select('id, phone_number, workspace_id, is_active')
     .eq('id', senderNumberId)
     .maybeSingle()
-  if (!sender || sender.workspace_id !== workspaceId) {
-    return { status: 'failed', detail: 'Sender number not owned by workspace' }
+  if (!sender) {
+    return { status: 'failed', detail: `Sender number not found (id=${senderNumberId})` }
+  }
+  if (sender.workspace_id !== workspaceId) {
+    return {
+      status: 'failed',
+      detail: `Sender number belongs to a different workspace (sender.workspace=${sender.workspace_id}, recipe.workspace=${workspaceId})`,
+    }
   }
 
   // Fetch item + columns using the workspace's stored monday OAuth token.

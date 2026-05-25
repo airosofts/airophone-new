@@ -44,6 +44,10 @@ export const POST = withRecipeAuth(async (request, { payload, body }) => {
     recipeId: ids.recipeId,
     boardId: fields.boardId,
     itemId: fields.itemId,
+    // Log the raw inputFields shape so we can see exactly what monday sends
+    // for our custom "AiroPhone sender number" field type (it may be wrapped
+    // as { value, title } instead of a raw uuid string).
+    inputFieldsRaw: fields,
   })
 
   const workspaceId = await workspaceForMondayAccount(accountId)
