@@ -7,8 +7,12 @@ const PUBLIC_API_ROUTES = [
   '/api/auth/login',
   '/api/auth/signup',
   '/api/auth/google',
-  '/api/webhooks',   // Telnyx webhooks — no session, verified by signature
+  '/api/webhooks',   // Telnyx + Monday webhooks — no session, verified by signature
   '/api/external',   // External API key endpoints — Bearer-token auth handled in route
+  // followup-cron endpoint — gated by Bearer CRON_SECRET inside the route,
+  // not by user session. Middleware would otherwise 401 it (cron sends the
+  // raw CRON_SECRET as Bearer, which isn't a valid JWT).
+  '/api/automations/process-pending',
 ]
 
 export async function middleware(request) {
