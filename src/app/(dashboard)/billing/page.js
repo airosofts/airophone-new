@@ -526,6 +526,42 @@ export default function BillingPage() {
               </div>
             </div>
 
+            {/* Payment methods — same list as the Subscription tab, so users
+                can manage cards from wherever they happen to be. */}
+            {savedCards.length > 0 && (
+              <div className="bg-white border border-[#E3E1DB] rounded-lg overflow-hidden">
+                <div className="px-5 py-3.5 border-b border-[#E3E1DB] flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-[#131210]">Payment Methods</h3>
+                  <button
+                    onClick={() => setShowAddCardModal(true)}
+                    className="text-xs text-[#D63B1F] font-medium hover:underline">
+                    + Add card
+                  </button>
+                </div>
+                <div className="divide-y divide-[#E3E1DB]">
+                  {savedCards.map(card => (
+                    <div key={card.id} className="px-5 py-3 flex items-center justify-between hover:bg-[#F7F6F3]">
+                      <div className="flex items-center gap-3">
+                        <i className={`fab fa-cc-${card.brand?.toLowerCase()} text-2xl text-[#5C5A55]`}></i>
+                        <div>
+                          <p className="text-sm font-medium text-[#131210]">
+                            <span className="capitalize">{card.brand}</span> •••• {card.last4}
+                            {card.is_default && <span className="ml-2 px-1.5 py-0.5 text-[10px] font-medium bg-green-50 text-green-700 rounded">Default</span>}
+                          </p>
+                          <p className="text-xs text-[#9B9890]">Expires {card.exp_month}/{card.exp_year}</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleRemoveCard(card.id, { brand: card.brand, last4: card.last4 })}
+                        className="px-2.5 py-1.5 text-xs text-[#D63B1F] border border-[rgba(214,59,31,0.14)] rounded hover:bg-[rgba(214,59,31,0.07)]">
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Credit pricing — based on plan overage rate */}
             <div className="bg-white border border-[#E3E1DB] rounded-lg overflow-hidden">
               <div className="px-5 py-3.5 border-b border-[#E3E1DB]">

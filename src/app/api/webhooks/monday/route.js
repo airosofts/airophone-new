@@ -90,6 +90,12 @@ async function runAutomation(automation, itemId, workspaceHours) {
 }
 
 export async function POST(request) {
+  // Log every inbound — invaluable when Monday is silently disabling a webhook.
+  console.log('[monday-webhook] inbound POST', {
+    has_auth: !!request.headers.get('authorization'),
+    user_agent: request.headers.get('user-agent'),
+  })
+
   let body
   try {
     body = await request.json()
@@ -99,11 +105,13 @@ export async function POST(request) {
 
   // 1) Registration handshake — echo the challenge.
   if (body?.challenge) {
+    console.log('[monday-webhook] handshake — echoing challenge')
     return NextResponse.json({ challenge: body.challenge })
   }
 
-  // 2) Verify authenticity.
+  // 2) Verify authenticity. If this fails, Monday auto-disables the webhook.
   if (!(await verifySignature(request))) {
+    console.warn('[monday-webhook] 401 — signature verify failed. Most likely cause: MONDAY_SIGNING_SECRET env var does not match the current Monday app\'s signing secret.')
     return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
   }
 
