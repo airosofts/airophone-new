@@ -17,6 +17,13 @@ export async function POST(request) {
   const secret = process.env.CRON_SECRET
   const auth = request.headers.get('authorization') || ''
   if (!secret || auth !== `Bearer ${secret}`) {
+    // Log loudly so a misconfigured cron is visible — without this, an
+    // auth mismatch silently means nothing ever gets processed.
+    console.warn('[process-pending] 401 — auth header did not match CRON_SECRET', {
+      hasSecret: !!secret,
+      hasAuth: !!auth,
+      authPrefix: auth ? auth.slice(0, 10) + '…' : null,
+    })
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
