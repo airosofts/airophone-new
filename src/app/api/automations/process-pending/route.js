@@ -8,6 +8,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
 import { processAutomationItem } from '@/lib/monday-automation'
+import { processRecipeRun } from '@/lib/monday-recipe-process'
 import { isInBusinessHours, nextBusinessTime } from '@/lib/scheduling'
 
 const MAX_WAIT_MIN = 120   // stop retrying a lead whose phone never arrives
@@ -149,5 +150,95 @@ export async function POST(request) {
     else gaveUp++   // 'failed'
   }
 
-  return NextResponse.json({ ok: true, processed: rows.length, sent, gaveUp, stillPending })
+  // ── Recipe runs ───────────────────────────────────────────────────────────
+  // Retry pending monday_recipe_runs the same way: when a new monday item is
+  // created, the form may fill the phone column 10–30 seconds later. The
+  // execute endpoint marks those rows 'pending'; we pick them up here and
+  // retry until the phone fills or MAX_WAIT_MIN elapses.
+  const recipeResult = await processPendingRecipeRuns({ cutoff })
+
+  return NextResponse.json({
+    ok: true,
+    processed: rows.length,
+    sent,
+    gaveUp,
+    stillPending,
+    recipe: recipeResult,
+  })
+}
+
+async function processPendingRecipeRuns({ cutoff }) {
+  const { data: rows, error } = await supabaseAdmin
+    .from('monday_recipe_runs')
+    .select('id, integration_id, monday_item_id, monday_board_id, workspace_id, created_at')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true })
+    .limit(BATCH)
+
+  if (error) {
+    console.error('[process-pending] recipe query error:', error)
+    return { error: error.message }
+  }
+  if (!rows || rows.length === 0) return { processed: 0, sent: 0, gaveUp: 0, stillPending: 0 }
+
+  // Load the matching subscriptions in one go — input_fields lives there.
+  const integrationIds = [...new Set(rows.map(r => r.integration_id))]
+  const { data: subs } = await supabaseAdmin
+    .from('monday_recipe_subscriptions')
+    .select('integration_id, input_fields')
+    .in('integration_id', integrationIds)
+  const subByIntegrationId = new Map((subs || []).map(s => [s.integration_id, s]))
+
+  let sent = 0, gaveUp = 0, stillPending = 0
+
+  for (const row of rows) {
+    const sub = subByIntegrationId.get(row.integration_id)
+    if (!sub?.input_fields) {
+      // Subscription missing — recipe was likely removed in monday. Give up.
+      await supabaseAdmin.from('monday_recipe_runs')
+        .update({ status: 'failed', detail: 'Subscription missing', updated_at: new Date().toISOString() })
+        .eq('id', row.id)
+      gaveUp++
+      continue
+    }
+
+    const outcome = await processRecipeRun({
+      workspaceId: row.workspace_id,
+      boardId:     row.monday_board_id,
+      itemId:      row.monday_item_id,
+      inputFields: sub.input_fields,
+    })
+
+    if (outcome.status === 'pending') {
+      // Still no phone — give up if aged out, otherwise leave alone.
+      if (new Date(row.created_at).getTime() < cutoff) {
+        await supabaseAdmin.from('monday_recipe_runs')
+          .update({
+            status: 'failed',
+            detail: `Phone never filled within ${MAX_WAIT_MIN} min`,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', row.id)
+        gaveUp++
+      } else {
+        stillPending++
+      }
+      continue
+    }
+
+    await supabaseAdmin.from('monday_recipe_runs')
+      .update({
+        status: outcome.status,
+        detail: outcome.detail || null,
+        conversation_id: outcome.conversationId || null,
+        message_id: outcome.messageId || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', row.id)
+    if (outcome.status === 'sent') sent++
+    else gaveUp++
+  }
+
+  console.log('[process-pending] recipe runs processed', { picked: rows.length, sent, gaveUp, stillPending })
+  return { processed: rows.length, sent, gaveUp, stillPending }
 }
