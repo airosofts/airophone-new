@@ -2,13 +2,25 @@ import { NextResponse } from 'next/server'
 import { getSessionFromRequest } from '@/lib/jwt'
 
 // Routes that don't require authentication
-const PUBLIC_ROUTES = ['/login', '/signup', '/auth/callback']
+const PUBLIC_ROUTES = [
+  '/login',
+  '/signup',
+  '/auth/callback',
+  // App-onboarding page iframed by monday.com after install. Visitors are
+  // monday users who haven't yet signed into AiroPhone — must be accessible
+  // without a session.
+  '/integrations/monday/welcome',
+]
 const PUBLIC_API_ROUTES = [
   '/api/auth/login',
   '/api/auth/signup',
   '/api/auth/google',
   '/api/webhooks',   // Telnyx + Monday webhooks — no session, verified by signature
   '/api/external',   // External API key endpoints — Bearer-token auth handled in route
+  // Monday Integration Recipe endpoints — authenticated by a JWT monday signs
+  // with MONDAY_SIGNING_SECRET (verified inside each route via
+  // lib/monday-recipe). They have no AiroPhone user session.
+  '/api/integrations/monday/recipe',
   // followup-cron endpoint — gated by Bearer CRON_SECRET inside the route,
   // not by user session. Middleware would otherwise 401 it (cron sends the
   // raw CRON_SECRET as Bearer, which isn't a valid JWT).
