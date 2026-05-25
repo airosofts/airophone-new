@@ -11,6 +11,11 @@ import { processAutomationItem } from '@/lib/monday-automation'
 import { isInBusinessHours, nextBusinessTime } from '@/lib/scheduling'
 
 const MAX_WAIT_MIN = 120   // stop retrying a lead whose phone never arrives
+// If a 'scheduled' row's scheduled_at is more than this many minutes in the
+// past, mark it failed instead of sending. Protects against burst-sends when
+// the sweeper recovers after a long outage — we'd rather a lead get no text
+// than a "Hey John!" message 90 minutes after they filled the form.
+const STALE_SCHEDULED_MIN = 60
 const BATCH = 100
 
 export async function POST(request) {
@@ -84,6 +89,22 @@ export async function POST(request) {
         .eq('id', row.id)
       gaveUp++
       continue
+    }
+
+    // Staleness guard: a scheduled row whose target time is long past — almost
+    // certainly because the sweeper was down — should be dropped rather than
+    // surprise-fired. Pending rows (no phone yet) use the separate aging logic
+    // below; they can wait the full MAX_WAIT_MIN.
+    if (row.status === 'scheduled' && row.scheduled_at) {
+      const ageMin = (Date.now() - new Date(row.scheduled_at).getTime()) / 60000
+      if (ageMin > STALE_SCHEDULED_MIN) {
+        await supabaseAdmin.from('monday_automation_sends')
+          .update({ status: 'failed', detail: `Stale: scheduled_at was ${Math.round(ageMin)} min in the past (sweeper outage?)` })
+          .eq('id', row.id)
+        console.warn(`[process-pending] dropped stale row ${row.id} — ${Math.round(ageMin)} min past scheduled_at`)
+        gaveUp++
+        continue
+      }
     }
 
     // Business-hours check for scheduled rows: if the time arrived but the

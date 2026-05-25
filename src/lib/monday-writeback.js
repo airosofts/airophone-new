@@ -65,23 +65,39 @@ function buildColumnValue(columnType, configuredValue) {
 // Run the writeback for a given event. `event` is 'reply' or 'done'.
 export async function runWriteback(conversationId, event) {
   try {
-    const link = await resolveMondayItem(conversationId)
-    if (!link) return   // conversation wasn't created by a Monday automation
+    console.log(`[monday-writeback] ${event}: starting for conversation ${conversationId}`)
 
-    const { data: config } = await supabaseAdmin
+    const link = await resolveMondayItem(conversationId)
+    if (!link) {
+      console.log(`[monday-writeback] ${event}: skipped — no monday_automation_sends row links this conversation (conversation wasn't created by a Monday automation, or the link is missing)`)
+      return
+    }
+    console.log(`[monday-writeback] ${event}: resolved link`, link)
+
+    const { data: config, error: cfgErr } = await supabaseAdmin
       .from('monday_writeback_configs')
       .select('*')
       .eq('workspace_id', link.workspaceId)
       .eq('board_id', link.boardId)
       .maybeSingle()
 
-    if (!config) return   // no rules set for this board
+    if (cfgErr) {
+      console.error(`[monday-writeback] ${event}: config query error`, cfgErr)
+      return
+    }
+    if (!config) {
+      console.log(`[monday-writeback] ${event}: skipped — no writeback config for board ${link.boardId}`)
+      return
+    }
 
     const columnId = event === 'reply' ? config.on_reply_column_id : config.on_done_column_id
     const columnType = event === 'reply' ? config.on_reply_column_type : config.on_done_column_type
     const value = event === 'reply' ? config.on_reply_value : config.on_done_value
 
-    if (!columnId || !columnType) return   // nothing configured for this event
+    if (!columnId || !columnType) {
+      console.log(`[monday-writeback] ${event}: skipped — nothing configured for this event (columnId=${columnId}, columnType=${columnType})`)
+      return
+    }
 
     const payload = buildColumnValue(columnType, value)
     if (payload === null) {
@@ -89,10 +105,13 @@ export async function runWriteback(conversationId, event) {
       return
     }
 
+    console.log(`[monday-writeback] ${event}: calling Monday updateColumnValue`, {
+      board: link.boardId, item: link.itemId, column: columnId, payload,
+    })
     await updateColumnValue(link.workspaceId, link.boardId, link.itemId, columnId, payload)
-    console.log(`[monday-writeback] ${event}: updated board ${link.boardId} item ${link.itemId} column ${columnId}`)
+    console.log(`[monday-writeback] ${event}: ✅ updated board ${link.boardId} item ${link.itemId} column ${columnId}`)
   } catch (err) {
     // Never let a writeback error break the calling flow.
-    console.error(`[monday-writeback] ${event} failed:`, err.message || err)
+    console.error(`[monday-writeback] ${event} failed:`, err?.message || err, err?.errors || '')
   }
 }
