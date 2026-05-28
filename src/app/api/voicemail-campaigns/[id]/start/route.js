@@ -138,8 +138,8 @@ async function processVoicemailCampaign(campaign, contacts, userId, workspaceId,
 
       if (!result.ok) {
         failedCount++
-        const errMsg = result.data?.message || result.data?.error || 'VoiceDrop rejected the request'
-        console.error('[voicemail-campaigns:start] VoiceDrop failed for', contact.phone, errMsg, result.data)
+        const errMsg = result.data?.message || result.data?.error || 'The voicemail request was rejected'
+        console.error('[voicemail-campaigns:start] voicemail send failed for', contact.phone, errMsg, result.data)
         await supabaseAdmin.from('messages').insert({
           conversation_id: conversation.id,
           direction: 'outbound',

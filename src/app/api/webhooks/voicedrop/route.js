@@ -29,8 +29,8 @@ export async function POST(request) {
     // payload.reason or payload.error carries the actual failure reason.
     // payload.message is VoiceDrop's generic queue-confirmation text — ignore it.
     errorMessage = payload.reason || payload.error || payload.failure_reason || (
-        status === 'not-delivered' ? 'Not delivered — sender number may not be verified with VoiceDrop'
-      : status.startsWith('skipped') ? 'Skipped (recipient phone could not receive RVM)'
+        status === 'not-delivered' ? 'Not delivered — sender number may not be verified for voicemail'
+      : status.startsWith('skipped') ? 'Skipped (recipient phone could not receive the voicemail)'
       : 'Send failed'
     )
     errorCode = 'voicedrop_' + status.replace(/[^a-z]/g, '_')

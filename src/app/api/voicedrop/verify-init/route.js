@@ -43,7 +43,7 @@ export async function POST(request) {
 
   if (!result.ok) {
     return NextResponse.json(
-      { error: result.data?.message || result.data?.error || 'VoiceDrop rejected the verification request' },
+      { error: result.data?.message || result.data?.error || 'The verification request was rejected' },
       { status: 400 }
     )
   }

@@ -1802,7 +1802,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
                       </div>
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-[#131210] truncate">{uploadState.name}</p>
-                        <p className="text-xs text-[#9B9890]">{uploadState.voicedropUrl ? 'Uploaded to VoiceDrop' : 'Stored locally'}</p>
+                        <p className="text-xs text-[#9B9890]">{uploadState.voicedropUrl ? 'Audio uploaded' : 'Stored locally'}</p>
                       </div>
                     </div>
                     <button
@@ -1850,7 +1850,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
                 <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                   <p className="text-xs text-yellow-800 flex items-start gap-2">
                     <i className="fas fa-exclamation-triangle mt-0.5 flex-shrink-0"></i>
-                    <span>No VoiceDrop-verified numbers found. Go to <strong>Phone Numbers</strong> settings to verify a number before sending RVMs.</span>
+                    <span>No verified numbers found. Go to <strong>Phone Numbers</strong> settings to verify a number before sending voicemails.</span>
                   </p>
                 </div>
               ) : (

@@ -53,7 +53,7 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Sender number not found in this workspace' }, { status: 400 })
   }
   if (!pn.voicedrop_verified) {
-    return NextResponse.json({ error: 'Sender number is not yet verified with VoiceDrop' }, { status: 400 })
+    return NextResponse.json({ error: 'Sender number is not yet verified for voicemail' }, { status: 400 })
   }
 
   const { data: campaign, error } = await supabaseAdmin

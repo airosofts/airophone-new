@@ -69,12 +69,12 @@ export async function uploadAudio(audioBuffer, filename = 'voicemail.mp3', conte
   console.log('[voicedrop:upload]', { httpOk: res.ok, httpStatus: res.status, response: data })
 
   if (!res.ok || data.status !== 'success') {
-    throw new Error(data?.message || `VoiceDrop upload failed (HTTP ${res.status})`)
+    throw new Error(data?.message || `Voicemail audio upload failed (HTTP ${res.status})`)
   }
 
   // Response: { status: "success", message: { recording_url: "https://voicedrop-ai.s3..." } }
   const url = data.message?.recording_url
-  if (!url) throw new Error('VoiceDrop upload succeeded but returned no recording_url')
+  if (!url) throw new Error('Voicemail audio upload succeeded but returned no recording_url')
   return url
 }
 
