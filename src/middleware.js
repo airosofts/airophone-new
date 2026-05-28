@@ -10,6 +10,9 @@ const PUBLIC_ROUTES = [
   // monday users who haven't yet signed into AiroPhone — must be accessible
   // without a session.
   '/integrations/monday/welcome',
+  // Long-form "How to use" docs page linked from the monday marketplace
+  // listing. Reachable by anyone evaluating whether to install the app.
+  '/integrations/monday/setup',
 ]
 const PUBLIC_API_ROUTES = [
   '/api/auth/login',
