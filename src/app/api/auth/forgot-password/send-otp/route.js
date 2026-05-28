@@ -20,12 +20,22 @@ export async function POST(request) {
     // an attacker shouldn't be able to learn which emails have accounts.
     const { data: user } = await supabaseAdmin
       .from('users')
-      .select('id, email, password_reset_sent_at')
+      .select('id, email, password_reset_sent_at, auth_provider, password_hash')
       .eq('email', email)
       .maybeSingle()
 
     if (!user) {
       return NextResponse.json({ success: true })
+    }
+
+    // Google-OAuth accounts have no real password — sending a reset code would
+    // be a dead end (resetting password_hash wouldn't change how they log in,
+    // and they'd still hit "Continue with Google"). Tell them to use Google.
+    const isGoogleAccount =
+      user.auth_provider === 'google' ||
+      (typeof user.password_hash === 'string' && user.password_hash.startsWith('google_oauth_'))
+    if (isGoogleAccount) {
+      return NextResponse.json({ googleAccount: true })
     }
 
     // Resend cooldown — protects Resend quota and the user's inbox.

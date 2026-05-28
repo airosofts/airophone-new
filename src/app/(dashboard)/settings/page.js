@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import ManageNumbers from '@/components/settings/ManageNumbers'
 import MessageTemplates from '@/components/settings/MessageTemplates'
 import ApiKeys from '@/components/settings/ApiKeys'
@@ -64,17 +65,19 @@ const iconColors = {
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('numbers')
   const [mobileShowContent, setMobileShowContent] = useState(false)
+  const searchParams = useSearchParams()
 
-  // Open a specific section via ?section=integrations (used by the Monday
-  // OAuth callback to land users back on the right tab after authorizing).
+  // Open a specific section via ?section=numbers. Used by the Monday OAuth
+  // callback and the sidebar account dropdown. Depends on searchParams so it
+  // re-runs on client-side navigation — clicking "Phone numbers" while already
+  // on /settings still switches the tab (a mount-only effect would not).
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    const section = new URLSearchParams(window.location.search).get('section')
+    const section = searchParams?.get('section')
     if (section) {
       setActiveTab(section)
       setMobileShowContent(true)
     }
-  }, [])
+  }, [searchParams])
 
   const allItems = sections.flatMap(s => s.items)
   const currentItem = allItems.find(i => i.id === activeTab)

@@ -39,13 +39,6 @@ const NAV_ICONS = {
       <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/>
     </svg>
   ),
-  '/voicemails': (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="6" cy="14" r="4"/>
-      <circle cx="18" cy="14" r="4"/>
-      <line x1="6" y1="18" x2="18" y2="18"/>
-    </svg>
-  ),
   '/call-history': (
     <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor">
       <path d="M3.34459 3.76868C4.23952 2.87405 5.69 2.87484 6.58482 3.76965L7.56236 4.74719C8.31673 5.5017 8.27235 6.68841 7.49205 7.46887L6.80552 8.15442C7.26201 9.18598 7.95142 10.2114 8.86998 11.13C9.78885 12.0489 10.8148 12.7378 11.8456 13.1935L12.6014 12.4376C13.3333 11.7045 14.5216 11.7054 15.2538 12.4376L16.2313 13.4152L16.3885 13.589C17.1224 14.4894 17.0703 15.8172 16.2313 16.6564L15.6883 17.1993C14.9161 17.9714 13.8128 18.2818 12.7391 18.0792C10.4215 17.6411 7.92727 16.3064 5.81041 14.1896C3.69372 12.0729 2.35899 9.57932 1.92076 7.26184V7.26086C1.71826 6.18712 2.02938 5.08388 2.80162 4.31165L3.34459 3.76868ZM5.70103 4.65344C5.31975 4.27216 4.71655 4.24765 4.30748 4.58118L4.22838 4.65344L3.68443 5.19641C3.22226 5.65909 3.01862 6.33697 3.14927 7.02942L3.23033 7.41418C3.68625 9.34992 4.85231 11.4639 6.6942 13.3058C8.65886 15.2704 10.9333 16.4654 12.9706 16.8507C13.6634 16.9814 14.3419 16.7773 14.8045 16.3146L15.3475 15.7726C15.7539 15.366 15.7537 14.7067 15.3465 14.299L14.37 13.3214C14.156 13.1074 13.8258 13.0812 13.5838 13.2413L13.4862 13.3214L12.7176 14.09C12.3773 14.4302 11.8455 14.5603 11.371 14.3517V14.3507C10.1848 13.8312 9.02036 13.048 7.98619 12.0138C6.95601 10.9836 6.17437 9.82427 5.65416 8.6427V8.64172C5.44185 8.15995 5.57376 7.61958 5.91978 7.27356L6.60826 6.58508C6.94585 6.24735 6.90054 5.85308 6.67857 5.63098L5.70103 4.65344ZM10.8104 5.21594C11.8292 5.2022 12.8575 5.58055 13.6385 6.36145C14.4199 7.14277 14.7979 8.17167 14.784 9.19055C14.7793 9.53563 14.4953 9.81145 14.1503 9.80676C13.8052 9.80195 13.5294 9.51804 13.534 9.17297C13.5434 8.47368 13.285 7.77547 12.7547 7.24524C12.2243 6.715 11.5261 6.45645 10.827 6.46594C10.4819 6.47062 10.1979 6.19487 10.1932 5.84973C10.1885 5.50459 10.4653 5.22063 10.8104 5.21594ZM16.8895 9.18176C16.8895 7.62748 16.2968 6.07436 15.1112 4.88879C13.9256 3.7034 12.3723 3.11047 10.8182 3.11047C10.4732 3.1103 10.1932 2.83054 10.1932 2.48547C10.1932 2.1404 10.4732 1.86065 10.8182 1.86047C12.6906 1.86047 14.5666 2.57564 15.996 4.005C17.4252 5.43435 18.1395 7.30953 18.1395 9.18176C18.1395 9.52694 17.8597 9.80676 17.5145 9.80676C17.1695 9.80654 16.8895 9.52681 16.8895 9.18176Z"/>
@@ -70,6 +63,17 @@ const NAV_ICONS = {
   ),
 }
 
+/* ── Compact icons for the account dropdown ── */
+const MENU_ICONS = {
+  user: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
+  hash: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>,
+  card: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>,
+  gear: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>,
+  gift: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 010-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 000-5C13 2 12 7 12 7z"/></svg>,
+  help: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
+  logout: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>,
+}
+
 export default function Sidebar({ user, currentPath, onClose, onNotificationNavigate }) {
   const [phoneNumbers, setPhoneNumbers] = useState([])
   const [loading, setLoading] = useState(true)
@@ -80,8 +84,28 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
   const searchParams = useSearchParams()
   const channelRef = useRef(null)
 
+  // Workspace/account dropdown (logout lives in here, not in the always-visible
+  // footer — moving it behind a click prevents accidental sign-outs).
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef(null)
+
   // Get the currently selected phone number from URL
   const selectedPhoneNumber = searchParams?.get('from')
+
+  // Close the account dropdown on outside-click or Escape.
+  useEffect(() => {
+    if (!menuOpen) return
+    const onDocClick = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false)
+    }
+    const onKey = (e) => { if (e.key === 'Escape') setMenuOpen(false) }
+    document.addEventListener('mousedown', onDocClick)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDocClick)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [menuOpen])
 
   useEffect(() => {
     const init = async () => {
@@ -226,7 +250,6 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
     { name: 'Inbox', href: '/inbox' },
     { name: 'Contacts', href: '/contacts' },
     { name: 'Campaigns', href: '/campaigns' },
-    { name: 'Voicemails', href: '/voicemails' },
     { name: 'AI Scenarios', href: '/scenarios' },
     { name: 'Automations', href: '/automations' },
     { name: 'Analytics', href: '/analytics' },
@@ -242,6 +265,29 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
     router.push(`/inbox?from=${encodeURIComponent(phoneNumber)}`)
   }
 
+  // Navigate from a dropdown item, then close the menu (and the mobile drawer).
+  const goTo = (href) => {
+    setMenuOpen(false)
+    if (href.startsWith('mailto:')) { window.location.href = href; return }
+    router.push(href)
+    if (onClose) onClose()
+  }
+
+  // Account dropdown items. Grouped; render order inserts a divider between
+  // groups. Logout is its own trailing group so it sits visually apart.
+  const MENU_GROUPS = [
+    [
+      { label: 'Your profile',      href: '/settings?section=profile',   icon: 'user' },
+      { label: 'Phone numbers',     href: '/settings?section=numbers',   icon: 'hash' },
+      { label: 'Plan & billing',    href: '/billing',                    icon: 'card' },
+      { label: 'Workspace settings', href: '/settings?section=members',  icon: 'gear' },
+    ],
+    [
+      { label: 'Refer & earn',      href: '/settings?section=referrals', icon: 'gift' },
+      { label: 'Help & support',    href: 'mailto:support@airophone.com', icon: 'help' },
+    ],
+  ]
+
   return (
     <div
       className="h-screen flex flex-col z-40"
@@ -253,23 +299,45 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
         fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
       }}
     >
-      {/* ── Header ── */}
-      <div style={{
-        height: 56, display: 'flex', alignItems: 'center',
-        padding: '0 16px', borderBottom: '1px solid #E3E1DB', gap: 9,
-      }}>
-        <div style={{ width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <svg width="26" height="26" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="1" y="1" width="78" height="78" rx="17" stroke="#D63B1F" strokeWidth="2.5"/>
-            <path d="M22 58L40 22L58 58" stroke="#D63B1F" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M29 45H51" stroke="#D63B1F" strokeWidth="4.5" strokeLinecap="round"/>
-            <circle cx="57" cy="21" r="5" fill="#D63B1F"/>
-          </svg>
-        </div>
-        <span style={{ fontSize: 14, fontWeight: 600, letterSpacing: '-0.02em', color: '#131210', flex: 1 }}>
-          AiroPhone
-        </span>
-        <div className="flex items-center gap-1">
+      {/* ── Header: workspace name = account dropdown trigger ── */}
+      <div ref={menuRef} style={{ position: 'relative', borderBottom: '1px solid #E3E1DB' }}>
+        <div style={{
+          height: 56, display: 'flex', alignItems: 'center',
+          padding: '0 10px 0 10px', gap: 6,
+        }}>
+          <button
+            onClick={() => setMenuOpen(o => !o)}
+            style={{
+              flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 9,
+              padding: '6px 8px', borderRadius: 8, border: 'none', cursor: 'pointer',
+              background: menuOpen ? '#F7F6F3' : 'transparent',
+              fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+              transition: 'background 0.12s',
+            }}
+            onMouseEnter={(e) => { if (!menuOpen) e.currentTarget.style.background = '#F7F6F3' }}
+            onMouseLeave={(e) => { if (!menuOpen) e.currentTarget.style.background = 'transparent' }}
+          >
+            {/* Workspace avatar — initial of the workspace name */}
+            <div style={{
+              width: 26, height: 26, borderRadius: 7, flexShrink: 0,
+              background: '#D63B1F', color: '#fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 12, fontWeight: 700, letterSpacing: '-0.02em',
+            }}>
+              {(user?.workspaceName || 'A').charAt(0).toUpperCase()}
+            </div>
+            <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+              <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: '-0.01em', color: '#131210', lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {user?.workspaceName || 'AiroPhone'}
+              </div>
+              <div style={{ fontSize: '9.5px', color: '#9B9890', fontFamily: "'JetBrains Mono', monospace", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {user?.name || user?.email}
+              </div>
+            </div>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9B9890" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, transform: menuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
           <NotificationPanel onNavigateToConversation={onNotificationNavigate} />
           {onClose && (
             <button onClick={onClose} className="lg:hidden p-1 rounded" style={{ color: '#9B9890' }}>
@@ -279,6 +347,76 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
             </button>
           )}
         </div>
+
+        {/* Dropdown */}
+        {menuOpen && (
+          <div style={{
+            position: 'absolute', top: 52, left: 8, right: 8, zIndex: 60,
+            background: '#fff', border: '1px solid #E3E1DB', borderRadius: 12,
+            boxShadow: '0 12px 32px -12px rgba(19,18,16,0.28), 0 2px 8px -4px rgba(19,18,16,0.12)',
+            padding: 6, fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+          }}>
+            {/* Identity block */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 10px 10px' }}>
+              {user?.profile_photo_url ? (
+                <img src={user.profile_photo_url} alt={user.name} style={{ width: 30, height: 30, borderRadius: '50%', flexShrink: 0 }} />
+              ) : (
+                <div style={{
+                  width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
+                  background: 'rgba(214,59,31,0.14)', color: '#D63B1F',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 11, fontWeight: 600,
+                }}>{user?.name?.charAt(0)?.toUpperCase()}</div>
+              )}
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 600, color: '#131210', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name}</div>
+                <div style={{ fontSize: '10px', color: '#9B9890', fontFamily: "'JetBrains Mono', monospace", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.email}</div>
+              </div>
+            </div>
+
+            {MENU_GROUPS.map((group, gi) => (
+              <div key={gi} style={{ borderTop: '1px solid #F0EEE9', padding: '4px 0' }}>
+                {group.map((it) => (
+                  <button
+                    key={it.label}
+                    onClick={() => goTo(it.href)}
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '7px 10px', borderRadius: 7, border: 'none', cursor: 'pointer',
+                      background: 'transparent', textAlign: 'left',
+                      fontSize: 12.5, color: '#131210',
+                      fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = '#F7F6F3' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                  >
+                    <span style={{ width: 15, height: 15, flexShrink: 0, color: '#9B9890', display: 'flex' }}>{MENU_ICONS[it.icon]}</span>
+                    <span>{it.label}</span>
+                  </button>
+                ))}
+              </div>
+            ))}
+
+            {/* Logout — separated, danger-tinted */}
+            <div style={{ borderTop: '1px solid #F0EEE9', padding: '4px 0 0' }}>
+              <button
+                onClick={() => { setMenuOpen(false); handleLogout() }}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '7px 10px', borderRadius: 7, border: 'none', cursor: 'pointer',
+                  background: 'transparent', textAlign: 'left',
+                  fontSize: 12.5, fontWeight: 500, color: '#D63B1F',
+                  fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(214,59,31,0.07)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+              >
+                <span style={{ width: 15, height: 15, flexShrink: 0, display: 'flex' }}>{MENU_ICONS.logout}</span>
+                <span>Log out</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Navigation ── */}
@@ -386,52 +524,6 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
           )}
         </div>
       </nav>
-
-      {/* ── User Profile ── */}
-      <div
-        className="group"
-        style={{
-          padding: '12px 16px', borderTop: '1px solid #E3E1DB',
-          display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer',
-        }}
-      >
-        <div style={{ position: 'relative', flexShrink: 0 }}>
-          {user?.profile_photo_url ? (
-            <img src={user.profile_photo_url} alt={user.name} style={{ width: 26, height: 26, borderRadius: '50%' }} />
-          ) : (
-            <div style={{
-              width: 26, height: 26, borderRadius: '50%',
-              background: 'rgba(214,59,31,0.14)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 9, fontWeight: 600, color: '#D63B1F',
-            }}>
-              {user?.name?.charAt(0)?.toUpperCase()}
-            </div>
-          )}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 500, color: '#131210', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {user?.name}
-          </div>
-          <div style={{
-            fontSize: '9.5px', color: '#9B9890',
-            fontFamily: "'JetBrains Mono', monospace",
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>
-            {user?.email}
-          </div>
-        </div>
-        <button
-          onClick={handleLogout}
-          className="opacity-0 group-hover:opacity-100 transition-opacity"
-          style={{ padding: 2, color: '#9B9890', background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }}
-          title="Sign out"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>
-          </svg>
-        </button>
-      </div>
     </div>
   )
 }

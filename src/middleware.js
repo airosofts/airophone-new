@@ -6,6 +6,10 @@ const PUBLIC_ROUTES = [
   '/login',
   '/signup',
   '/auth/callback',
+  // Password reset flow — reached by logged-out users who can't sign in.
+  // Without this, middleware redirects them to /login?redirect=/forgot-password
+  // and the page is unreachable.
+  '/forgot-password',
   // App-onboarding page iframed by monday.com after install. Visitors are
   // monday users who haven't yet signed into AiroPhone — must be accessible
   // without a session.
@@ -18,6 +22,7 @@ const PUBLIC_API_ROUTES = [
   '/api/auth/login',
   '/api/auth/signup',
   '/api/auth/google',
+  '/api/auth/forgot-password',   // send-otp / verify-otp / reset — all pre-auth
   '/api/webhooks',   // Telnyx + Monday webhooks — no session, verified by signature
   '/api/external',   // External API key endpoints — Bearer-token auth handled in route
   // Monday Integration Recipe endpoints — authenticated by a JWT monday signs
