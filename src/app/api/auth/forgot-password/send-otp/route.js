@@ -18,11 +18,19 @@ export async function POST(request) {
 
     // Look up user. We always return success below to prevent email enumeration —
     // an attacker shouldn't be able to learn which emails have accounts.
-    const { data: user } = await supabaseAdmin
+    const { data: user, error: lookupErr } = await supabaseAdmin
       .from('users')
       .select('id, email, password_reset_sent_at, auth_provider, password_hash')
       .eq('email', email)
       .maybeSingle()
+
+    // A real DB error (e.g. a missing password_reset_* column because the
+    // migration wasn't applied) must NOT be silently swallowed as "success" —
+    // that returns a fake "we sent a code" while nothing is sent. Surface it.
+    if (lookupErr) {
+      console.error('[forgot-password/send-otp] user lookup failed:', lookupErr)
+      return NextResponse.json({ error: 'Could not start password reset. Please try again.' }, { status: 500 })
+    }
 
     if (!user) {
       return NextResponse.json({ success: true })

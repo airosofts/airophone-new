@@ -13,11 +13,16 @@ export async function POST(request) {
     const email = String(rawEmail).toLowerCase().trim()
     const code = String(rawCode).trim()
 
-    const { data: user } = await supabaseAdmin
+    const { data: user, error: lookupErr } = await supabaseAdmin
       .from('users')
       .select('id, password_reset_code, password_reset_expires_at, password_reset_attempts')
       .eq('email', email)
       .maybeSingle()
+
+    if (lookupErr) {
+      console.error('[forgot-password/verify-otp] user lookup failed:', lookupErr)
+      return NextResponse.json({ error: 'Verification failed. Please try again.' }, { status: 500 })
+    }
 
     // Generic message — don't leak whether the email exists.
     if (!user || !user.password_reset_code) {

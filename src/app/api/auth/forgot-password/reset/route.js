@@ -14,11 +14,16 @@ export async function POST(request) {
     const email = String(rawEmail).toLowerCase().trim()
     const code = String(rawCode).trim()
 
-    const { data: user } = await supabaseAdmin
+    const { data: user, error: lookupErr } = await supabaseAdmin
       .from('users')
       .select('id, password_reset_code, password_reset_expires_at')
       .eq('email', email)
       .maybeSingle()
+
+    if (lookupErr) {
+      console.error('[forgot-password/reset] user lookup failed:', lookupErr)
+      return NextResponse.json({ error: 'Could not reset password. Please try again.' }, { status: 500 })
+    }
 
     if (!user || !user.password_reset_code) {
       return NextResponse.json({ error: 'Invalid or expired code' }, { status: 400 })
