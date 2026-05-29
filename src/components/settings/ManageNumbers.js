@@ -37,6 +37,8 @@ export default function ManageNumbers() {
   const [editingNumberName, setEditingNumberName] = useState('')
   const [editingNumberPrefix, setEditingNumberPrefix] = useState('')
   const [repairingCalling, setRepairingCalling] = useState(false)
+  // Per-number voicemail verification flow: { id, phoneNumber, step:'idle'|'sent', code, busy }
+  const [verify, setVerify] = useState(null)
 
   useEffect(() => {
     const init = async () => {
@@ -362,6 +364,50 @@ export default function ManageNumbers() {
     }
   }
 
+  // ── Voicemail (ringless) number verification ──────────────────────────────
+  // One-time per number: place an automated call that reads a code, then the
+  // user types it back to prove they own the line. On success the number is
+  // flagged so it can be used as a sender for voicemail campaigns.
+  const startVerify = (number) =>
+    setVerify({ id: number.id, phoneNumber: number.phoneNumber, step: 'idle', code: '', busy: false })
+
+  const sendVerifyCall = async () => {
+    setVerify(v => ({ ...v, busy: true }))
+    try {
+      const res = await apiPost('/api/voicedrop/verify-init', { phoneNumber: verify.phoneNumber })
+      const data = await res.json()
+      if (!res.ok) {
+        setShowError({ title: 'Verification failed', message: data.error || 'Could not place the verification call.' })
+        setVerify(v => ({ ...v, busy: false }))
+        return
+      }
+      setVerify(v => ({ ...v, step: 'sent', busy: false }))
+    } catch {
+      setShowError({ title: 'Verification failed', message: 'Could not place the verification call. Please try again.' })
+      setVerify(v => ({ ...v, busy: false }))
+    }
+  }
+
+  const submitVerifyCode = async () => {
+    setVerify(v => ({ ...v, busy: true }))
+    try {
+      const res = await apiPost('/api/voicedrop/verify-confirm', { phoneNumber: verify.phoneNumber, code: verify.code.trim() })
+      const data = await res.json()
+      if (!res.ok) {
+        setShowError({ title: 'Code rejected', message: data.error || 'That code was not correct.' })
+        setVerify(v => ({ ...v, busy: false }))
+        return
+      }
+      const verifiedId = verify.id
+      setMyNumbers(prev => prev.map(n => n.id === verifiedId ? { ...n, voicedrop_verified: true } : n))
+      setVerify(null)
+      await fetchMyNumbers()
+    } catch {
+      setShowError({ title: 'Verification failed', message: 'Could not verify the code. Please try again.' })
+      setVerify(v => ({ ...v, busy: false }))
+    }
+  }
+
   const handleRepairCalling = async () => {
     setRepairingCalling(true)
     try {
@@ -540,7 +586,8 @@ export default function ManageNumbers() {
             {myNumbers.map((number, index) => {
               const isEditing = editingNumberId === number.id
               return (
-                <div key={index} className="px-5 py-3 flex items-center gap-4 hover:bg-[#F7F6F3]">
+                <div key={index}>
+                <div className="px-5 py-3 flex items-center gap-4 hover:bg-[#F7F6F3]">
                   <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
                     number.campaign_status === 'rejected' ? 'bg-red-500' :
                     number.campaign_status === 'pending' ? 'bg-yellow-400' :
@@ -623,6 +670,21 @@ export default function ManageNumbers() {
                         </span>
                       )
                     })()}
+                    {!isEditing && (
+                      number.voicedrop_verified ? (
+                        <span className="px-2 py-0.5 text-xs rounded-full bg-green-50 text-green-700 font-medium" title="Verified for ringless voicemail">
+                          <i className="fas fa-microphone mr-1"></i>Voicemail ready
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => startVerify(number)}
+                          className="px-2 py-0.5 text-xs rounded-full border border-[rgba(214,59,31,0.3)] text-[#D63B1F] hover:bg-[rgba(214,59,31,0.06)] font-medium"
+                          title="Verify this number so it can send ringless voicemails"
+                        >
+                          <i className="fas fa-microphone mr-1"></i>Verify for voicemail
+                        </button>
+                      )
+                    )}
                     {isEditing ? (
                       <div className="flex gap-1.5">
                         <button onClick={() => saveCustomName(number.id)} className="px-2.5 py-1 text-xs font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded">Save</button>
@@ -634,6 +696,55 @@ export default function ManageNumbers() {
                       </button>
                     )}
                   </div>
+                </div>
+
+                {/* Voicemail verification panel */}
+                {verify?.id === number.id && (
+                  <div className="px-5 pb-3.5 bg-[#F7F6F3] border-t border-[#EFEDE8]">
+                    <div className="mt-3 p-3 bg-[rgba(214,59,31,0.05)] border border-[rgba(214,59,31,0.2)] rounded-lg">
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-[12.5px] text-[#131210] font-medium">Verify this number for voicemail</p>
+                        <button onClick={() => setVerify(null)} className="text-xs text-[#9B9890] hover:text-[#5C5A55]">Cancel</button>
+                      </div>
+                      <p className="text-[11.5px] text-[#5C5A55] mb-2.5 leading-relaxed">
+                        One-time setup. We&rsquo;ll place an automated call to <span className="font-mono">{formatPhoneNumber(number.phoneNumber)}</span> that reads you a code — enter it below.
+                      </p>
+                      {verify.step === 'idle' && (
+                        <button
+                          onClick={sendVerifyCall}
+                          disabled={verify.busy}
+                          className="px-3 py-1.5 text-xs font-medium text-white bg-[#131210] rounded-md disabled:opacity-50"
+                        >
+                          {verify.busy ? 'Calling…' : 'Send verification call'}
+                        </button>
+                      )}
+                      {verify.step === 'sent' && (
+                        <div className="flex gap-2">
+                          <input
+                            value={verify.code}
+                            onChange={(e) => setVerify(v => ({ ...v, code: e.target.value }))}
+                            placeholder="Enter code"
+                            className="flex-1 max-w-[180px] px-2.5 py-1.5 text-xs border border-[#D4D1C9] rounded-md focus:outline-none focus:border-[#D63B1F]"
+                          />
+                          <button
+                            onClick={submitVerifyCode}
+                            disabled={verify.busy || !verify.code.trim()}
+                            className="px-3 py-1.5 text-xs font-medium text-white bg-[#D63B1F] rounded-md disabled:opacity-50"
+                          >
+                            {verify.busy ? 'Verifying…' : 'Verify'}
+                          </button>
+                          <button
+                            onClick={sendVerifyCall}
+                            disabled={verify.busy}
+                            className="px-2.5 py-1.5 text-xs text-[#5C5A55] hover:text-[#131210]"
+                          >
+                            Resend
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
                 </div>
               )
             })}
