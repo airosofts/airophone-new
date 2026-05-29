@@ -124,6 +124,23 @@ export function extractInputFields(body) {
   return body?.payload?.inputFields || {}
 }
 
+// Parse the optional "wait N minutes" recipe field into an integer count of
+// minutes. Monday sends a custom List field value wrapped as { value, title }
+// (or sometimes a raw string / stringified object). Returns 0 when unset or
+// unparseable, and clamps to a sane ceiling so a typo can't park a send for
+// days.
+export function parseDelayMinutes(inputFields) {
+  const raw = inputFields?.delayMinutes
+  let v = raw
+  if (v && typeof v === 'object') v = v.value
+  else if (typeof v === 'string' && v.trim().startsWith('{')) {
+    try { v = JSON.parse(v).value } catch {}
+  }
+  const n = parseInt(v, 10)
+  if (!Number.isFinite(n) || n <= 0) return 0
+  return Math.min(n, 720)   // cap at 12h
+}
+
 export function extractIds(body) {
   const p = body?.payload || {}
   return {

@@ -30,6 +30,7 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
 import {
   withRecipeAuth, workspaceForMondayAccount, extractInputFields, extractIds,
+  parseDelayMinutes,
 } from '@/lib/monday-recipe'
 import { processRecipeRun } from '@/lib/monday-recipe-process'
 
@@ -62,6 +63,14 @@ export const POST = withRecipeAuth(async (request, { payload, body }) => {
     return NextResponse.json({ ok: true, skipped: 'missing_input' })
   }
 
+  // Optional "wait N minutes" delay. 0 = send now (with the usual pending
+  // retry if the phone column isn't filled yet); >0 = park as 'scheduled'
+  // and let the sweeper send once scheduled_at passes.
+  const delayMinutes = parseDelayMinutes(fields)
+  const scheduledAt = new Date(Date.now() + delayMinutes * 60_000)
+  const dueNow = delayMinutes === 0
+  const initialStatus = dueNow ? 'pending' : 'scheduled'
+
   // Dedup on (integrationId, itemId) — same lead shouldn't get pinged twice
   // if monday redelivers the action. Falls back to (workspace + item) when
   // integrationId is absent (it always should be present in prod).
@@ -73,7 +82,8 @@ export const POST = withRecipeAuth(async (request, { payload, body }) => {
       monday_item_id:   String(itemId),
       monday_board_id:  String(boardId),
       workspace_id:     workspaceId,
-      status:           'pending',
+      status:           initialStatus,
+      scheduled_at:     scheduledAt.toISOString(),
     })
   if (claimErr && claimErr.code !== '23505') {
     console.error('[monday-recipe/execute] dedup claim error:', claimErr)
@@ -84,8 +94,8 @@ export const POST = withRecipeAuth(async (request, { payload, body }) => {
   }
 
   // Stash the recipe inputs on the subscription row keyed by integrationId
-  // so the sweeper can retry pending rows without re-receiving monday's
-  // signed payload (we don't keep that around).
+  // so the sweeper can retry pending/scheduled rows without re-receiving
+  // monday's signed payload (we don't keep that around).
   if (ids.integrationId) {
     await supabaseAdmin
       .from('monday_recipe_subscriptions')
@@ -100,6 +110,12 @@ export const POST = withRecipeAuth(async (request, { payload, body }) => {
         },
         { onConflict: 'integration_id' },
       )
+  }
+
+  // Delayed send — don't process now. The sweeper picks it up at scheduled_at.
+  if (!dueNow) {
+    console.log(`[monday-recipe/execute] scheduled for ${scheduledAt.toISOString()} (${delayMinutes}m delay)`, { workspaceId, itemId })
+    return NextResponse.json({ ok: true, status: 'scheduled', scheduledAt: scheduledAt.toISOString() })
   }
 
   const outcome = await processRecipeRun({

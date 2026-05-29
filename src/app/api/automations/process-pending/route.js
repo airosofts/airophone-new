@@ -168,10 +168,15 @@ export async function POST(request) {
 }
 
 async function processPendingRecipeRuns({ cutoff }) {
+  // Pick up two kinds of rows:
+  //   - 'pending'   → send now / phone-fill retry
+  //   - 'scheduled' → a "wait N minutes" delay whose scheduled_at has passed
+  const nowIso = new Date().toISOString()
   const { data: rows, error } = await supabaseAdmin
     .from('monday_recipe_runs')
-    .select('id, integration_id, monday_item_id, monday_board_id, workspace_id, created_at')
-    .eq('status', 'pending')
+    .select('id, integration_id, monday_item_id, monday_board_id, workspace_id, created_at, status, scheduled_at')
+    .in('status', ['pending', 'scheduled'])
+    .or(`status.eq.pending,scheduled_at.lte.${nowIso}`)
     .order('created_at', { ascending: true })
     .limit(BATCH)
 
