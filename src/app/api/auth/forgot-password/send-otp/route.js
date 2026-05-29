@@ -18,9 +18,13 @@ export async function POST(request) {
 
     // Look up user. We always return success below to prevent email enumeration —
     // an attacker shouldn't be able to learn which emails have accounts.
+    // NOTE: select only columns guaranteed to exist. We intentionally do NOT
+    // select `auth_provider` — it may not exist on every deployment, and a
+    // missing column fails the whole SELECT. Google accounts are detected via
+    // the `password_hash` sentinel below, which is always present.
     const { data: user, error: lookupErr } = await supabaseAdmin
       .from('users')
-      .select('id, email, password_reset_sent_at, auth_provider, password_hash')
+      .select('id, email, password_reset_sent_at, password_hash')
       .eq('email', email)
       .maybeSingle()
 
@@ -37,11 +41,10 @@ export async function POST(request) {
     }
 
     // Google-OAuth accounts have no real password — sending a reset code would
-    // be a dead end (resetting password_hash wouldn't change how they log in,
-    // and they'd still hit "Continue with Google"). Tell them to use Google.
+    // be a dead end. Detected via the password_hash sentinel the Google OAuth
+    // route writes (`google_oauth_<timestamp>`). Tell them to use Google.
     const isGoogleAccount =
-      user.auth_provider === 'google' ||
-      (typeof user.password_hash === 'string' && user.password_hash.startsWith('google_oauth_'))
+      typeof user.password_hash === 'string' && user.password_hash.startsWith('google_oauth_')
     if (isGoogleAccount) {
       return NextResponse.json({ googleAccount: true })
     }

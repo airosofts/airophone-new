@@ -1737,8 +1737,20 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
       }
       const response = await apiPost('/api/voicemail-campaigns', payload)
       const data = await response.json()
-      if (data.success) { setCreated(true) }
-      else { setErrors({ submit: data.error || 'Failed to create campaign' }) }
+      if (!data.success) {
+        setErrors({ submit: data.error || 'Failed to create campaign' })
+        return
+      }
+      // Auto-launch immediately after create — matches the original (working)
+      // voicemail flow. Without this the campaign stays a 'draft' and nothing
+      // is ever sent. The /start route claims the draft and dispatches the RVMs.
+      const startRes = await apiPost(`/api/voicemail-campaigns/${data.campaign.id}/start`, {})
+      const startData = await startRes.json()
+      if (!startRes.ok || !startData.success) {
+        setErrors({ submit: startData.message || startData.error || 'Created as draft — could not start. Open it and press Launch to retry.' })
+        return
+      }
+      setCreated(true)
     } catch {
       setErrors({ submit: 'Failed to create campaign. Please try again.' })
     } finally {
