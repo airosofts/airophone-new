@@ -59,6 +59,14 @@ export async function PATCH(request, { params }) {
   }
   if (typeof body.respect_business_hours === 'boolean') {
     update.respect_business_hours = body.respect_business_hours
+    update.business_hours_mode = body.respect_business_hours ? 'within' : 'anytime'
+  }
+  if (body.business_hours_mode !== undefined) {
+    if (!['anytime', 'within', 'outside'].includes(body.business_hours_mode)) {
+      return NextResponse.json({ error: 'business_hours_mode must be anytime, within, or outside' }, { status: 400 })
+    }
+    update.business_hours_mode = body.business_hours_mode
+    update.respect_business_hours = body.business_hours_mode === 'within'   // keep legacy column in sync
   }
 
   // Message mode + content are coupled — if mode is changing, set the matching
