@@ -559,7 +559,7 @@ function CreateAutomationModal({ phoneNumbers, automation, onClose, onCreated })
         aiInstructions: '', senderPhoneNumberId: '',
         delayAmount: 0,
         delayUnit: 'minutes',
-        respectBusinessHours: false,
+        businessHoursMode: 'anytime',
       }
     }
     const { amount, unit } = secondsToAmountUnit(automation.send_delay_seconds)
@@ -575,7 +575,7 @@ function CreateAutomationModal({ phoneNumbers, automation, onClose, onCreated })
       senderPhoneNumberId: String(automation.sender_phone_number_id || ''),
       delayAmount: amount,
       delayUnit: unit,
-      respectBusinessHours: !!automation.respect_business_hours,
+      businessHoursMode: automation.business_hours_mode || (automation.respect_business_hours ? 'within' : 'anytime'),
     }
   })()
 
@@ -640,7 +640,7 @@ function CreateAutomationModal({ phoneNumbers, automation, onClose, onCreated })
             ai_instructions: form.aiInstructions,
             sender_phone_number_id: form.senderPhoneNumberId,
             send_delay_seconds: delayToSeconds(form.delayAmount, form.delayUnit),
-            respect_business_hours: form.respectBusinessHours,
+            business_hours_mode: form.businessHoursMode,
           }
         : {
             name: form.name,
@@ -653,7 +653,7 @@ function CreateAutomationModal({ phoneNumbers, automation, onClose, onCreated })
             ai_instructions: form.aiInstructions,
             sender_phone_number_id: form.senderPhoneNumberId,
             send_delay_seconds: delayToSeconds(form.delayAmount, form.delayUnit),
-            respect_business_hours: form.respectBusinessHours,
+            business_hours_mode: form.businessHoursMode,
           }
 
       const res = await fetchWithWorkspace(url, { method, body: JSON.stringify(payload) })
@@ -851,17 +851,22 @@ function CreateAutomationModal({ phoneNumbers, automation, onClose, onCreated })
 
               <div>
                 <label className={labelCls}>Business hours</label>
-                <label className="flex items-center gap-2 px-3 py-2.5 border border-[#D4D1C9] rounded-lg cursor-pointer bg-white">
-                  <input
-                    type="checkbox"
-                    checked={form.respectBusinessHours}
-                    onChange={(e) => setForm(f => ({ ...f, respectBusinessHours: e.target.checked }))}
-                    className="w-4 h-4 accent-[#D63B1F]"
-                  />
-                  <span className="text-sm text-[#131210]">Respect workspace business hours</span>
-                </label>
+                <select
+                  value={form.businessHoursMode}
+                  onChange={(e) => setForm(f => ({ ...f, businessHoursMode: e.target.value }))}
+                  className="w-full px-3 py-2.5 border border-[#D4D1C9] rounded-lg bg-white text-sm text-[#131210]"
+                >
+                  <option value="anytime">Send any time</option>
+                  <option value="within">Only within business hours</option>
+                  <option value="outside">Only outside business hours</option>
+                </select>
                 <p className="text-[11px] text-[#9B9890] mt-1">
-                  Configure the schedule in <a href="/settings?section=business-hours" className="text-[#D63B1F] hover:underline">Settings → Business Hours</a>.
+                  {form.businessHoursMode === 'within'
+                    ? 'Sends are held until the next time inside your business hours.'
+                    : form.businessHoursMode === 'outside'
+                    ? 'Sends are held until outside your business hours (before open / after close).'
+                    : 'No time restriction — sends go out as soon as they’re due.'}
+                  {' '}Configure the schedule in <a href="/settings?section=business-hours" className="text-[#D63B1F] hover:underline">Settings → Business Hours</a>.
                 </p>
               </div>
             </div>

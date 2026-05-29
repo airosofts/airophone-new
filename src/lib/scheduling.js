@@ -73,6 +73,20 @@ export function nextBusinessTime(at, hours) {
   return at
 }
 
+// If `at` is INSIDE business hours, return the next moment OUTSIDE them — i.e.
+// the end of the current window. If already outside, return `at` unchanged.
+// Used by the "only outside business hours" automation mode.
+export function nextOutsideBusinessTime(at, hours) {
+  if (!hours) return at
+  if (!isInBusinessHours(at, hours)) return at   // already outside — fine to send
+  // We're inside [start, end). Jump to the window's end time today; at exactly
+  // `end`, isInBusinessHours is false (the window is half-open), so it's valid.
+  const end = parseHHMM(hours.business_hours_end)
+  const tz = hours.business_hours_tz || 'UTC'
+  const target = wallTimeToUTC(at, tz, end.h, end.m)
+  return target.getTime() > at.getTime() ? target : at
+}
+
 // Given a probe Date (any time on a particular day in the target zone),
 // produce the UTC Date representing `targetH:targetM` on that same day in the
 // target zone. Uses a one-shot offset lookup — works across DST boundaries
@@ -85,13 +99,25 @@ function wallTimeToUTC(probe, tz, targetH, targetM) {
   return new Date(probe.getTime() + deltaMin * 60 * 1000)
 }
 
+// Resolve an automation's business-hours mode. Prefers the new
+// `business_hours_mode` ('anytime' | 'within' | 'outside'); falls back to the
+// legacy boolean `respect_business_hours` so old rows keep working.
+export function businessHoursMode(automation) {
+  if (automation?.business_hours_mode) return automation.business_hours_mode
+  return automation?.respect_business_hours ? 'within' : 'anytime'
+}
+
 // The "when should this send fire?" decision. Returns a Date.
 //   1. Start from now + send_delay_seconds.
-//   2. If business hours are enabled AND the automation opts in, snap forward
-//      to the next valid window.
+//   2. Snap to the window the automation's business-hours mode requires:
+//      'within'  → next moment inside business hours
+//      'outside' → next moment outside business hours
+//      'anytime' → no snapping
 export function computeScheduledAt(automation, workspaceHours, now = new Date()) {
   const baseDelayMs = Math.max(0, Number(automation.send_delay_seconds || 0)) * 1000
   const base = new Date(now.getTime() + baseDelayMs)
-  if (!automation.respect_business_hours) return base
-  return nextBusinessTime(base, workspaceHours)
+  const mode = businessHoursMode(automation)
+  if (mode === 'within') return nextBusinessTime(base, workspaceHours)
+  if (mode === 'outside') return nextOutsideBusinessTime(base, workspaceHours)
+  return base
 }

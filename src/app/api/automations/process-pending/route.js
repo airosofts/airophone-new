@@ -9,7 +9,7 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
 import { processAutomationItem } from '@/lib/monday-automation'
 import { processRecipeRun } from '@/lib/monday-recipe-process'
-import { isInBusinessHours, nextBusinessTime } from '@/lib/scheduling'
+import { isInBusinessHours, nextBusinessTime, nextOutsideBusinessTime, businessHoursMode } from '@/lib/scheduling'
 
 const MAX_WAIT_MIN = 120   // stop retrying a lead whose phone never arrives
 // If a 'scheduled' row's scheduled_at is more than this many minutes in the
@@ -48,15 +48,13 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Query failed' }, { status: 500 })
   }
   if (!rows || rows.length === 0) {
-    // Also probe what's queued so we can see why nothing's being processed.
-    const { data: queued } = await supabaseAdmin
-      .from('monday_automation_sends')
-      .select('id, status, scheduled_at, created_at')
-      .in('status', ['pending', 'scheduled'])
-      .order('created_at', { ascending: false })
-      .limit(5)
-    console.log('[process-pending] nothing due', { now: nowIso, queued })
-    return NextResponse.json({ ok: true, pending: 0, sent: 0, gaveUp: 0, queued: queued?.length || 0 })
+    // No legacy automation_sends rows — but the NEW recipe runs still need
+    // sweeping. This table is empty for workspaces that use the sentence-builder
+    // recipe (not the old webhook automations), so we must NOT short-circuit
+    // before processPendingRecipeRuns or scheduled/pending recipe sends never go.
+    const recipeResult = await processPendingRecipeRuns({ cutoff: Date.now() - MAX_WAIT_MIN * 60 * 1000 })
+    console.log('[process-pending] no legacy rows; recipe sweep:', recipeResult)
+    return NextResponse.json({ ok: true, pending: 0, sent: 0, gaveUp: 0, recipe: recipeResult })
   }
   console.log('[process-pending] picked up rows', rows.map(r => ({ id: r.id, status: r.status, scheduled_at: r.scheduled_at })))
 
@@ -108,18 +106,26 @@ export async function POST(request) {
       }
     }
 
-    // Business-hours check for scheduled rows: if the time arrived but the
-    // window is closed (or it's a non-business day), push scheduled_at forward
-    // to the next window open and leave the row alone for now.
-    if (row.status === 'scheduled' && automation.respect_business_hours) {
+    // Business-hours check for scheduled rows. Depending on the automation's
+    // mode, the current moment may be the wrong side of the window — push
+    // scheduled_at forward to the next valid moment and leave the row for now.
+    //   'within'  → if now is OUTSIDE hours, jump to next window open
+    //   'outside' → if now is INSIDE hours, jump to window close
+    if (row.status === 'scheduled') {
+      const mode = businessHoursMode(automation)
       const hours = wsHoursById.get(automation.workspace_id)
-      if (hours && !isInBusinessHours(new Date(), hours)) {
-        const nextAt = nextBusinessTime(new Date(), hours)
-        await supabaseAdmin.from('monday_automation_sends')
-          .update({ scheduled_at: nextAt.toISOString() })
-          .eq('id', row.id)
-        stillPending++
-        continue
+      if (mode !== 'anytime' && hours) {
+        const inHours = isInBusinessHours(new Date(), hours)
+        let nextAt = null
+        if (mode === 'within' && !inHours) nextAt = nextBusinessTime(new Date(), hours)
+        else if (mode === 'outside' && inHours) nextAt = nextOutsideBusinessTime(new Date(), hours)
+        if (nextAt) {
+          await supabaseAdmin.from('monday_automation_sends')
+            .update({ scheduled_at: nextAt.toISOString() })
+            .eq('id', row.id)
+          stillPending++
+          continue
+        }
       }
     }
 
