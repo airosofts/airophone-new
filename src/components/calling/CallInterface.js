@@ -256,12 +256,23 @@ export default function CallInterface({
 
   // Incoming call — centered modal
   if (callStatus === 'incoming' && !incomingDismissed) {
-    // Find the line name from phoneNumbers list
+    // Resolve the line the call came in on. Prefer the toName the hook already
+    // computed (which has a fallback to the single workspace number when the
+    // destination is missing from Telnyx's payload); fall back to a local match
+    // against phoneNumbers just in case.
     const toNumber = incomingCall?.to
     const matchedLine = phoneNumbers.find(p =>
       p.phoneNumber?.replace(/\D/g, '').slice(-10) === toNumber?.replace(/\D/g, '').slice(-10)
     )
-    const lineName = matchedLine?.custom_name || (formatPhoneNumber ? formatPhoneNumber(toNumber) : toNumber)
+    const lineName =
+      incomingCall?.toName
+      || matchedLine?.custom_name
+      || (formatPhoneNumber ? formatPhoneNumber(toNumber) : toNumber)
+    // For the prominent "On your line: …" badge below the caller info, show the
+    // custom name on top when set, with the formatted number underneath; if no
+    // custom name, just show the number on a single line.
+    const lineDisplayPrimary = matchedLine?.custom_name || (lineName !== formatPhoneNumber?.(matchedLine?.phoneNumber || toNumber) ? lineName : null)
+    const lineDisplayNumber = formatPhoneNumber ? formatPhoneNumber(matchedLine?.phoneNumber || toNumber) : (matchedLine?.phoneNumber || toNumber)
 
     if (!mounted) return null
 
@@ -331,6 +342,37 @@ export default function CallInterface({
                 is calling you
               </p>
             </div>
+
+            {/* Line label — which of your AiroPhone numbers received the call */}
+            {(lineDisplayPrimary || lineDisplayNumber) && (
+              <div style={{
+                width: '100%', marginTop: 4,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                padding: '8px 12px', borderRadius: 10,
+                background: '#F7F6F3', border: '1px solid #EFEDE8',
+              }}>
+                <span style={{
+                  fontSize: 10, fontWeight: 500, color: '#9B9890',
+                  letterSpacing: '0.06em', textTransform: 'uppercase',
+                  fontFamily: "'JetBrains Mono', monospace",
+                }}>
+                  On your line
+                </span>
+                {lineDisplayPrimary && (
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#131210', letterSpacing: '-0.01em', lineHeight: 1.2 }}>
+                    {lineDisplayPrimary}
+                  </span>
+                )}
+                <span style={{
+                  fontSize: lineDisplayPrimary ? 11 : 13,
+                  fontWeight: lineDisplayPrimary ? 400 : 600,
+                  color: lineDisplayPrimary ? '#9B9890' : '#131210',
+                  fontFamily: "'JetBrains Mono', monospace",
+                }}>
+                  {lineDisplayNumber}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Action buttons */}

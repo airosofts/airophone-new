@@ -14,3 +14,6 @@ update monday_automations
   set business_hours_mode = 'within'
   where respect_business_hours = true
     and business_hours_mode = 'anytime';
+         
+
+         

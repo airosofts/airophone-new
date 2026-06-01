@@ -98,17 +98,20 @@ export function useWebRTCCall() {
     }
   }
 
-  const showBrowserNotification = (from) => {
+  const showBrowserNotification = (from, toName) => {
     try { window.focus() } catch (_) {}
 
     // Set tab title once — no flashing, just a clear indicator
     setTabTitle(`📞 Incoming Call — ${from}`)
 
-    // Browser system notification — alerts user on other tabs/windows
+    // Browser system notification — alerts user on other tabs/windows.
+    // Title surfaces the line that was dialed so a user with multiple numbers
+    // can see at a glance which line is ringing.
+    const lineLabel = toName && toName.length > 0 ? ` · ${toName}` : ''
     try {
       if (!('Notification' in window)) return
       const show = () => {
-        const n = new Notification('📞 Incoming Call', {
+        const n = new Notification(`📞 Incoming Call${lineLabel}`, {
           body: `Call from ${from} — click to answer`,
           icon: '/favicon.ico',
           requireInteraction: true,
@@ -422,7 +425,14 @@ const handleCallUpdate = (call) => {
 
     // Per-workspace SIP creds isolate at the Telnyx level.
     // Only filter by destination if we have a non-empty destination to check.
-    const incomingTo = call.params?.destination_number || call.params?.callee_id_number || ''
+    // Telnyx may surface the destination under any of these depending on
+    // SIP signaling — check them all so the line lookup doesn't silently fail.
+    const incomingTo = call.params?.destination_number
+      || call.params?.callee_id_number
+      || call.params?.dialed_number
+      || call.params?.to_number
+      || call.options?.destinationNumber
+      || ''
     const incomingToDigits = incomingTo.replace(/\D/g, '').slice(-10)
     const numbers = availablePhoneNumbersRef.current
 
@@ -440,15 +450,27 @@ const handleCallUpdate = (call) => {
       || 'Unknown'
     const destNumber = incomingTo
 
-    console.log('[WebRTC] Incoming call from', callerNumber, '->', destNumber)
-    const incomingData = { from: callerNumber, to: destNumber, callId: call.id }
+    // Resolve which AiroPhone line received the call (for popup + notification).
+    // Match on the last-10-digits; if destination is missing AND there's only
+    // one workspace number, fall back to that one (almost always correct).
+    let matchedLine = null
+    if (incomingToDigits.length > 0) {
+      matchedLine = numbers.find(p => p.phoneNumber?.replace(/\D/g, '').slice(-10) === incomingToDigits) || null
+    } else if (numbers.length === 1) {
+      matchedLine = numbers[0]
+    }
+    const toName = matchedLine?.custom_name || matchedLine?.phoneNumber || destNumber || ''
+
+    console.log('[WebRTC] Incoming call from', callerNumber, '-> line:', toName, '(', destNumber || 'no dest in payload', ')')
+    if (!destNumber) console.log('[WebRTC] call.params keys (for debugging):', Object.keys(call.params || {}))
+    const incomingData = { from: callerNumber, to: destNumber, toName, callId: call.id }
     currentCallRef.current = call
     isCallActiveRef.current = true
     callStatusRef.current = 'incoming'
     incomingCallRef.current = incomingData
     setMissedCallNotice(null)
     playRingtone()
-    showBrowserNotification(callerNumber)
+    showBrowserNotification(callerNumber, toName)
     setCurrentCall(call)
     setIncomingCall(incomingData)
     setIsCallActive(true)
@@ -710,11 +732,12 @@ const setupAudioRouting = (call, isParticipant = false) => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && callStatusRef.current === 'incoming' && incomingCallRef.current) {
         const from = incomingCallRef.current.from
-        console.log('[WebRTC] Tab visible — re-triggering incoming call alert for', from)
+        const toName = incomingCallRef.current.toName
+        console.log('[WebRTC] Tab visible — re-triggering incoming call alert for', from, 'on', toName)
         if (!ringtoneRef.current) {
           playRingtone()
         }
-        showBrowserNotification(from)
+        showBrowserNotification(from, toName)
       }
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
