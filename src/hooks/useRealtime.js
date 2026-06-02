@@ -544,38 +544,44 @@ export function useRealtimeConversations(fromNumber) {
           const messageToNumber = normalizePhoneNumber(payload.new.to_number || '')
           
           if (messageFromNumber === normalizedFromNumber || messageToNumber === normalizedFromNumber) {
-            if (payload.new.direction === 'inbound') {
-              setConversations(current => {
-                const conversationIndex = current.findIndex(c => c.id === payload.new.conversation_id)
-                
-                if (conversationIndex === -1) {
-                  setTimeout(() => fetchConversations(true), 1000)
-                  return current
-                }
-                
-                const updatedConversations = [...current]
-                const conversation = { ...updatedConversations[conversationIndex] }
-                
+            // Handle BOTH directions. Outbound = campaigns (SMS or voicemail)
+            // and manual sends; without this branch the inbox conversation list
+            // didn't update until manual refresh.
+            setConversations(current => {
+              const conversationIndex = current.findIndex(c => c.id === payload.new.conversation_id)
+
+              if (conversationIndex === -1) {
+                // Brand-new conversation (commonly created by a campaign that
+                // texts a contact for the first time). Refetch to pick it up.
+                setTimeout(() => fetchConversations(true), 1000)
+                return current
+              }
+
+              const updatedConversations = [...current]
+              const conversation = { ...updatedConversations[conversationIndex] }
+
+              // Unread count bumps only for inbound — we don't unread our own sends.
+              if (payload.new.direction === 'inbound') {
                 conversation.unreadCount = (conversation.unreadCount || 0) + 1
-                conversation.lastMessage = {
-                  body: payload.new.body,
-                  direction: payload.new.direction,
-                  status: payload.new.status,
-                  created_at: payload.new.created_at,
-                  read_at: payload.new.read_at
-                }
-                conversation.last_message_at = payload.new.created_at
-                
-                if (activeConversationRef.current !== conversation.id) {
-                  updatedConversations.splice(conversationIndex, 1)
-                  updatedConversations.unshift(conversation)
-                } else {
-                  updatedConversations[conversationIndex] = conversation
-                }
-                
-                return updatedConversations
-              })
-            }
+              }
+              conversation.lastMessage = {
+                body: payload.new.body,
+                direction: payload.new.direction,
+                status: payload.new.status,
+                created_at: payload.new.created_at,
+                read_at: payload.new.read_at,
+              }
+              conversation.last_message_at = payload.new.created_at
+
+              if (activeConversationRef.current !== conversation.id) {
+                updatedConversations.splice(conversationIndex, 1)
+                updatedConversations.unshift(conversation)
+              } else {
+                updatedConversations[conversationIndex] = conversation
+              }
+
+              return updatedConversations
+            })
           }
         }
       )
