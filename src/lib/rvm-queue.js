@@ -15,6 +15,13 @@ import { sendStaticVoicemail } from '@/lib/voicedrop'
 
 const WEBHOOK_URL = `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.airophone.com'}/api/webhooks/voicedrop`
 
+// Light gap between sends as a safety margin against VoiceDrop rate limits on
+// large batches. Verified that 3 instant sends succeed, so this is precaution,
+// not a hard requirement — the 429 re-queue below is the real backstop.
+// 400ms → ~10 min for a 1,500-recipient chunk.
+const SEND_GAP_MS = 400
+const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+
 // Process up to `batchSize` queued sends. If `campaignId` is given, only that
 // campaign's rows are considered (used by the inline kick). Returns counts.
 export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) {
@@ -38,7 +45,7 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
   const campaignIds = [...new Set(rows.map(r => r.campaign_id))]
   const { data: campaigns } = await supabaseAdmin
     .from('voicemail_campaigns')
-    .select('id, status, sender_number, recording_url, recording_path, voicedrop_recording_url')
+    .select('id, status, sender_number, recording_url, recording_path, voicedrop_recording_url, created_by')
     .in('id', campaignIds)
   const campaignById = new Map((campaigns || []).map(c => [c.id, c]))
 
@@ -56,7 +63,8 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
     urlByCampaign.set(c.id, url)
   }
 
-  let sent = 0, failed = 0, skipped = 0
+  let sent = 0, failed = 0, skipped = 0, requeued = 0
+  let firstSend = true
 
   for (const row of rows) {
     const campaign = campaignById.get(row.campaign_id)
@@ -88,7 +96,23 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
     }
 
     try {
-      const conversation = await getOrCreateConversation(row.phone, campaign.sender_number, row.workspace_id)
+      // Throttle: pause before every send except the first in this batch so we
+      // stay under VoiceDrop's rate limit.
+      if (!firstSend) await sleep(SEND_GAP_MS)
+      firstSend = false
+
+      const conversation = await getOrCreateConversation(row.phone, campaign.sender_number, row.workspace_id, campaign.created_by)
+      if (!conversation?.id) {
+        // Conversation get-or-create failed (DB error logged inside the helper).
+        // Mark failed with a clear reason rather than crashing on .id.
+        await supabaseAdmin.from('voicemail_campaign_sends')
+          .update({ status: 'failed', error: 'Could not create conversation record' })
+          .eq('id', row.id)
+        await bumpCampaignCounter(row.campaign_id, 'failed_count')
+        failed++
+        continue
+      }
+
       const result = await sendStaticVoicemail({
         recordingUrl,
         from: campaign.sender_number,
@@ -96,21 +120,37 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
         statusWebhookUrl: WEBHOOK_URL,
       })
 
+      // Rate-limited (HTTP 429) → NOT a real failure. Put the row back to
+      // 'queued' so the next batch/cron retries it after the gap.
+      if (result.status === 429) {
+        console.warn('[rvm:sweep] rate-limited, re-queueing', row.id)
+        await supabaseAdmin.from('voicemail_campaign_sends')
+          .update({ status: 'queued' })
+          .eq('id', row.id)
+        requeued++
+        await sleep(SEND_GAP_MS * 2)
+        continue
+      }
+
       if (!result.ok) {
         const errMsg = result.data?.message || result.data?.error || 'The voicemail request was rejected'
         await supabaseAdmin.from('voicemail_campaign_sends')
-          .update({ status: 'failed', error: errMsg, conversation_id: conversation?.id || null })
+          .update({ status: 'failed', error: errMsg, conversation_id: conversation.id })
           .eq('id', row.id)
+        // Column set MUST match the proven start-route schema (no workspace_id;
+        // use recording_url / sent_by / error_message). A wrong column here is
+        // what stopped voicemail messages from appearing in the conversation.
         await supabaseAdmin.from('messages').insert({
           conversation_id: conversation.id,
-          workspace_id: row.workspace_id,
           direction: 'outbound',
           from_number: campaign.sender_number,
           to_number: row.phone,
-          body: '[Voicemail — failed]',
+          body: '[Voicemail]',
           type: 'voicemail',
+          recording_url: campaign.recording_url,
           status: 'failed',
-          error: errMsg,
+          error_message: errMsg,
+          sent_by: campaign.created_by,
         })
         await bumpCampaignCounter(row.campaign_id, 'failed_count')
         failed++
@@ -119,13 +159,15 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
 
       const { data: msg } = await supabaseAdmin.from('messages').insert({
         conversation_id: conversation.id,
-        workspace_id: row.workspace_id,
         direction: 'outbound',
         from_number: campaign.sender_number,
         to_number: row.phone,
         body: '[Voicemail]',
         type: 'voicemail',
+        recording_url: campaign.recording_url,
         status: 'sent',
+        telnyx_message_id: result.data?.voice_drop_id || null,
+        sent_by: campaign.created_by,
       }).select('id').single()
 
       await supabaseAdmin.from('voicemail_campaign_sends')
@@ -160,7 +202,7 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
     }
   }
 
-  return { picked: rows.length, sent, failed, skipped }
+  return { picked: rows.length, sent, failed, skipped, requeued }
 }
 
 // Drain ONE campaign's queue inline, in batches, until empty or paused.
@@ -202,19 +244,40 @@ async function bumpCampaignCounter(campaignId, column) {
     .eq('id', campaignId)
 }
 
-async function getOrCreateConversation(toNumber, fromNumber, workspaceId) {
+// Mirrors the proven getOrCreateConversation from the start route. Matches on
+// (phone_number, from_number) WITHOUT a workspace filter so legacy rows with a
+// null workspace_id are found (and backfilled) instead of colliding with the
+// unique constraint on insert. Inserts only columns that actually exist —
+// crucially `created_by` (NOT NULL) and NO `source` column.
+async function getOrCreateConversation(toNumber, fromNumber, workspaceId, createdBy) {
   const { data: existing } = await supabaseAdmin
     .from('conversations')
-    .select('id')
-    .eq('workspace_id', workspaceId)
-    .eq('from_number', fromNumber)
+    .select('id, workspace_id')
     .eq('phone_number', toNumber)
+    .eq('from_number', fromNumber)
     .maybeSingle()
-  if (existing) return existing
-  const { data: created } = await supabaseAdmin
+
+  if (existing) {
+    if (!existing.workspace_id) {
+      await supabaseAdmin.from('conversations').update({ workspace_id: workspaceId }).eq('id', existing.id)
+    }
+    return existing
+  }
+
+  const { data: created, error } = await supabaseAdmin
     .from('conversations')
-    .insert({ workspace_id: workspaceId, from_number: fromNumber, phone_number: toNumber, source: 'voicemail_campaign' })
+    .insert({
+      phone_number: toNumber,
+      from_number: fromNumber,
+      workspace_id: workspaceId,
+      created_by: createdBy,
+    })
     .select('id')
     .single()
+
+  if (error) {
+    console.error('[rvm:sweep] conversation insert failed', { toNumber, fromNumber, error: error.message })
+    return null
+  }
   return created
 }
