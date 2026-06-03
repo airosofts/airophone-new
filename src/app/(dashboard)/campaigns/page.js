@@ -1681,6 +1681,14 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
   const [selectedColumns, setSelectedColumns] = useState(['phone_number'])
   const [chunkSize, setChunkSize] = useState(1500)
   const [chunkIndex, setChunkIndex] = useState(1)
+  // Sending speed (throttle). mode 'max' = no throttle (as fast as allowed);
+  // 'throttled' = throttleCount every (throttleWindowValue × throttleUnit),
+  // metered by the cron over time. e.g. 100 every 15 minutes, 1000 every 1 hour.
+  const [throttleMode, setThrottleMode] = useState('max')
+  const [throttleCount, setThrottleCount] = useState(100)
+  const [throttleWindowValue, setThrottleWindowValue] = useState(1)
+  const [throttleUnit, setThrottleUnit] = useState('hour')
+  const throttleWindowSeconds = Math.max(60, throttleWindowValue * (throttleUnit === 'hour' ? 3600 : 60))
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [created, setCreated] = useState(false)
@@ -1835,6 +1843,8 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
         phoneColumns: selectedColumns,
         chunkSize: chunkSize > 0 ? chunkSize : 0,
         chunkIndex: chunkSize > 0 ? chunkIndex : 0,
+        throttleCount: throttleMode === 'throttled' ? throttleCount : null,
+        throttleWindowSeconds: throttleWindowSeconds,
         explicitRecipients: selectedRecipients.map(r => ({
           phone: r.phone,
           contactId: r.contactId,
@@ -1983,6 +1993,77 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
                   </div>
                 )}
                 {errors.audio && <p className="text-xs text-red-600 mt-1">{errors.audio}</p>}
+              </div>
+
+              {/* Sending speed (throttle) */}
+              <div>
+                <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Sending speed</label>
+                <div className="flex flex-col gap-2">
+                  <label className="flex items-center gap-2.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="rvm-throttle"
+                      checked={throttleMode === 'max'}
+                      onChange={() => setThrottleMode('max')}
+                      className="w-4 h-4 accent-[#D63B1F]"
+                    />
+                    <span className="text-sm text-[#131210]">No throttle</span>
+                    <span className="text-[11px] text-[#9B9890]">— send as fast as the carrier allows</span>
+                  </label>
+                  <label className="flex items-center gap-2.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="rvm-throttle"
+                      checked={throttleMode === 'throttled'}
+                      onChange={() => setThrottleMode('throttled')}
+                      className="w-4 h-4 accent-[#D63B1F]"
+                    />
+                    <span className="text-sm text-[#131210]">Throttle</span>
+                  </label>
+                  {throttleMode === 'throttled' && (
+                    <div className="flex items-center gap-2 pl-7 flex-wrap">
+                      <span className="text-sm text-[#5C5A55]">Send up to</span>
+                      <input
+                        type="number"
+                        min={1}
+                        value={throttleCount}
+                        onChange={(e) => setThrottleCount(Math.max(1, parseInt(e.target.value) || 1))}
+                        className="w-20 px-2.5 py-1.5 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
+                      />
+                      <span className="text-sm text-[#5C5A55]">every</span>
+                      <input
+                        type="number"
+                        min={1}
+                        value={throttleWindowValue}
+                        onChange={(e) => setThrottleWindowValue(Math.max(1, parseInt(e.target.value) || 1))}
+                        className="w-16 px-2.5 py-1.5 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
+                      />
+                      <select
+                        value={throttleUnit}
+                        onChange={(e) => setThrottleUnit(e.target.value)}
+                        className="px-2.5 py-1.5 border border-[#D4D1C9] rounded-md text-sm bg-white focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
+                      >
+                        <option value="minute">{throttleWindowValue === 1 ? 'minute' : 'minutes'}</option>
+                        <option value="hour">{throttleWindowValue === 1 ? 'hour' : 'hours'}</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+                {throttleMode === 'throttled' && (() => {
+                  const audience = chunkSize > 0 ? chunkSize : (totalRecipients || 0)
+                  const ratePerMin = throttleCount / (throttleWindowSeconds / 60)
+                  const etaMin = ratePerMin > 0 ? Math.ceil(audience / ratePerMin) : 0
+                  const etaLabel = etaMin >= 60 ? `~${(etaMin / 60).toFixed(1)} hr` : `~${etaMin} min`
+                  return (
+                    <p className="text-[11px] text-[#9B9890] mt-1.5">
+                      e.g. <strong>{throttleCount.toLocaleString()}</strong> voicemails every <strong>{throttleWindowValue} {throttleUnit}{throttleWindowValue === 1 ? '' : 's'}</strong>.
+                      {audience > 0 && <> {etaLabel} to finish {audience.toLocaleString()} recipients.</>} Metered so callbacks don’t all come at once.
+                    </p>
+                  )
+                })()}
+                {throttleMode === 'max' && (
+                  <p className="text-[11px] text-[#9B9890] mt-1.5">Best for small lists or when you can handle callbacks immediately.</p>
+                )}
               </div>
             </div>
             </section>
@@ -2461,6 +2542,18 @@ function ViewRVMCampaignModal({ campaign: initialCampaign, contactLists, onClose
             <div>
               <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Created</p>
               <p className="text-sm text-[#5C5A55]">{formatDate(campaign.created_at)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Sending Speed</p>
+              <p className="text-sm text-[#5C5A55]">
+                {campaign.throttle_count
+                  ? (() => {
+                      const w = campaign.throttle_window_seconds || 3600
+                      const label = w % 3600 === 0 ? `${w / 3600} hr` : `${Math.round(w / 60)} min`
+                      return `${campaign.throttle_count.toLocaleString()} every ${label}`
+                    })()
+                  : 'No throttle (max speed)'}
+              </p>
             </div>
           </div>
 

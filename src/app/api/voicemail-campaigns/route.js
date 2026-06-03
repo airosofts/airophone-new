@@ -35,6 +35,9 @@ export async function POST(request) {
   const {
     name, recordingUrl, recordingPath, voicedropRecordingUrl, senderNumber, contactListIds,
     phoneColumns, chunkSize, chunkIndex,
+    // Optional throttle: send at most `throttleCount` every
+    // `throttleWindowSeconds`. Omitted / 0 → no throttle (max speed).
+    throttleCount, throttleWindowSeconds,
     // Optional: an explicit recipient list from the wizard. When the user
     // searches/unticks specific rows on Step 3, we honor exactly that set
     // rather than recomputing the chunk slice server-side.
@@ -58,6 +61,15 @@ export async function POST(request) {
   const normalizedChunkIndex = normalizedChunkSize > 0 && Number.isFinite(Number(chunkIndex))
     ? Math.max(0, Math.floor(Number(chunkIndex)))
     : 0
+
+  // Throttle: null when unset / non-positive (= no throttle / max speed).
+  // Window defaults to 1 hour; clamped to a sane minimum of 60s.
+  const normalizedThrottle = Number.isFinite(Number(throttleCount)) && Number(throttleCount) > 0
+    ? Math.floor(Number(throttleCount))
+    : null
+  const normalizedThrottleWindow = Number.isFinite(Number(throttleWindowSeconds)) && Number(throttleWindowSeconds) >= 60
+    ? Math.floor(Number(throttleWindowSeconds))
+    : 3600
 
   // Sender number must belong to this workspace AND be voicedrop_verified
   const { data: pn } = await supabaseAdmin
@@ -88,6 +100,8 @@ export async function POST(request) {
       phone_columns: normalizedColumns,
       chunk_size: normalizedChunkSize,
       chunk_index: normalizedChunkIndex,
+      throttle_count: normalizedThrottle,
+      throttle_window_seconds: normalizedThrottleWindow,
       status: 'draft',
     })
     .select()

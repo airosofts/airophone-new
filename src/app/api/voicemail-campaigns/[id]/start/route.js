@@ -132,13 +132,13 @@ export async function POST(request, { params }) {
     await supabaseAdmin.from('voicemail_campaigns')
       .update({ total_recipients: alreadyQueued, sent_count: 0, failed_count: 0 })
       .eq('id', campaignId)
-    // Start draining NOW (don't wait for the cron). `after()` runs this once
-    // the response is sent but keeps the serverless function alive for it —
-    // a plain unawaited promise would be killed by Vercel after the response.
-    // Whatever doesn't finish within the function's time budget, the cron
-    // backstop picks up within ~60s.
-    after(() => drainCampaignInline(campaignId).catch(err =>
-      console.error('[voicemail-campaigns:start] inline drain error:', err.message)))
+    // Throttled campaigns are metered by the cron tick-by-tick — skip the fast
+    // inline drain (it would blow past the rate). Un-throttled → drain now via
+    // after() (runs post-response but keeps the function alive on Vercel).
+    if (!campaign.throttle_count || campaign.throttle_count <= 0) {
+      after(() => drainCampaignInline(campaignId).catch(err =>
+        console.error('[voicemail-campaigns:start] inline drain error:', err.message)))
+    }
     return NextResponse.json({
       success: true,
       contactCount: alreadyQueued,
@@ -189,10 +189,11 @@ export async function POST(request, { params }) {
     .update({ total_recipients: actualTotal || contacts.length, sent_count: 0, failed_count: 0 })
     .eq('id', campaignId)
 
-  // Start draining NOW via after() — runs post-response but stays alive on
-  // Vercel (a bare promise would be killed). Cron finishes any remainder.
-  after(() => drainCampaignInline(campaignId).catch(err =>
-    console.error('[voicemail-campaigns:start] inline drain error:', err.message)))
+  // Throttled → metered by cron; un-throttled → drain now via after().
+  if (!campaign.throttle_count || campaign.throttle_count <= 0) {
+    after(() => drainCampaignInline(campaignId).catch(err =>
+      console.error('[voicemail-campaigns:start] inline drain error:', err.message)))
+  }
 
   return NextResponse.json({
     success: true,

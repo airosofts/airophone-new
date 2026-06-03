@@ -45,9 +45,31 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
   const campaignIds = [...new Set(rows.map(r => r.campaign_id))]
   const { data: campaigns } = await supabaseAdmin
     .from('voicemail_campaigns')
-    .select('id, status, sender_number, recording_url, recording_path, voicedrop_recording_url, created_by')
+    .select('id, status, sender_number, recording_url, recording_path, voicedrop_recording_url, created_by, throttle_count, throttle_window_seconds')
     .in('id', campaignIds)
   const campaignById = new Map((campaigns || []).map(c => [c.id, c]))
+
+  // Throttle allowance per campaign. For a campaign capped at N every
+  // `throttle_window_seconds`, count how many already went out in the trailing
+  // window and allow only the remainder this sweep. Un-throttled → Infinity.
+  // Throttled rows beyond the allowance are left 'queued' for the next tick.
+  const allowanceByCampaign = new Map()
+  const processedByCampaign = new Map()
+  for (const c of (campaigns || [])) {
+    if (!c.throttle_count || c.throttle_count <= 0) {
+      allowanceByCampaign.set(c.id, Infinity)
+      continue
+    }
+    const windowSec = c.throttle_window_seconds && c.throttle_window_seconds > 0 ? c.throttle_window_seconds : 3600
+    const sinceIso = new Date(Date.now() - windowSec * 1000).toISOString()
+    const { count: recentSent } = await supabaseAdmin
+      .from('voicemail_campaign_sends')
+      .select('id', { count: 'exact', head: true })
+      .eq('campaign_id', c.id)
+      .eq('status', 'sent')
+      .gte('sent_at', sinceIso)
+    allowanceByCampaign.set(c.id, Math.max(0, c.throttle_count - (recentSent || 0)))
+  }
 
   // Resolve the recording URL per running campaign once.
   const urlByCampaign = new Map()
@@ -73,6 +95,16 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
       skipped++
       continue
     }
+
+    // Throttle gate: if this campaign has already used its allowance for the
+    // current window, leave the row 'queued' for the next tick.
+    const allowance = allowanceByCampaign.get(row.campaign_id) ?? Infinity
+    const usedSoFar = processedByCampaign.get(row.campaign_id) || 0
+    if (usedSoFar >= allowance) {
+      skipped++
+      continue
+    }
+    processedByCampaign.set(row.campaign_id, usedSoFar + 1)
 
     // Atomic claim — only send if still 'queued' (prevents double-dispatch when
     // the inline kick and the cron overlap).
