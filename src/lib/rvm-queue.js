@@ -90,7 +90,6 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
       await supabaseAdmin.from('voicemail_campaign_sends')
         .update({ status: 'failed', error: 'No recording URL resolvable' })
         .eq('id', row.id)
-      await bumpCampaignCounter(row.campaign_id, 'failed_count')
       failed++
       continue
     }
@@ -108,7 +107,6 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
         await supabaseAdmin.from('voicemail_campaign_sends')
           .update({ status: 'failed', error: 'Could not create conversation record' })
           .eq('id', row.id)
-        await bumpCampaignCounter(row.campaign_id, 'failed_count')
         failed++
         continue
       }
@@ -152,12 +150,11 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
           error_message: errMsg,
           sent_by: campaign.created_by,
         })
-        await bumpCampaignCounter(row.campaign_id, 'failed_count')
         failed++
         continue
       }
 
-      const { data: msg } = await supabaseAdmin.from('messages').insert({
+      const { data: msg, error: msgErr } = await supabaseAdmin.from('messages').insert({
         conversation_id: conversation.id,
         direction: 'outbound',
         from_number: campaign.sender_number,
@@ -166,40 +163,55 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
         type: 'voicemail',
         recording_url: campaign.recording_url,
         status: 'sent',
-        telnyx_message_id: result.data?.voice_drop_id || null,
+        // VoiceDrop's send response carries no job id, so leave this null
+        // (multiple nulls are allowed by the unique index). Do NOT reuse the
+        // descriptive `message` text — it isn't an id.
+        telnyx_message_id: null,
         sent_by: campaign.created_by,
       }).select('id').single()
+
+      if (msgErr) {
+        // Surface the real reason instead of swallowing it. The send already
+        // went out, so we still count it sent — but log so a schema/constraint
+        // problem can't hide again.
+        console.error('[rvm:sweep] message insert failed (send already placed)', {
+          to: row.phone, conversation_id: conversation.id, error: msgErr.message,
+        })
+      }
 
       await supabaseAdmin.from('voicemail_campaign_sends')
         .update({ status: 'sent', sent_at: new Date().toISOString(), message_id: msg?.id || null, conversation_id: conversation.id })
         .eq('id', row.id)
-      await bumpCampaignCounter(row.campaign_id, 'sent_count')
       sent++
     } catch (err) {
       console.error('[rvm:sweep] send error', row.id, err.message)
       await supabaseAdmin.from('voicemail_campaign_sends')
         .update({ status: 'failed', error: err.message || 'Unknown error' })
         .eq('id', row.id)
-      await bumpCampaignCounter(row.campaign_id, 'failed_count')
       failed++
     }
   }
 
-  // Mark any touched campaign 'completed' once its queue fully drains.
+  // Recompute counts directly from the sends table (race-proof — the inline
+  // drain and cron can run concurrently, so read-then-write counters drift)
+  // and mark any campaign 'completed' once its queue fully drains.
   for (const id of campaignIds) {
     const c = campaignById.get(id)
     if (!c || c.status !== 'running') continue
-    const { count: stillQueued } = await supabaseAdmin
-      .from('voicemail_campaign_sends')
-      .select('id', { count: 'exact', head: true })
-      .eq('campaign_id', id)
-      .in('status', ['queued', 'sending'])
+
+    const [{ count: sentCount }, { count: failedCount }, { count: stillQueued }] = await Promise.all([
+      supabaseAdmin.from('voicemail_campaign_sends').select('id', { count: 'exact', head: true }).eq('campaign_id', id).eq('status', 'sent'),
+      supabaseAdmin.from('voicemail_campaign_sends').select('id', { count: 'exact', head: true }).eq('campaign_id', id).eq('status', 'failed'),
+      supabaseAdmin.from('voicemail_campaign_sends').select('id', { count: 'exact', head: true }).eq('campaign_id', id).in('status', ['queued', 'sending']),
+    ])
+
+    const update = { sent_count: sentCount || 0, failed_count: failedCount || 0 }
     if ((stillQueued || 0) === 0) {
-      await supabaseAdmin.from('voicemail_campaigns')
-        .update({ status: 'completed', completed_at: new Date().toISOString() })
-        .eq('id', id)
-      console.log('[rvm:sweep] campaign completed', id)
+      update.status = 'completed'
+      update.completed_at = new Date().toISOString()
+      console.log('[rvm:sweep] campaign completed', { id, sent: sentCount, failed: failedCount })
     }
+    await supabaseAdmin.from('voicemail_campaigns').update(update).eq('id', id)
   }
 
   return { picked: rows.length, sent, failed, skipped, requeued }
@@ -229,19 +241,6 @@ export async function drainCampaignInline(campaignId, { batchSize = 25, maxBatch
     console.log('[rvm:inline] batch', { campaignId, ...res })
   }
   console.warn('[rvm:inline] hit maxBatches cap — cron will finish the rest', { campaignId })
-}
-
-async function bumpCampaignCounter(campaignId, column) {
-  const { data } = await supabaseAdmin
-    .from('voicemail_campaigns')
-    .select(column)
-    .eq('id', campaignId)
-    .maybeSingle()
-  const current = Number(data?.[column] || 0)
-  await supabaseAdmin
-    .from('voicemail_campaigns')
-    .update({ [column]: current + 1 })
-    .eq('id', campaignId)
 }
 
 // Mirrors the proven getOrCreateConversation from the start route. Matches on

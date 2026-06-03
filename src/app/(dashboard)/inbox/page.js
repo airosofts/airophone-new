@@ -436,6 +436,11 @@ export default function InboxPage() {
       if (!response.ok) {
         refetch()
       }
+
+      if (selectedConversation?.id === conversationId) {
+        setSelectedConversation(null)
+        setMobileView('list')
+      }
     } catch (error) {
       console.error('Error marking conversation as done:', error)
       refetch()
