@@ -234,7 +234,7 @@ async function handleCallHangup(supabase, payload) {
     .from('calls')
     .update({ ended_at: endTime, hangup_cause: hangupCause, updated_at: endTime })
     .eq('telnyx_call_id', callControlId)
-    .select('id, status, answered_at, forwarded_to, created_at')
+    .select('id, status, answered_at, forwarded_to, created_at, conversation_id, from_number, to_number, direction, workspace_id')
     .maybeSingle()
 
   if (!call) {
@@ -257,10 +257,26 @@ async function handleCallHangup(supabase, payload) {
     updates.duration_seconds = Math.floor((new Date(endTime) - new Date(call.answered_at)) / 1000)
   }
 
+  // If conversation_id is missing (rare edge case), try to recover it now
+  let conversationId = call.conversation_id
+  if (!conversationId && call.from_number && call.to_number && call.workspace_id) {
+    const isIncoming = call.direction === 'inbound'
+    const contactNumber = isIncoming ? call.from_number : call.to_number
+    const ourNumber = isIncoming ? call.to_number : call.from_number
+    conversationId = await findOrCreateConversation(supabase, contactNumber, ourNumber, call.workspace_id)
+    if (conversationId) updates.conversation_id = conversationId
+  }
+
   await supabase.from('calls').update(updates).eq('id', call.id)
   console.log('[call-webhook] Hangup:', callControlId?.slice(0, 20), 'status:', finalStatus, 'duration:', updates.duration_seconds || 0)
 
-  // Calls are unlimited — no credit deduction for calls
+  // Bump conversation.last_message_at so the call appears at the top of the inbox
+  if (conversationId) {
+    await supabase
+      .from('conversations')
+      .update({ last_message_at: endTime })
+      .eq('id', conversationId)
+  }
 }
 
 async function deductCallCredits(callId, durationSeconds, payload) {

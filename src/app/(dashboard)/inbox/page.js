@@ -106,6 +106,13 @@ export default function InboxPage() {
     return () => document.removeEventListener('mousedown', handler)
   }, [showDialer])
 
+  // Resolve the active phone line. Declared BEFORE any effect/callback that
+  // references it — a dependency array below (the call-history effect) reads
+  // selectedPhoneNumber?.phoneNumber during render, which would hit the
+  // temporal dead zone if this const came after those hooks.
+  const fromParam = searchParams.get('from')
+  const selectedPhoneNumber = phoneNumbers.find(p => p.phoneNumber === fromParam) || phoneNumbers[0] || null
+
   // Fetch call history when calls tab is active, scoped to the selected phone number
   useEffect(() => {
     if (inboxTab !== 'calls') return
@@ -132,9 +139,6 @@ export default function InboxPage() {
       callHook.initiateCall(phoneNumber, selectedPhoneNumber.phoneNumber).catch(console.error)
     }
   }
-
-  const fromParam = searchParams.get('from')
-  const selectedPhoneNumber = phoneNumbers.find(p => p.phoneNumber === fromParam) || phoneNumbers[0] || null
 
   // When the active phone number changes, clear the open chat + contact panel
   useEffect(() => {
