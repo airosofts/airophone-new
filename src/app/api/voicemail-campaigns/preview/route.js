@@ -20,8 +20,11 @@ import {
   detectPhoneColumns, buildRecipients, chunkRecipients,
 } from '@/lib/phone-columns'
 
-const PREVIEW_ROWS = 30
-const MAX_RECIPIENTS = 100_000   // safety cap
+const MAX_RECIPIENTS  = 100_000   // safety cap on contacts pulled from DB
+// When a chunk is selected, return the full chunk's recipient list so the
+// wizard's UI can paginate, search, and per-row toggle. Hard ceiling so a
+// stray "chunkSize = 1,000,000" doesn't return megabytes.
+const MAX_FULL_RETURN = 50_000
 
 export async function POST(request) {
   const workspace = getWorkspaceFromRequest(request)
@@ -67,6 +70,20 @@ export async function POST(request) {
   const recipients = buildRecipients(contacts || [], selectedColumns)
   const chunks = chunkRecipients(recipients, chunkSize)
 
+  // chunkIndex (1-based). Caller picks which chunk to "zoom into"; we return
+  // that chunk's recipients in full so the UI can paginate/search/select
+  // within it. If no chunk picked (or chunkSize=0), return the whole list
+  // (still capped at MAX_FULL_RETURN).
+  const requestedChunkIdx = Number.isFinite(Number(body.chunkIndex))
+    ? Math.max(0, Math.floor(Number(body.chunkIndex)))
+    : 0
+  let chunkRecipients_ = recipients
+  if (requestedChunkIdx > 0 && chunks[requestedChunkIdx - 1]) {
+    chunkRecipients_ = chunks[requestedChunkIdx - 1].recipients
+  }
+  const truncated = chunkRecipients_.length > MAX_FULL_RETURN
+  const returned = truncated ? chunkRecipients_.slice(0, MAX_FULL_RETURN) : chunkRecipients_
+
   // Already-sent chunk lookup. Match on (workspace, sorted list_ids, chunk_size).
   // Postgres jsonb @> works on subset; we store contact_list_ids as jsonb array.
   // Sort the IDs so two requests with the same set match regardless of order.
@@ -93,8 +110,10 @@ export async function POST(request) {
     success: true,
     detectedColumns,
     totalRecipients: recipients.length,
-    // Preview is a SAMPLE — full chunk lists would be huge to serialize.
-    recipients: recipients.slice(0, PREVIEW_ROWS),
+    // Full recipient list (capped) for the selected chunk — used by the
+    // wizard table to paginate, search, and per-row select/unselect.
+    recipients: returned,
+    truncated,
     chunks: chunks.map(({ recipients: _r, ...meta }) => meta),
     alreadySentChunks,
   })

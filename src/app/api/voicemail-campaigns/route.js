@@ -35,6 +35,10 @@ export async function POST(request) {
   const {
     name, recordingUrl, recordingPath, voicedropRecordingUrl, senderNumber, contactListIds,
     phoneColumns, chunkSize, chunkIndex,
+    // Optional: an explicit recipient list from the wizard. When the user
+    // searches/unticks specific rows on Step 3, we honor exactly that set
+    // rather than recomputing the chunk slice server-side.
+    explicitRecipients,
   } = body
 
   if (!name || !recordingUrl || !senderNumber || !Array.isArray(contactListIds) || contactListIds.length === 0) {
@@ -92,6 +96,31 @@ export async function POST(request) {
   if (error) {
     console.error('[voicemail-campaigns:POST]', error)
     return NextResponse.json({ error: 'Failed to create campaign' }, { status: 500 })
+  }
+
+  // If the wizard supplied an explicit recipient list (after the user picked
+  // a chunk + searched + unticked rows), pre-populate the queue here. The
+  // /start route will then see existing rows and skip the contact-list rebuild.
+  if (Array.isArray(explicitRecipients) && explicitRecipients.length > 0) {
+    const queueRows = explicitRecipients
+      .filter(r => r && typeof r.phone === 'string' && r.phone.length >= 7)
+      .map(r => ({
+        campaign_id: campaign.id,
+        workspace_id: workspace.workspaceId,
+        contact_id: r.contactId || null,
+        phone: r.phone,
+        source_column: r.sourceColumn || 'phone_number',
+        status: 'queued',
+      }))
+    if (queueRows.length > 0) {
+      const { error: enqErr } = await supabaseAdmin
+        .from('voicemail_campaign_sends')
+        .upsert(queueRows, { onConflict: 'campaign_id,phone', ignoreDuplicates: true })
+      if (enqErr) {
+        console.error('[voicemail-campaigns:POST] explicit enqueue failed:', enqErr)
+        // Don't fail the create — /start can still fall back to chunk-slice.
+      }
+    }
   }
 
   return NextResponse.json({ success: true, campaign })

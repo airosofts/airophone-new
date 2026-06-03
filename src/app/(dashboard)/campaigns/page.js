@@ -1690,9 +1690,27 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
   const [previewLoading, setPreviewLoading] = useState(false)
   const [detectedColumns, setDetectedColumns] = useState([])  // [{key,label,count,isPrimary}]
   const [totalRecipients, setTotalRecipients] = useState(0)
-  const [recipientSample, setRecipientSample] = useState([])
+  // Full recipient list for the currently selected chunk (capped at 50k server-side).
+  // Step 3 paginates this client-side and lets the user search + per-row toggle.
+  const [chunkRecipients, setChunkRecipients] = useState([])
   const [chunks, setChunks] = useState([])                    // [{n,start,end,count}]
   const [alreadySentChunks, setAlreadySentChunks] = useState([])
+  const [previewTruncated, setPreviewTruncated] = useState(false)
+
+  // Step 3 selection UI state. excludedPhones is a Set of phones the user has
+  // unticked — default is "all included" and the user can unselect rows.
+  // Resets whenever the chunk changes (per-chunk selection).
+  const [excludedPhones, setExcludedPhones] = useState(() => new Set())
+  const [searchQuery, setSearchQuery] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const PAGE_SIZE = 500
+
+  // Reset selection + page whenever the chunk slice changes.
+  useEffect(() => {
+    setExcludedPhones(new Set())
+    setSearchQuery('')
+    setCurrentPage(1)
+  }, [chunkIndex, chunkSize, selectedListIds.join(','), selectedColumns.join(',')])
 
   const verifiedNumbers = phoneNumbers.filter(pn => pn.voicedrop_verified)
 
@@ -1739,16 +1757,19 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
   useEffect(() => {
     if (step === 1) return
     if (selectedListIds.length === 0) {
-      setDetectedColumns([]); setTotalRecipients(0); setRecipientSample([])
-      setChunks([]); setAlreadySentChunks([])
+      setDetectedColumns([]); setTotalRecipients(0); setChunkRecipients([])
+      setChunks([]); setAlreadySentChunks([]); setPreviewTruncated(false)
       return
     }
     let cancelled = false
     setPreviewLoading(true)
+    // Step 2: just detect columns (no chunk slicing).
+    // Step 3: ask for the FULL chunk recipient list (capped at 50k server-side).
     const body = {
       contactListIds: selectedListIds,
       phoneColumns: step === 3 ? selectedColumns : undefined,
       chunkSize: step === 3 ? chunkSize : 0,
+      chunkIndex: step === 3 && chunkSize > 0 ? chunkIndex : 0,
     }
     apiPost('/api/voicemail-campaigns/preview', body)
       .then(r => r.json())
@@ -1757,7 +1778,8 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
         if (data?.success) {
           setDetectedColumns(data.detectedColumns || [])
           setTotalRecipients(data.totalRecipients || 0)
-          setRecipientSample(data.recipients || [])
+          setChunkRecipients(data.recipients || [])
+          setPreviewTruncated(!!data.truncated)
           setChunks(data.chunks || [])
           setAlreadySentChunks(data.alreadySentChunks || [])
         }
@@ -1765,7 +1787,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
       .catch(() => { /* silent — UI just stays empty */ })
       .finally(() => { if (!cancelled) setPreviewLoading(false) })
     return () => { cancelled = true }
-  }, [step, selectedListIds.join(','), selectedColumns.join(','), chunkSize])
+  }, [step, selectedListIds.join(','), selectedColumns.join(','), chunkSize, chunkIndex])
 
   // ── Validation per step ────────────────────────────────────────────────
   const validateStep = (s) => {
@@ -1790,8 +1812,16 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
   const goBack = () => { setErrors({}); setStep(s => Math.max(1, s - 1)) }
 
   // ── Launch ─────────────────────────────────────────────────────────────
+  // The exact recipients the user has chosen for THIS launch (after chunk
+  // pick + manual unticks + search). The backend will enqueue exactly this set.
+  const selectedRecipients = chunkRecipients.filter(r => !excludedPhones.has(r.phone))
+
   const handleLaunch = async () => {
     if (!validateStep(3)) return
+    if (selectedRecipients.length === 0) {
+      setErrors({ recipients: 'At least one recipient must be selected' })
+      return
+    }
     setIsSubmitting(true)
     setErrors({})
     try {
@@ -1805,6 +1835,11 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
         phoneColumns: selectedColumns,
         chunkSize: chunkSize > 0 ? chunkSize : 0,
         chunkIndex: chunkSize > 0 ? chunkIndex : 0,
+        explicitRecipients: selectedRecipients.map(r => ({
+          phone: r.phone,
+          contactId: r.contactId,
+          sourceColumn: r.sourceColumn,
+        })),
       }
       const response = await apiPost('/api/voicemail-campaigns', payload)
       const data = await response.json()
@@ -1833,9 +1868,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
             <div className="w-10 h-10 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-3"><i className="fas fa-check text-green-600"></i></div>
             <h3 className="text-sm font-semibold text-[#131210] mb-1">Voicemail campaign launched</h3>
             <p className="text-xs text-[#9B9890] mb-4">
-              {chunkSize > 0
-                ? `Chunk ${chunkIndex} (${(chunks[chunkIndex - 1]?.count) || 0} recipients) is dispatching now.`
-                : `Your campaign is dispatching to all ${totalRecipients} recipients.`}
+              {`Dispatching to ${selectedRecipients.length.toLocaleString()} ${selectedRecipients.length === 1 ? 'recipient' : 'recipients'} via the queue. You can close this tab — open the campaign to watch progress.`}
             </p>
             <button onClick={onCreated} className="px-4 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md">View Campaigns</button>
           </div>
@@ -1850,35 +1883,41 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
   )
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-3xl max-h-[92vh] flex flex-col">
-        {/* Header + stepper */}
-        <div className="px-6 pt-5 pb-3 border-b border-[#E3E1DB]">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-base font-semibold text-[#131210]">New voicemail campaign</h2>
-            <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55]"><i className="fas fa-times" /></button>
-          </div>
-          <div className="flex items-center gap-2">
-            {[1, 2, 3].map(n => {
-              const active = step === n
-              const done = step > n
-              return (
-                <div key={n} className="flex items-center gap-2 flex-1">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold ${done ? 'bg-green-500 text-white' : active ? 'bg-[#D63B1F] text-white' : 'bg-[#EFEDE8] text-[#9B9890]'}`}>
-                    {done ? <i className="fas fa-check text-[10px]" /> : n}
-                  </div>
-                  <span className={`text-xs ${active ? 'text-[#131210] font-medium' : 'text-[#9B9890]'}`}>{stepLabel(n)}</span>
-                  {n < 3 && <div className={`flex-1 h-px ${done ? 'bg-green-300' : 'bg-[#EFEDE8]'}`} />}
-                </div>
-              )
-            })}
-          </div>
+    <div className="fixed inset-0 z-50 bg-[#F7F6F3] flex flex-col">
+      {/* Header — same pattern as the SMS New Campaign page */}
+      <header className="bg-[#FFFFFF] border-b border-[#E3E1DB] flex-shrink-0">
+        <div className="flex items-center gap-3 px-4 sm:px-8 pt-3.5 pb-2">
+          <button type="button" onClick={onClose} className="p-2 -ml-2 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded-lg transition-colors">
+            <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
+          </button>
+          <h3 className="text-base sm:text-lg font-semibold text-[#131210]">New voicemail campaign</h3>
         </div>
+        {/* Stepper */}
+        <div className="flex items-center gap-1 sm:gap-2 px-4 sm:px-8 pb-3 overflow-x-auto">
+          {[1, 2, 3].map(n => {
+            const active = step === n
+            const done = step > n
+            return (
+              <div key={n} className="flex items-center gap-1 sm:gap-2 shrink-0">
+                <div className={`flex items-center gap-2 px-2.5 py-1 rounded-md ${active ? 'bg-[#fdecea]' : ''}`}>
+                  <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-semibold ${active ? 'bg-[#D63B1F] text-white' : done ? 'bg-[#1F8C4A] text-white' : 'bg-[#EFEDE8] text-[#9B9890]'}`}>{n}</span>
+                  <span className={`text-xs font-medium ${active ? 'text-[#D63B1F]' : done ? 'text-[#5C5A55]' : 'text-[#9B9890]'}`}>{stepLabel(n)}</span>
+                </div>
+                {n < 3 && <span className="w-4 sm:w-8 h-px bg-[#E3E1DB]" />}
+              </div>
+            )
+          })}
+        </div>
+      </header>
 
-        {/* Step body — scrollable */}
-        <div className="px-6 py-5 overflow-y-auto flex-1">
+      {/* Scrollable body — Step 3 needs a wider container for the recipient table */}
+      <div className="flex-1 overflow-y-auto">
+        <div className={`mx-auto px-4 sm:px-8 py-6 sm:py-8 space-y-5 ${step === 3 ? 'max-w-7xl' : 'max-w-3xl'}`}>
           {/* ─── Step 1: Basics ─── */}
           {step === 1 && (
+            <section className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-xl p-5 sm:p-6">
+              <h4 className="text-sm font-semibold text-[#131210] mb-1">Basics</h4>
+              <p className="text-xs text-[#9B9890] mb-4">Name your campaign, pick a voicemail-verified number, and upload the audio.</p>
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Campaign name</label>
@@ -1946,10 +1985,14 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
                 {errors.audio && <p className="text-xs text-red-600 mt-1">{errors.audio}</p>}
               </div>
             </div>
+            </section>
           )}
 
           {/* ─── Step 2: Audience ─── */}
           {step === 2 && (
+            <section className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-xl p-5 sm:p-6">
+              <h4 className="text-sm font-semibold text-[#131210] mb-1">Audience</h4>
+              <p className="text-xs text-[#9B9890] mb-4">Pick the contact lists and which phone columns each contact should be dropped to.</p>
             <div className="space-y-5">
               <div>
                 <label className="block text-xs font-medium text-[#5C5A55] mb-2">Contact lists</label>
@@ -2015,123 +2058,254 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
                 </div>
               )}
             </div>
+            </section>
           )}
 
-          {/* ─── Step 3: Chunks & Preview ─── */}
-          {step === 3 && (
-            <div className="space-y-5">
-              <div className="flex items-end gap-3">
-                <div className="flex-1">
-                  <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Chunk size</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={chunkSize}
-                    onChange={(e) => { setChunkSize(Math.max(0, parseInt(e.target.value) || 0)); setChunkIndex(1) }}
-                    className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
-                  />
-                  <p className="text-[11px] text-[#9B9890] mt-1">Set to 0 to send to the whole list in one campaign.</p>
-                </div>
-                <div className="px-3 py-2 bg-[#F7F6F3] border border-[#E3E1DB] rounded-md text-xs text-[#5C5A55]">
-                  {totalRecipients.toLocaleString()} total · {chunks.length || 1} chunk{(chunks.length || 1) === 1 ? '' : 's'}
-                </div>
-              </div>
+          {/* ─── Step 3: Chunks & Preview (full audience editor) ─── */}
+          {step === 3 && (() => {
+            // Filter + paginate the visible chunk recipients.
+            const q = searchQuery.trim().toLowerCase()
+            const filtered = q
+              ? chunkRecipients.filter(r =>
+                  (r.name || '').toLowerCase().includes(q) ||
+                  (r.phone || '').toLowerCase().includes(q))
+              : chunkRecipients
+            const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+            const page = Math.min(currentPage, totalPages)
+            const pageStart = (page - 1) * PAGE_SIZE
+            const pageRows = filtered.slice(pageStart, pageStart + PAGE_SIZE)
+            const selectedCount = chunkRecipients.length - excludedPhones.size
+            const filteredSelected = filtered.filter(r => !excludedPhones.has(r.phone)).length
+            const pageAllSelected = pageRows.length > 0 && pageRows.every(r => !excludedPhones.has(r.phone))
 
-              {chunkSize > 0 && chunks.length > 0 && (
-                <div>
-                  <label className="block text-xs font-medium text-[#5C5A55] mb-2">Which chunk to launch?</label>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-44 overflow-y-auto pr-1">
-                    {chunks.map(ch => {
-                      const sentMeta = alreadySentChunks.find(s => s.n === ch.n)
-                      const active = ch.n === chunkIndex
-                      return (
-                        <button
-                          key={ch.n}
-                          type="button"
-                          onClick={() => setChunkIndex(ch.n)}
-                          className={`text-left px-3 py-2 rounded-lg border text-xs ${active ? 'border-[#D63B1F] bg-[#FFF8F6]' : 'border-[#E3E1DB] hover:bg-[#F7F6F3]'}`}
-                        >
-                          <div className="font-medium text-[#131210] flex items-center gap-1.5">
-                            Chunk {ch.n}
-                            {sentMeta && <i className="fas fa-check text-green-600 text-[10px]" title={`Launched ${new Date(sentMeta.at).toLocaleDateString()}`} />}
-                          </div>
-                          <div className="text-[10px] text-[#9B9890]">rows {ch.start.toLocaleString()}–{ch.end.toLocaleString()}</div>
-                          <div className="text-[10px] text-[#9B9890]">{ch.count.toLocaleString()} recipients</div>
-                          {sentMeta && (
-                            <div className="text-[10px] text-green-700 mt-1">Already launched ({sentMeta.status})</div>
-                          )}
-                        </button>
-                      )
-                    })}
+            const togglePhone = (phone) => {
+              setExcludedPhones(prev => {
+                const next = new Set(prev)
+                if (next.has(phone)) next.delete(phone); else next.add(phone)
+                return next
+              })
+            }
+            const setExcludedFor = (rows, exclude) => {
+              setExcludedPhones(prev => {
+                const next = new Set(prev)
+                for (const r of rows) {
+                  if (exclude) next.add(r.phone); else next.delete(r.phone)
+                }
+                return next
+              })
+            }
+
+            return (
+              <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-5">
+                {/* ─── Left sidebar: audio preview + chunk size + chunks ─── */}
+                <div className="space-y-4">
+                  {uploadState && uploadState !== 'uploading' && (
+                    <div className="bg-[#F7F6F3] border border-[#E3E1DB] rounded-lg p-3">
+                      <p className="text-[10px] uppercase tracking-wider text-[#9B9890] font-medium mb-1.5">Voicemail audio</p>
+                      <p className="text-xs text-[#131210] truncate mb-2">{uploadState.name}</p>
+                      <audio controls src={uploadState.url} className="w-full" style={{ height: 34 }} />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Chunk size</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={chunkSize}
+                      onChange={(e) => { setChunkSize(Math.max(0, parseInt(e.target.value) || 0)); setChunkIndex(1) }}
+                      className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
+                    />
+                    <p className="text-[10px] text-[#9B9890] mt-1">{totalRecipients.toLocaleString()} total · {chunks.length || 1} chunk{(chunks.length || 1) === 1 ? '' : 's'}. Set to 0 to send the whole list.</p>
                   </div>
-                  {alreadySentChunks.some(s => s.n === chunkIndex) && (
-                    <div className="mt-2 px-3 py-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800 flex items-start gap-2">
-                      <i className="fas fa-exclamation-triangle mt-0.5" />
-                      <span>This chunk was already launched. Sending again will drop the voicemail to these contacts a second time.</span>
+
+                  {chunkSize > 0 && chunks.length > 0 && (
+                    <div>
+                      <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Pick a chunk</label>
+                      <div className="space-y-1 max-h-80 overflow-y-auto pr-1">
+                        {chunks.map(ch => {
+                          const sentMeta = alreadySentChunks.find(s => s.n === ch.n)
+                          const active = ch.n === chunkIndex
+                          return (
+                            <button
+                              key={ch.n}
+                              type="button"
+                              onClick={() => setChunkIndex(ch.n)}
+                              className={`w-full text-left px-3 py-2 rounded-lg border text-xs ${active ? 'border-[#D63B1F] bg-[#FFF8F6]' : 'border-[#E3E1DB] hover:bg-[#F7F6F3]'}`}
+                            >
+                              <div className="font-medium text-[#131210] flex items-center gap-1.5">
+                                Chunk {ch.n}
+                                {sentMeta && <i className="fas fa-check text-green-600 text-[10px]" title={`Launched ${new Date(sentMeta.at).toLocaleDateString()}`} />}
+                              </div>
+                              <div className="text-[10px] text-[#9B9890]">rows {ch.start.toLocaleString()}–{ch.end.toLocaleString()} · {ch.count.toLocaleString()}</div>
+                              {sentMeta && <div className="text-[10px] text-green-700 mt-0.5">Already launched ({sentMeta.status})</div>}
+                            </button>
+                          )
+                        })}
+                      </div>
+                      {alreadySentChunks.some(s => s.n === chunkIndex) && (
+                        <div className="mt-2 px-2.5 py-2 bg-yellow-50 border border-yellow-200 rounded text-[11px] text-yellow-800 flex items-start gap-1.5">
+                          <i className="fas fa-exclamation-triangle mt-0.5" />
+                          <span>This chunk was already launched. Re-sending will drop voicemails twice.</span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-              )}
 
-              <div>
-                <label className="block text-xs font-medium text-[#5C5A55] mb-2">Recipient preview (sample)</label>
-                <div className="border border-[#E3E1DB] rounded-lg overflow-hidden">
-                  <div className="grid grid-cols-[1fr_auto_auto] gap-2 px-3 py-2 bg-[#F7F6F3] text-[10px] uppercase tracking-wider text-[#9B9890] font-medium">
-                    <span>Name</span><span>Phone</span><span>From</span>
+                {/* ─── Right: searchable, paginated, selectable recipient table ─── */}
+                <div className="min-w-0">
+                  {/* Toolbar: search + bulk actions + selected count */}
+                  <div className="flex flex-wrap items-center gap-2 mb-3">
+                    <div className="relative flex-1 min-w-[220px]">
+                      <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-[#9B9890] text-xs" />
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
+                        placeholder="Search by name or phone…"
+                        className="w-full pl-8 pr-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setExcludedFor(pageRows, !pageAllSelected)}
+                      className="px-3 py-2 text-xs text-[#5C5A55] border border-[#D4D1C9] rounded-md hover:bg-[#F7F6F3]"
+                    >
+                      {pageAllSelected ? 'Unselect page' : 'Select page'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setExcludedFor(filtered, false)}
+                      className="px-3 py-2 text-xs text-[#5C5A55] border border-[#D4D1C9] rounded-md hover:bg-[#F7F6F3]"
+                      title="Select every row matching the current search (across all pages)"
+                    >
+                      Select all{q ? ' matches' : ' in chunk'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setExcludedFor(filtered, true)}
+                      className="px-3 py-2 text-xs text-[#D63B1F] border border-[rgba(214,59,31,0.2)] rounded-md hover:bg-[rgba(214,59,31,0.06)]"
+                    >
+                      Unselect all{q ? ' matches' : ''}
+                    </button>
+                    <div className="ml-auto px-3 py-2 bg-[#F7F6F3] border border-[#E3E1DB] rounded-md text-xs text-[#131210] font-medium whitespace-nowrap">
+                      {selectedCount.toLocaleString()} / {chunkRecipients.length.toLocaleString()} selected
+                    </div>
                   </div>
-                  <div className="max-h-48 overflow-y-auto">
-                    {recipientSample.length === 0 && (
-                      <p className="px-3 py-3 text-xs text-[#9B9890]">{previewLoading ? 'Loading…' : 'No recipients in this selection.'}</p>
-                    )}
-                    {recipientSample.map((r, i) => (
-                      <div key={i} className="grid grid-cols-[1fr_auto_auto] gap-2 px-3 py-1.5 text-xs border-t border-[#F0EEE9]">
-                        <span className="text-[#131210] truncate">{r.name || '—'}</span>
-                        <span className="font-mono text-[#5C5A55]">{r.phone}</span>
-                        <span className="text-[#9B9890] text-[10px]">{r.sourceColumn}</span>
+
+                  {/* Table */}
+                  <div className="border border-[#E3E1DB] rounded-lg overflow-hidden">
+                    <div className="grid grid-cols-[36px_1fr_180px_120px] gap-2 px-3 py-2 bg-[#F7F6F3] text-[10px] uppercase tracking-wider text-[#9B9890] font-medium border-b border-[#E3E1DB]">
+                      <span></span>
+                      <span>Name</span>
+                      <span>Phone</span>
+                      <span>From column</span>
+                    </div>
+                    <div className="overflow-y-auto" style={{ maxHeight: 'min(58vh, 520px)' }}>
+                      {pageRows.length === 0 && (
+                        <p className="px-3 py-6 text-xs text-[#9B9890] text-center">
+                          {previewLoading ? 'Loading…' : (q ? 'No rows match your search.' : 'No recipients in this selection.')}
+                        </p>
+                      )}
+                      {pageRows.map((r, i) => {
+                        const checked = !excludedPhones.has(r.phone)
+                        return (
+                          <label
+                            key={r.phone + i}
+                            className={`grid grid-cols-[36px_1fr_180px_120px] gap-2 px-3 py-1.5 text-xs border-t border-[#F0EEE9] cursor-pointer hover:bg-[#F7F6F3] ${!checked ? 'opacity-60' : ''}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => togglePhone(r.phone)}
+                              className="w-4 h-4 accent-[#D63B1F]"
+                            />
+                            <span className="text-[#131210] truncate">{r.name || '—'}</span>
+                            <span className="font-mono text-[#5C5A55] truncate">{r.phone}</span>
+                            <span className="text-[#9B9890] text-[10px] truncate">{r.sourceColumn}</span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                    {/* Pagination footer */}
+                    {filtered.length > PAGE_SIZE && (
+                      <div className="flex items-center justify-between px-3 py-2 border-t border-[#E3E1DB] bg-[#FAFAF8] text-xs">
+                        <span className="text-[#5C5A55]">
+                          Showing <strong>{(pageStart + 1).toLocaleString()}–{Math.min(pageStart + PAGE_SIZE, filtered.length).toLocaleString()}</strong> of {filtered.length.toLocaleString()}
+                          {q && <span className="text-[#9B9890]"> (filtered)</span>}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                            disabled={page === 1}
+                            className="px-2.5 py-1 border border-[#D4D1C9] rounded text-[#5C5A55] hover:bg-[#F7F6F3] disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            ← Prev
+                          </button>
+                          <span className="text-[#5C5A55] font-mono">
+                            Page {page} / {totalPages}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                            disabled={page === totalPages}
+                            className="px-2.5 py-1 border border-[#D4D1C9] rounded text-[#5C5A55] hover:bg-[#F7F6F3] disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            Next →
+                          </button>
+                        </div>
                       </div>
-                    ))}
+                    )}
                   </div>
+                  {previewTruncated && (
+                    <p className="text-[11px] text-yellow-700 mt-2">
+                      Showing first 50,000 rows of the chunk (capped). Smaller chunk sizes will show every row.
+                    </p>
+                  )}
+
+                  {errors.recipients && <p className="text-xs text-red-600 mt-2">{errors.recipients}</p>}
+                  {errors.submit && (
+                    <div className="mt-2 px-3 py-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">{errors.submit}</div>
+                  )}
                 </div>
-                <p className="text-[10px] text-[#9B9890] mt-1">Showing up to 30 rows — the full chunk dispatches on launch.</p>
               </div>
-
-              {errors.recipients && <p className="text-xs text-red-600">{errors.recipients}</p>}
-              {errors.submit && (
-                <div className="px-3 py-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">{errors.submit}</div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-[#E3E1DB] flex items-center justify-between bg-[#FAFAF8] rounded-b-lg">
-          <button
-            type="button"
-            onClick={step === 1 ? onClose : goBack}
-            className="px-4 py-2 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]"
-          >
-            {step === 1 ? 'Cancel' : 'Back'}
-          </button>
-          {step < 3 ? (
-            <button type="button" onClick={goNext} className="px-5 py-2 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md">
-              Next
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={handleLaunch}
-              disabled={isSubmitting || totalRecipients === 0}
-              className="px-5 py-2 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md disabled:opacity-50"
-            >
-              {isSubmitting
-                ? <><i className="fas fa-spinner fa-spin mr-2" />Launching…</>
-                : (chunkSize > 0
-                  ? `Launch chunk ${chunkIndex} (${(chunks[chunkIndex - 1]?.count || 0).toLocaleString()})`
-                  : `Launch (${totalRecipients.toLocaleString()})`)}
-            </button>
-          )}
+            )
+          })()}
         </div>
       </div>
+
+      {/* Sticky bottom bar — matches the SMS New Campaign page */}
+      <footer className="bg-[#FFFFFF] border-t border-[#E3E1DB] flex-shrink-0 px-4 sm:px-8 py-3 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={step === 1 ? onClose : goBack}
+          className="px-4 py-2 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3] transition-colors"
+        >
+          {step === 1 ? 'Cancel' : 'Back'}
+        </button>
+        {step < 3 ? (
+          <button
+            type="button"
+            onClick={goNext}
+            className="px-5 py-2 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg transition-colors"
+          >
+            Next
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handleLaunch}
+            disabled={isSubmitting || selectedRecipients.length === 0}
+            className="px-5 py-2 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg transition-colors disabled:opacity-50"
+          >
+            {isSubmitting
+              ? <><i className="fas fa-spinner fa-spin mr-2" />Launching…</>
+              : `Launch ${selectedRecipients.length.toLocaleString()} ${selectedRecipients.length === 1 ? 'recipient' : 'recipients'}`}
+          </button>
+        )}
+      </footer>
     </div>
   )
 }

@@ -116,6 +116,28 @@ export async function POST(request, { params }) {
     }
   }
 
+  // If the queue was already populated by the create endpoint (explicit
+  // recipient list from the wizard), don't recompute from chunk slicing —
+  // honor exactly what the user picked. Detected by checking the table.
+  const { count: alreadyQueued } = await supabaseAdmin
+    .from('voicemail_campaign_sends')
+    .select('id', { count: 'exact', head: true })
+    .eq('campaign_id', campaignId)
+
+  if (alreadyQueued && alreadyQueued > 0) {
+    console.log('[voicemail-campaigns:start] queue already populated, skipping rebuild', {
+      campaignId, alreadyQueued,
+    })
+    await supabaseAdmin.from('voicemail_campaigns')
+      .update({ total_recipients: alreadyQueued, sent_count: 0, failed_count: 0 })
+      .eq('id', campaignId)
+    return NextResponse.json({
+      success: true,
+      contactCount: alreadyQueued,
+      estimatedCredits: alreadyQueued * CREDITS_PER_RVM,
+    })
+  }
+
   console.log('[voicemail-campaigns:start] enqueueing', {
     campaignId,
     source: recordingUrlSource,
