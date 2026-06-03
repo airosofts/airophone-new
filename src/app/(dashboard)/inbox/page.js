@@ -106,20 +106,23 @@ export default function InboxPage() {
     return () => document.removeEventListener('mousedown', handler)
   }, [showDialer])
 
-  // Fetch call history when calls tab is active
+  // Fetch call history when calls tab is active, scoped to the selected phone number
   useEffect(() => {
     if (inboxTab !== 'calls') return
     const fetchCalls = async () => {
       setCallsLoading(true)
       try {
-        const res = await fetch(`/api/call-history?filter=${callFilter}&limit=50`)
+        const number = selectedPhoneNumber?.phoneNumber
+        const params = new URLSearchParams({ filter: callFilter, limit: '50' })
+        if (number) params.set('phoneNumber', number)
+        const res = await fetch(`/api/call-history?${params}`)
         const data = await res.json()
         if (data.success) setCalls(data.calls || [])
       } catch (e) { console.error('Failed to fetch calls:', e) }
       finally { setCallsLoading(false) }
     }
     fetchCalls()
-  }, [inboxTab, callFilter])
+  }, [inboxTab, callFilter, selectedPhoneNumber?.phoneNumber])
 
   const handleDialerCall = (phoneNumber) => {
     setShowDialer(false)
@@ -132,6 +135,13 @@ export default function InboxPage() {
 
   const fromParam = searchParams.get('from')
   const selectedPhoneNumber = phoneNumbers.find(p => p.phoneNumber === fromParam) || phoneNumbers[0] || null
+
+  // When the active phone number changes, clear the open chat + contact panel
+  useEffect(() => {
+    setSelectedConversation(null)
+    setIsCreatingNewConversation(false)
+    setMobileView('list')
+  }, [selectedPhoneNumber?.phoneNumber])
 
   const { conversations, loading: conversationsLoading, refetch, setActiveConversation, deleteConversation, updateConversationOptimistic } = useRealtimeConversations(selectedPhoneNumber?.phoneNumber)
   const { messages: allMessages, loading: messagesLoading, addOptimisticMessage, replaceOptimisticMessage, removeOptimisticMessage } = useRealtimeMessages(selectedConversation?.id)

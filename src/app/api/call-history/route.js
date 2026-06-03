@@ -11,6 +11,7 @@ export async function GET(request) {
 
     const { searchParams } = new URL(request.url)
     const filter = searchParams.get('filter') || 'all'
+    const phoneNumber = searchParams.get('phoneNumber') || null
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '50')
     const offset = (page - 1) * limit
@@ -24,6 +25,10 @@ export async function GET(request) {
       .eq('workspace_id', user.workspaceId)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1)
+
+    if (phoneNumber) {
+      query = query.or(`from_number.eq.${phoneNumber},to_number.eq.${phoneNumber}`)
+    }
 
     if (filter === 'forwarded') {
       query = query.not('forwarded_to', 'is', null)
