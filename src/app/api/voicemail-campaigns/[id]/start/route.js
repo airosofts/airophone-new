@@ -8,6 +8,7 @@ import { getUserFromRequest, getWorkspaceFromRequest } from '@/lib/session-helpe
 import { normalizePhoneNumber } from '@/lib/phone-utils'
 import { getWorkspaceMessageRate } from '@/lib/pricing'
 import { sendStaticVoicemail } from '@/lib/voicedrop'
+import { buildRecipients } from '@/lib/phone-columns'
 
 // 2 credits per RVM send (matches AI-reply cost).
 const CREDITS_PER_RVM = 2
@@ -48,18 +49,35 @@ export async function POST(request, { params }) {
   // Pull contacts from the selected lists, deduped by normalized phone
   const { data: rawContacts } = await supabaseAdmin
     .from('contacts')
-    .select('id, phone_number')
+    .select('id, phone_number, custom_fields')
     .eq('workspace_id', workspace.workspaceId)
     .in('contact_list_id', campaign.contact_list_ids)
+    .order('created_at', { ascending: true })
 
-  const seen = new Set()
-  const contacts = []
-  for (const c of (rawContacts || [])) {
-    const p = normalizePhoneNumber(c.phone_number)
-    if (!p || seen.has(p)) continue
-    seen.add(p)
-    contacts.push({ id: c.id, phone: p })
+  // Multi-column support: build the recipient list across every selected
+  // phone column (primary + any custom_fields keys the wizard picked).
+  // buildRecipients dedupes globally by E.164 so the same number can't be
+  // dropped twice even if it appears in two columns or two contacts.
+  const phoneColumns = Array.isArray(campaign.phone_columns) && campaign.phone_columns.length > 0
+    ? campaign.phone_columns
+    : ['phone_number']
+  const allRecipients = buildRecipients(rawContacts || [], phoneColumns)
+
+  // Chunk slice. chunk_size=0 means "send whole list" (legacy); chunk_index
+  // is 1-based. Slicing here keeps the audit trail clean — this campaign row
+  // represents exactly the recipients it dispatched.
+  let recipients = allRecipients
+  if (campaign.chunk_size && campaign.chunk_size > 0 && campaign.chunk_index && campaign.chunk_index > 0) {
+    const start = (campaign.chunk_index - 1) * campaign.chunk_size
+    recipients = allRecipients.slice(start, start + campaign.chunk_size)
   }
+
+  // Shape downstream code expects: { id, phone, sourceColumn }
+  const contacts = recipients.map(r => ({
+    id: r.contactId,
+    phone: r.phone,
+    sourceColumn: r.sourceColumn,
+  }))
 
   // Credit check up front so we fail clean before any sends
   const totalCreditsNeeded = contacts.length * CREDITS_PER_RVM
@@ -98,23 +116,55 @@ export async function POST(request, { params }) {
     }
   }
 
-  console.log('[voicemail-campaigns:start] resolved recording URL', {
+  console.log('[voicemail-campaigns:start] enqueueing', {
     campaignId,
     source: recordingUrlSource,
-    url: recordingUrl,
     senderNumber: campaign.sender_number,
     contactCount: contacts.length,
-    webhookUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.airophone.com'}/api/webhooks/voicedrop`,
   })
 
-  // Kick off async processing — don't block the HTTP response
-  processVoicemailCampaign(campaign, contacts, user.userId, workspace.workspaceId, wallet, recordingUrl)
-    .catch(err => console.error('[voicemail-campaigns:start] async error:', err))
+  // Enqueue every recipient as a 'queued' row. Idempotent — the unique
+  // (campaign_id, phone) constraint means re-running /start on the same
+  // campaign is a no-op (existing rows are skipped via ON CONFLICT). This is
+  // the line between "in-request loop dies on restart" and "work persists".
+  if (contacts.length > 0) {
+    const queueRows = contacts.map(c => ({
+      campaign_id: campaignId,
+      workspace_id: workspace.workspaceId,
+      contact_id: c.id,
+      phone: c.phone,
+      source_column: c.sourceColumn || 'phone_number',
+      status: 'queued',
+    }))
+    const { error: enqErr } = await supabaseAdmin
+      .from('voicemail_campaign_sends')
+      .upsert(queueRows, { onConflict: 'campaign_id,phone', ignoreDuplicates: true })
+    if (enqErr) {
+      console.error('[voicemail-campaigns:start] enqueue failed:', enqErr)
+      await supabaseAdmin.from('voicemail_campaigns')
+        .update({ status: 'draft', started_at: null })
+        .eq('id', campaignId)
+      return NextResponse.json({ error: 'Failed to enqueue sends' }, { status: 500 })
+    }
+  }
+
+  // Cache totals on the campaign row so the UI can render progress in one
+  // query. `total_recipients` is the actual queued count — if a phone was
+  // already in the table from a previous launch the unique constraint kept it.
+  const { count: actualTotal } = await supabaseAdmin
+    .from('voicemail_campaign_sends')
+    .select('id', { count: 'exact', head: true })
+    .eq('campaign_id', campaignId)
+  await supabaseAdmin.from('voicemail_campaigns')
+    .update({ total_recipients: actualTotal || contacts.length, sent_count: 0, failed_count: 0 })
+    .eq('id', campaignId)
 
   return NextResponse.json({
     success: true,
-    contactCount: contacts.length,
+    contactCount: actualTotal || contacts.length,
     estimatedCredits: totalCreditsNeeded,
+    // Backwards-compat: the old response shape; client renders progress via
+    // the campaign row's counters now, not from this response.
   })
 }
 

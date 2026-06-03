@@ -33,6 +33,8 @@ const PUBLIC_API_ROUTES = [
   // not by user session. Middleware would otherwise 401 it (cron sends the
   // raw CRON_SECRET as Bearer, which isn't a valid JWT).
   '/api/automations/process-pending',
+  // RVM queue sweeper — same pattern: Bearer CRON_SECRET, no user session.
+  '/api/voicemail-campaigns/process-queue',
 ]
 
 export async function middleware(request) {

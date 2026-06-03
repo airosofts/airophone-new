@@ -1670,21 +1670,42 @@ function ViewCampaignModal({ campaign, contactLists, phoneNumbers, isTrial, onCl
 }
 
 function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated }) {
+  // Step 1 (Basics): name, sender, audio
+  // Step 2 (Audience): contact lists + phone columns
+  // Step 3 (Chunks & Preview): chunk size + chunk picker + recipient sample
+  const [step, setStep] = useState(1)
   const [name, setName] = useState('')
-  const [selectedListIds, setSelectedListIds] = useState([])
   const [senderNumber, setSenderNumber] = useState('')
   const [uploadState, setUploadState] = useState(null) // null | 'uploading' | { url, voicedropUrl, path, name }
+  const [selectedListIds, setSelectedListIds] = useState([])
+  const [selectedColumns, setSelectedColumns] = useState(['phone_number'])
+  const [chunkSize, setChunkSize] = useState(1500)
+  const [chunkIndex, setChunkIndex] = useState(1)
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [created, setCreated] = useState(false)
   const fileInputRef = useRef(null)
 
+  // Preview data (fetched lazily when Step 2 / Step 3 are visible)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [detectedColumns, setDetectedColumns] = useState([])  // [{key,label,count,isPrimary}]
+  const [totalRecipients, setTotalRecipients] = useState(0)
+  const [recipientSample, setRecipientSample] = useState([])
+  const [chunks, setChunks] = useState([])                    // [{n,start,end,count}]
+  const [alreadySentChunks, setAlreadySentChunks] = useState([])
+
   const verifiedNumbers = phoneNumbers.filter(pn => pn.voicedrop_verified)
 
   const toggleList = (id) => {
     setSelectedListIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+    setChunkIndex(1)
+  }
+  const toggleColumn = (k) => {
+    setSelectedColumns(prev => prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k])
+    setChunkIndex(1)
   }
 
+  // ── Audio upload (unchanged from legacy modal) ─────────────────────────
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -1712,20 +1733,67 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
     }
   }
 
-  const validate = () => {
+  // ── Preview fetch (debounced) ──────────────────────────────────────────
+  // Step 2: discovers columns (call WITHOUT chunkSize/columns)
+  // Step 3: refreshes chunks for the selected columns + chunk size
+  useEffect(() => {
+    if (step === 1) return
+    if (selectedListIds.length === 0) {
+      setDetectedColumns([]); setTotalRecipients(0); setRecipientSample([])
+      setChunks([]); setAlreadySentChunks([])
+      return
+    }
+    let cancelled = false
+    setPreviewLoading(true)
+    const body = {
+      contactListIds: selectedListIds,
+      phoneColumns: step === 3 ? selectedColumns : undefined,
+      chunkSize: step === 3 ? chunkSize : 0,
+    }
+    apiPost('/api/voicemail-campaigns/preview', body)
+      .then(r => r.json())
+      .then(data => {
+        if (cancelled) return
+        if (data?.success) {
+          setDetectedColumns(data.detectedColumns || [])
+          setTotalRecipients(data.totalRecipients || 0)
+          setRecipientSample(data.recipients || [])
+          setChunks(data.chunks || [])
+          setAlreadySentChunks(data.alreadySentChunks || [])
+        }
+      })
+      .catch(() => { /* silent — UI just stays empty */ })
+      .finally(() => { if (!cancelled) setPreviewLoading(false) })
+    return () => { cancelled = true }
+  }, [step, selectedListIds.join(','), selectedColumns.join(','), chunkSize])
+
+  // ── Validation per step ────────────────────────────────────────────────
+  const validateStep = (s) => {
     const errs = {}
-    if (!name.trim()) errs.name = 'Campaign name is required'
-    if (!uploadState || uploadState === 'uploading') errs.audio = 'Please upload a voicemail recording'
-    if (!senderNumber) errs.senderNumber = 'Sender number is required'
-    if (selectedListIds.length === 0) errs.contactLists = 'Select at least one contact list'
+    if (s === 1) {
+      if (!name.trim()) errs.name = 'Campaign name is required'
+      if (!senderNumber) errs.senderNumber = 'Sender number is required'
+      if (!uploadState || uploadState === 'uploading') errs.audio = 'Please upload a voicemail recording'
+    }
+    if (s === 2) {
+      if (selectedListIds.length === 0) errs.contactLists = 'Select at least one contact list'
+      if (selectedColumns.length === 0) errs.columns = 'Select at least one phone column'
+    }
+    if (s === 3) {
+      if (chunkSize > 0 && (chunkIndex < 1 || chunkIndex > Math.max(1, chunks.length))) errs.chunk = 'Pick a chunk'
+      if (totalRecipients === 0) errs.recipients = 'No recipients in selection'
+    }
     setErrors(errs)
     return Object.keys(errs).length === 0
   }
+  const goNext = () => { if (validateStep(step)) setStep(s => Math.min(3, s + 1)) }
+  const goBack = () => { setErrors({}); setStep(s => Math.max(1, s - 1)) }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!validate()) return
+  // ── Launch ─────────────────────────────────────────────────────────────
+  const handleLaunch = async () => {
+    if (!validateStep(3)) return
     setIsSubmitting(true)
+    setErrors({})
     try {
       const payload = {
         name: name.trim(),
@@ -1734,16 +1802,14 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
         voicedropRecordingUrl: uploadState.voicedropUrl || null,
         senderNumber,
         contactListIds: selectedListIds,
+        phoneColumns: selectedColumns,
+        chunkSize: chunkSize > 0 ? chunkSize : 0,
+        chunkIndex: chunkSize > 0 ? chunkIndex : 0,
       }
       const response = await apiPost('/api/voicemail-campaigns', payload)
       const data = await response.json()
-      if (!data.success) {
-        setErrors({ submit: data.error || 'Failed to create campaign' })
-        return
-      }
-      // Auto-launch immediately after create — matches the original (working)
-      // voicemail flow. Without this the campaign stays a 'draft' and nothing
-      // is ever sent. The /start route claims the draft and dispatches the RVMs.
+      if (!data.success) { setErrors({ submit: data.error || 'Failed to create campaign' }); return }
+      // Auto-launch (matches legacy behavior).
       const startRes = await apiPost(`/api/voicemail-campaigns/${data.campaign.id}/start`, {})
       const startData = await startRes.json()
       if (!startRes.ok || !startData.success) {
@@ -1758,14 +1824,19 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
     }
   }
 
+  // ── Success state ──────────────────────────────────────────────────────
   if (created) {
     return (
       <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
         <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-sm">
           <div className="px-5 py-8 text-center">
             <div className="w-10 h-10 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-3"><i className="fas fa-check text-green-600"></i></div>
-            <h3 className="text-sm font-semibold text-[#131210] mb-1">RVM Campaign Created</h3>
-            <p className="text-xs text-[#9B9890] mb-4">Your campaign is ready. Open it to launch and start sending.</p>
+            <h3 className="text-sm font-semibold text-[#131210] mb-1">Voicemail campaign launched</h3>
+            <p className="text-xs text-[#9B9890] mb-4">
+              {chunkSize > 0
+                ? `Chunk ${chunkIndex} (${(chunks[chunkIndex - 1]?.count) || 0} recipients) is dispatching now.`
+                : `Your campaign is dispatching to all ${totalRecipients} recipients.`}
+            </p>
             <button onClick={onCreated} className="px-4 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md">View Campaigns</button>
           </div>
         </div>
@@ -1773,175 +1844,329 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
     )
   }
 
+  // ── Wizard chrome ──────────────────────────────────────────────────────
+  const stepLabel = (n) => (
+    { 1: 'Basics', 2: 'Audience', 3: 'Chunks & Preview' }[n] || ''
+  )
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-6">
-      <div className="bg-[#FFFFFF] rounded-xl shadow-2xl flex flex-col" style={{ width: '90vw', maxWidth: '1000px', height: '88vh' }}>
-        <div className="flex items-center justify-between px-8 py-5 border-b border-[#E3E1DB] flex-shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 bg-[rgba(214,59,31,0.08)] rounded-lg flex items-center justify-center">
-              <i className="fas fa-voicemail text-[#D63B1F] text-sm"></i>
-            </div>
-            <h3 className="text-lg font-semibold text-[#131210]">New RVM Campaign</h3>
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-3xl max-h-[92vh] flex flex-col">
+        {/* Header + stepper */}
+        <div className="px-6 pt-5 pb-3 border-b border-[#E3E1DB]">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-base font-semibold text-[#131210]">New voicemail campaign</h2>
+            <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55]"><i className="fas fa-times" /></button>
           </div>
-          <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1.5 hover:bg-[#F7F6F3] rounded-md transition-colors">
-            <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
-          </button>
+          <div className="flex items-center gap-2">
+            {[1, 2, 3].map(n => {
+              const active = step === n
+              const done = step > n
+              return (
+                <div key={n} className="flex items-center gap-2 flex-1">
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold ${done ? 'bg-green-500 text-white' : active ? 'bg-[#D63B1F] text-white' : 'bg-[#EFEDE8] text-[#9B9890]'}`}>
+                    {done ? <i className="fas fa-check text-[10px]" /> : n}
+                  </div>
+                  <span className={`text-xs ${active ? 'text-[#131210] font-medium' : 'text-[#9B9890]'}`}>{stepLabel(n)}</span>
+                  {n < 3 && <div className={`flex-1 h-px ${done ? 'bg-green-300' : 'bg-[#EFEDE8]'}`} />}
+                </div>
+              )
+            })}
+          </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-1 min-h-0">
-          {/* Left column */}
-          <div className="flex-1 flex flex-col px-8 py-6 border-r border-[#E3E1DB] overflow-y-auto space-y-5">
-            <div>
-              <label className="block text-sm font-medium text-[#5C5A55] mb-2">Campaign Name *</label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g., Spring Outreach Voicemail"
-                className="w-full px-4 py-3 border border-[#D4D1C9] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F]"
-              />
-              {errors.name && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.name}</p>}
-            </div>
+        {/* Step body — scrollable */}
+        <div className="px-6 py-5 overflow-y-auto flex-1">
+          {/* ─── Step 1: Basics ─── */}
+          {step === 1 && (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Campaign name</label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Reactivate cold leads — June drop"
+                  className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
+                />
+                {errors.name && <p className="text-xs text-red-600 mt-1">{errors.name}</p>}
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium text-[#5C5A55] mb-2">Voicemail Recording *</label>
-              {uploadState && uploadState !== 'uploading' ? (
-                <div className="border border-[#E3E1DB] rounded-lg p-4 bg-[#F7F6F3]">
-                  <div className="flex items-center justify-between gap-3 mb-3">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-8 h-8 bg-[rgba(214,59,31,0.08)] rounded flex items-center justify-center flex-shrink-0">
-                        <i className="fas fa-music text-[#D63B1F] text-xs"></i>
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-[#131210] truncate">{uploadState.name}</p>
-                        <p className="text-xs text-[#9B9890]">{uploadState.voicedropUrl ? 'Audio uploaded' : 'Stored locally'}</p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => { setUploadState(null); if (fileInputRef.current) fileInputRef.current.value = '' }}
-                      className="p-1.5 text-[#9B9890] hover:text-[#D63B1F] rounded transition-colors flex-shrink-0"
-                    >
-                      <i className="fas fa-times text-xs"></i>
-                    </button>
+              <div>
+                <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Sender number (voicemail-verified)</label>
+                {verifiedNumbers.length === 0 ? (
+                  <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-xs text-yellow-800 flex items-start gap-2">
+                    <i className="fas fa-exclamation-triangle mt-0.5 flex-shrink-0" />
+                    <span>No verified numbers found. Go to <strong>Settings → Phone Numbers</strong> and verify a number for voicemail before sending.</span>
                   </div>
-                  <audio controls src={uploadState.url} className="w-full" style={{ height: '36px' }} />
-                  {uploadState.voicedropUrl && (
-                    <p className="text-[10px] text-green-700 mt-2 flex items-center gap-1">
-                      <i className="fas fa-check-circle"></i> Ready for ringless delivery
-                    </p>
+                ) : (
+                  <select
+                    value={senderNumber}
+                    onChange={(e) => setSenderNumber(e.target.value)}
+                    className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
+                  >
+                    <option value="">Pick a verified number…</option>
+                    {verifiedNumbers.map(pn => (
+                      <option key={pn.id} value={pn.phoneNumber}>
+                        {pn.custom_name ? `${pn.custom_name} (${pn.phoneNumber})` : pn.phoneNumber}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {errors.senderNumber && <p className="text-xs text-red-600 mt-1">{errors.senderNumber}</p>}
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Voicemail audio</label>
+                <input ref={fileInputRef} type="file" accept="audio/*" onChange={handleFileChange} className="hidden" />
+                {!uploadState && (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full px-4 py-6 border-2 border-dashed border-[#D4D1C9] rounded-lg text-sm text-[#5C5A55] hover:border-[#D63B1F] hover:bg-[#FFF8F6]"
+                  >
+                    <i className="fas fa-cloud-upload-alt mr-2" /> Click to upload an MP3
+                  </button>
+                )}
+                {uploadState === 'uploading' && (
+                  <div className="px-4 py-3 border border-[#D4D1C9] rounded-lg text-sm text-[#5C5A55]">
+                    <i className="fas fa-spinner fa-spin mr-2" /> Uploading…
+                  </div>
+                )}
+                {uploadState && uploadState !== 'uploading' && (
+                  <div className="flex items-center gap-3 px-4 py-3 border border-[#E3E1DB] rounded-lg bg-[#F7F6F3]">
+                    <i className="fas fa-music text-[#D63B1F]" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-[#131210] truncate">{uploadState.name}</p>
+                      <p className="text-xs text-[#9B9890]">{uploadState.voicedropUrl ? 'Audio uploaded' : 'Stored locally'}</p>
+                    </div>
+                    <button type="button" onClick={() => { setUploadState(null); if (fileInputRef.current) fileInputRef.current.value = '' }} className="text-xs text-[#9B9890] hover:text-[#5C5A55]">Replace</button>
+                  </div>
+                )}
+                {errors.audio && <p className="text-xs text-red-600 mt-1">{errors.audio}</p>}
+              </div>
+            </div>
+          )}
+
+          {/* ─── Step 2: Audience ─── */}
+          {step === 2 && (
+            <div className="space-y-5">
+              <div>
+                <label className="block text-xs font-medium text-[#5C5A55] mb-2">Contact lists</label>
+                {contactLists.length === 0 ? (
+                  <p className="text-xs text-[#9B9890]">No contact lists yet — import one in Contacts first.</p>
+                ) : (
+                  <div className="border border-[#E3E1DB] rounded-lg max-h-44 overflow-y-auto">
+                    {contactLists.map(l => (
+                      <label key={l.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-[#F7F6F3] border-b border-[#F0EEE9] last:border-b-0">
+                        <input
+                          type="checkbox"
+                          checked={selectedListIds.includes(l.id)}
+                          onChange={() => toggleList(l.id)}
+                          className="w-4 h-4 accent-[#D63B1F]"
+                        />
+                        <span className="text-sm text-[#131210] flex-1">{l.name}</span>
+                        <span className="text-xs text-[#9B9890]">{l.contact_count || l.contactsCount || ''}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+                {errors.contactLists && <p className="text-xs text-red-600 mt-1">{errors.contactLists}</p>}
+              </div>
+
+              {selectedListIds.length > 0 && (
+                <div>
+                  <label className="block text-xs font-medium text-[#5C5A55] mb-2">
+                    Phone columns to send to
+                    {previewLoading && <i className="fas fa-spinner fa-spin ml-2 text-[#9B9890]" />}
+                  </label>
+                  <p className="text-[11px] text-[#9B9890] mb-2">
+                    Pick every column you want a drop to. Each contact gets one voicemail per non-empty column selected.
+                  </p>
+                  {detectedColumns.length === 0 && !previewLoading && (
+                    <p className="text-xs text-[#9B9890]">No phone-like values found in these lists.</p>
+                  )}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {detectedColumns.map(col => (
+                      <label key={col.key} className={`flex items-center gap-2 px-3 py-2 border rounded-lg cursor-pointer ${selectedColumns.includes(col.key) ? 'border-[#D63B1F] bg-[#FFF8F6]' : 'border-[#E3E1DB] hover:bg-[#F7F6F3]'}`}>
+                        <input
+                          type="checkbox"
+                          checked={selectedColumns.includes(col.key)}
+                          onChange={() => toggleColumn(col.key)}
+                          className="w-4 h-4 accent-[#D63B1F]"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-[#131210] truncate">{col.label}</p>
+                          <p className="text-[11px] text-[#9B9890]">{col.count} contacts{col.isPrimary ? ' · primary' : ''}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                  {errors.columns && <p className="text-xs text-red-600 mt-1">{errors.columns}</p>}
+                </div>
+              )}
+
+              {selectedListIds.length > 0 && selectedColumns.length > 0 && (
+                <div className="px-3 py-2.5 bg-[#F7F6F3] border border-[#E3E1DB] rounded-lg flex items-center gap-2">
+                  <i className="fas fa-users text-[#D63B1F]" />
+                  <span className="text-sm text-[#131210]">
+                    <strong>{totalRecipients.toLocaleString()}</strong> deduped recipients across {selectedColumns.length} column{selectedColumns.length === 1 ? '' : 's'}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ─── Step 3: Chunks & Preview ─── */}
+          {step === 3 && (
+            <div className="space-y-5">
+              <div className="flex items-end gap-3">
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Chunk size</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={chunkSize}
+                    onChange={(e) => { setChunkSize(Math.max(0, parseInt(e.target.value) || 0)); setChunkIndex(1) }}
+                    className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
+                  />
+                  <p className="text-[11px] text-[#9B9890] mt-1">Set to 0 to send to the whole list in one campaign.</p>
+                </div>
+                <div className="px-3 py-2 bg-[#F7F6F3] border border-[#E3E1DB] rounded-md text-xs text-[#5C5A55]">
+                  {totalRecipients.toLocaleString()} total · {chunks.length || 1} chunk{(chunks.length || 1) === 1 ? '' : 's'}
+                </div>
+              </div>
+
+              {chunkSize > 0 && chunks.length > 0 && (
+                <div>
+                  <label className="block text-xs font-medium text-[#5C5A55] mb-2">Which chunk to launch?</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-44 overflow-y-auto pr-1">
+                    {chunks.map(ch => {
+                      const sentMeta = alreadySentChunks.find(s => s.n === ch.n)
+                      const active = ch.n === chunkIndex
+                      return (
+                        <button
+                          key={ch.n}
+                          type="button"
+                          onClick={() => setChunkIndex(ch.n)}
+                          className={`text-left px-3 py-2 rounded-lg border text-xs ${active ? 'border-[#D63B1F] bg-[#FFF8F6]' : 'border-[#E3E1DB] hover:bg-[#F7F6F3]'}`}
+                        >
+                          <div className="font-medium text-[#131210] flex items-center gap-1.5">
+                            Chunk {ch.n}
+                            {sentMeta && <i className="fas fa-check text-green-600 text-[10px]" title={`Launched ${new Date(sentMeta.at).toLocaleDateString()}`} />}
+                          </div>
+                          <div className="text-[10px] text-[#9B9890]">rows {ch.start.toLocaleString()}–{ch.end.toLocaleString()}</div>
+                          <div className="text-[10px] text-[#9B9890]">{ch.count.toLocaleString()} recipients</div>
+                          {sentMeta && (
+                            <div className="text-[10px] text-green-700 mt-1">Already launched ({sentMeta.status})</div>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {alreadySentChunks.some(s => s.n === chunkIndex) && (
+                    <div className="mt-2 px-3 py-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800 flex items-start gap-2">
+                      <i className="fas fa-exclamation-triangle mt-0.5" />
+                      <span>This chunk was already launched. Sending again will drop the voicemail to these contacts a second time.</span>
+                    </div>
                   )}
                 </div>
-              ) : uploadState === 'uploading' ? (
-                <div className="border border-[#E3E1DB] rounded-lg p-8 text-center bg-[#F7F6F3]">
-                  <i className="fas fa-spinner fa-spin text-[#D63B1F] text-xl mb-2"></i>
-                  <p className="text-sm text-[#9B9890]">Uploading audio…</p>
-                </div>
-              ) : (
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  className="border-2 border-dashed border-[#E3E1DB] rounded-lg p-8 text-center cursor-pointer hover:border-[#D63B1F] hover:bg-[rgba(214,59,31,0.02)] transition-colors"
-                >
-                  <div className="w-10 h-10 bg-[#F7F6F3] rounded-full flex items-center justify-center mx-auto mb-3">
-                    <i className="fas fa-cloud-upload-alt text-[#9B9890] text-lg"></i>
+              )}
+
+              <div>
+                <label className="block text-xs font-medium text-[#5C5A55] mb-2">Recipient preview (sample)</label>
+                <div className="border border-[#E3E1DB] rounded-lg overflow-hidden">
+                  <div className="grid grid-cols-[1fr_auto_auto] gap-2 px-3 py-2 bg-[#F7F6F3] text-[10px] uppercase tracking-wider text-[#9B9890] font-medium">
+                    <span>Name</span><span>Phone</span><span>From</span>
                   </div>
-                  <p className="text-sm font-medium text-[#131210] mb-1">Click to upload audio</p>
-                  <p className="text-xs text-[#9B9890]">MP3, WAV, OGG, FLAC — up to 10 MB</p>
-                </div>
-              )}
-              <input ref={fileInputRef} type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/ogg,audio/flac" onChange={handleFileChange} className="hidden" />
-              {errors.audio && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.audio}</p>}
-            </div>
-          </div>
-
-          {/* Right column */}
-          <div className="w-96 flex flex-col px-8 py-6 overflow-y-auto space-y-5 flex-shrink-0">
-            <div>
-              <label className="block text-sm font-medium text-[#5C5A55] mb-2">Sender Number *</label>
-              {verifiedNumbers.length === 0 ? (
-                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <p className="text-xs text-yellow-800 flex items-start gap-2">
-                    <i className="fas fa-exclamation-triangle mt-0.5 flex-shrink-0"></i>
-                    <span>No verified numbers found. Go to <strong>Phone Numbers</strong> settings to verify a number before sending voicemails.</span>
-                  </p>
-                </div>
-              ) : (
-                <select
-                  value={senderNumber}
-                  onChange={(e) => setSenderNumber(e.target.value)}
-                  className={`w-full px-4 py-3 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F] ${errors.senderNumber ? 'border-[#D63B1F]' : 'border-[#D4D1C9]'}`}
-                >
-                  <option value="">Select a verified number…</option>
-                  {verifiedNumbers.map(pn => (
-                    <option key={pn.id} value={pn.phone_number || pn.phoneNumber}>
-                      {pn.custom_name ? `${pn.custom_name} — ${pn.phone_number || pn.phoneNumber}` : (pn.phone_number || pn.phoneNumber)}
-                    </option>
-                  ))}
-                </select>
-              )}
-              {errors.senderNumber && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.senderNumber}</p>}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-[#5C5A55] mb-2">Contact Lists *</label>
-              {contactLists.length === 0 ? (
-                <p className="text-xs text-[#9B9890]">No contact lists found. Create one first.</p>
-              ) : (
-                <div className={`border rounded-lg overflow-hidden ${errors.contactLists ? 'border-[#D63B1F]' : 'border-[#D4D1C9]'}`}>
-                  {contactLists.map((cl, i) => (
-                    <label
-                      key={cl.id}
-                      className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-[#F7F6F3] transition-colors ${i > 0 ? 'border-t border-[#E3E1DB]' : ''} ${selectedListIds.includes(cl.id) ? 'bg-[rgba(214,59,31,0.03)]' : ''}`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedListIds.includes(cl.id)}
-                        onChange={() => toggleList(cl.id)}
-                        className="w-4 h-4 rounded border-[#D4D1C9] accent-[#D63B1F]"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm text-[#131210] font-medium truncate">{cl.name}</p>
-                        <p className="text-xs text-[#9B9890]">{cl.contactCount ?? cl.contact_count ?? 0} contacts</p>
+                  <div className="max-h-48 overflow-y-auto">
+                    {recipientSample.length === 0 && (
+                      <p className="px-3 py-3 text-xs text-[#9B9890]">{previewLoading ? 'Loading…' : 'No recipients in this selection.'}</p>
+                    )}
+                    {recipientSample.map((r, i) => (
+                      <div key={i} className="grid grid-cols-[1fr_auto_auto] gap-2 px-3 py-1.5 text-xs border-t border-[#F0EEE9]">
+                        <span className="text-[#131210] truncate">{r.name || '—'}</span>
+                        <span className="font-mono text-[#5C5A55]">{r.phone}</span>
+                        <span className="text-[#9B9890] text-[10px]">{r.sourceColumn}</span>
                       </div>
-                      {selectedListIds.includes(cl.id) && <i className="fas fa-check text-[#D63B1F] text-xs flex-shrink-0"></i>}
-                    </label>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              )}
-              {errors.contactLists && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.contactLists}</p>}
-              {selectedListIds.length > 0 && (
-                <p className="text-xs text-[#9B9890] mt-1.5">
-                  {selectedListIds.reduce((sum, id) => {
-                    const cl = contactLists.find(c => c.id === id)
-                    return sum + (cl?.contactCount ?? cl?.contact_count ?? 0)
-                  }, 0)} total contacts selected
-                </p>
+                <p className="text-[10px] text-[#9B9890] mt-1">Showing up to 30 rows — the full chunk dispatches on launch.</p>
+              </div>
+
+              {errors.recipients && <p className="text-xs text-red-600">{errors.recipients}</p>}
+              {errors.submit && (
+                <div className="px-3 py-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">{errors.submit}</div>
               )}
             </div>
+          )}
+        </div>
 
-            {errors.submit && (
-              <div className="bg-[rgba(214,59,31,0.07)] border border-[rgba(214,59,31,0.14)] text-[#D63B1F] px-4 py-3 rounded-lg text-sm">{errors.submit}</div>
-            )}
-          </div>
-        </form>
-
-        <div className="flex items-center justify-end gap-3 px-8 py-4 border-t border-[#E3E1DB] flex-shrink-0">
-          <button type="button" onClick={onClose} className="px-5 py-2.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3] transition-colors">Cancel</button>
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-[#E3E1DB] flex items-center justify-between bg-[#FAFAF8] rounded-b-lg">
           <button
-            onClick={handleSubmit}
-            disabled={isSubmitting || uploadState === 'uploading'}
-            className="px-6 py-2.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg disabled:opacity-50 transition-colors"
+            type="button"
+            onClick={step === 1 ? onClose : goBack}
+            className="px-4 py-2 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]"
           >
-            {isSubmitting ? <><i className="fas fa-spinner fa-spin mr-2"></i>Creating…</> : 'Create RVM Campaign'}
+            {step === 1 ? 'Cancel' : 'Back'}
           </button>
+          {step < 3 ? (
+            <button type="button" onClick={goNext} className="px-5 py-2 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md">
+              Next
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleLaunch}
+              disabled={isSubmitting || totalRecipients === 0}
+              className="px-5 py-2 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md disabled:opacity-50"
+            >
+              {isSubmitting
+                ? <><i className="fas fa-spinner fa-spin mr-2" />Launching…</>
+                : (chunkSize > 0
+                  ? `Launch chunk ${chunkIndex} (${(chunks[chunkIndex - 1]?.count || 0).toLocaleString()})`
+                  : `Launch (${totalRecipients.toLocaleString()})`)}
+            </button>
+          )}
         </div>
       </div>
     </div>
   )
 }
 
-function ViewRVMCampaignModal({ campaign, contactLists, onClose, onLaunch, onDelete }) {
+function ViewRVMCampaignModal({ campaign: initialCampaign, contactLists, onClose, onLaunch, onDelete }) {
+  // Live mirror of the campaign row. Polls while open so the progress counters
+  // (sent_count / failed_count) and status (running/paused/completed) stay
+  // current as the sweeper processes the queue — no refresh needed, and the
+  // user can leave the tab open OR close it without affecting the campaign.
+  const [campaign, setCampaign] = useState(initialCampaign)
   const [isLaunching, setIsLaunching] = useState(false)
+  const [isTogglingPause, setIsTogglingPause] = useState(false)
+
+  // Poll the campaign row every 2.5s while it's mid-flight.
+  // We stop polling once the campaign reaches a terminal state to spare cycles.
+  useEffect(() => {
+    setCampaign(initialCampaign)
+  }, [initialCampaign?.id])
+
+  useEffect(() => {
+    const status = campaign?.status
+    if (!campaign?.id || (status !== 'running' && status !== 'paused')) return
+    let cancelled = false
+    const tick = async () => {
+      try {
+        const res = await apiGet(`/api/voicemail-campaigns?id=${campaign.id}`)
+        const data = await res.json()
+        if (cancelled) return
+        const fresh = (data?.campaigns || []).find(c => c.id === campaign.id)
+        if (fresh) setCampaign(fresh)
+      } catch { /* silent — next tick retries */ }
+    }
+    const handle = setInterval(tick, 2500)
+    return () => { cancelled = true; clearInterval(handle) }
+  }, [campaign?.id, campaign?.status])
 
   const getContactListName = (ids) => {
     if (!ids || !Array.isArray(ids) || ids.length === 0) return 'Unknown'
@@ -1954,13 +2179,39 @@ function ViewRVMCampaignModal({ campaign, contactLists, onClose, onLaunch, onDel
     catch { return dateString }
   }
 
-  const statusLabel = campaign.status === 'running' ? 'Running' : campaign.status === 'completed' ? 'Completed' : campaign.status === 'failed' ? 'Failed' : 'Draft'
-  const statusClass = campaign.status === 'running' ? 'bg-[rgba(214,59,31,0.07)] text-[#D63B1F]' : campaign.status === 'completed' ? 'bg-[rgba(214,59,31,0.07)] text-[#D63B1F]' : campaign.status === 'failed' ? 'bg-[rgba(214,59,31,0.07)] text-[#D63B1F]' : 'bg-green-50 text-green-700'
+  const statusMap = {
+    draft:     { label: 'Draft',     cls: 'bg-[#EFEDE8] text-[#5C5A55]' },
+    running:   { label: 'Running',   cls: 'bg-blue-50 text-blue-700' },
+    paused:    { label: 'Paused',    cls: 'bg-yellow-50 text-yellow-700' },
+    completed: { label: 'Completed', cls: 'bg-green-50 text-green-700' },
+    failed:    { label: 'Failed',    cls: 'bg-red-50 text-red-700' },
+  }
+  const statusLabel = statusMap[campaign.status]?.label || campaign.status
+  const statusClass = statusMap[campaign.status]?.cls || 'bg-[#EFEDE8] text-[#5C5A55]'
+
+  const sent = Number(campaign.sent_count || 0)
+  const failed = Number(campaign.failed_count || 0)
+  const total = Number(campaign.total_recipients || 0)
+  const processed = sent + failed
+  const remaining = Math.max(0, total - processed)
+  const pct = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0
 
   const handleLaunch = async () => {
     setIsLaunching(true)
     try { await onLaunch() }
     finally { setIsLaunching(false) }
+  }
+
+  const togglePause = async () => {
+    const target = campaign.status === 'running' ? 'pause' : 'resume'
+    setIsTogglingPause(true)
+    try {
+      const res = await apiPost(`/api/voicemail-campaigns/${campaign.id}/${target}`, {})
+      const data = await res.json()
+      if (res.ok && data.success && data.campaign) setCampaign(data.campaign)
+    } finally {
+      setIsTogglingPause(false)
+    }
   }
 
   return (
@@ -1985,15 +2236,40 @@ function ViewRVMCampaignModal({ campaign, contactLists, onClose, onLaunch, onDel
             <span className={`inline-flex items-center px-2.5 py-1 rounded text-xs font-medium ${statusClass}`}>{statusLabel}</span>
           </div>
 
+          {/* Live progress — updates every 2.5s via polling.
+              Works whether you stay on the tab or close it; the campaign runs
+              server-side via the cron sweeper either way. */}
+          {total > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-xs text-[#9B9890] uppercase tracking-wider">Progress</p>
+                <p className="text-xs text-[#5C5A55] font-mono">
+                  {processed.toLocaleString()} / {total.toLocaleString()} <span className="text-[#9B9890]">· {pct}%</span>
+                </p>
+              </div>
+              <div className="w-full h-2 bg-[#EFEDE8] rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-500 ${campaign.status === 'paused' ? 'bg-yellow-400' : campaign.status === 'completed' ? 'bg-green-500' : 'bg-[#D63B1F]'}`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              {(campaign.status === 'running' || campaign.status === 'paused') && (
+                <p className="text-[11px] text-[#9B9890] mt-1.5">
+                  {campaign.status === 'paused' ? 'Paused' : 'Dispatching'} · {remaining.toLocaleString()} remaining
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-3 gap-3">
             {[
-              { label: 'Sent', value: campaign.sent_count ?? 0, icon: 'fa-paper-plane', color: 'text-[#5C5A55]' },
-              { label: 'Delivered', value: campaign.delivered_count ?? 0, icon: 'fa-check-circle', color: 'text-green-600' },
-              { label: 'Failed', value: campaign.failed_count ?? 0, icon: 'fa-times-circle', color: 'text-[#D63B1F]' },
+              { label: 'Sent', value: sent, icon: 'fa-paper-plane', color: 'text-green-600' },
+              { label: 'Failed', value: failed, icon: 'fa-times-circle', color: 'text-[#D63B1F]' },
+              { label: 'Remaining', value: remaining, icon: 'fa-clock', color: 'text-[#5C5A55]' },
             ].map(item => (
               <div key={item.label} className="bg-[#F7F6F3] border border-[#E3E1DB] rounded-lg p-3 text-center">
                 <i className={`fas ${item.icon} ${item.color} text-sm mb-1`}></i>
-                <p className="text-lg font-semibold text-[#131210]">{item.value}</p>
+                <p className="text-lg font-semibold text-[#131210]">{item.value.toLocaleString()}</p>
                 <p className="text-xs text-[#9B9890]">{item.label}</p>
               </div>
             ))}
@@ -2032,6 +2308,23 @@ function ViewRVMCampaignModal({ campaign, contactLists, onClose, onLaunch, onDel
               className="flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-semibold text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md transition-colors disabled:opacity-50"
             >
               {isLaunching ? <><i className="fas fa-spinner fa-spin text-xs"></i> Launching…</> : <><i className="fas fa-rocket text-xs"></i> Launch Campaign</>}
+            </button>
+          )}
+          {(campaign.status === 'running' || campaign.status === 'paused') && (
+            <button
+              onClick={togglePause}
+              disabled={isTogglingPause}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-semibold rounded-md transition-colors disabled:opacity-50 ${
+                campaign.status === 'running'
+                  ? 'text-[#5C5A55] border border-[#D4D1C9] hover:bg-[#F7F6F3]'
+                  : 'text-white bg-[#D63B1F] hover:bg-[#c23119]'
+              }`}
+            >
+              {isTogglingPause
+                ? <><i className="fas fa-spinner fa-spin text-xs"></i> {campaign.status === 'running' ? 'Pausing…' : 'Resuming…'}</>
+                : campaign.status === 'running'
+                  ? <><i className="fas fa-pause text-xs"></i> Pause</>
+                  : <><i className="fas fa-play text-xs"></i> Resume</>}
             </button>
           )}
           <button onClick={onDelete} className="px-3 py-1.5 text-sm text-[#D63B1F] border border-[rgba(214,59,31,0.14)] rounded-md hover:bg-[rgba(214,59,31,0.07)]">Delete</button>

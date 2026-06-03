@@ -32,7 +32,10 @@ export async function POST(request) {
   }
 
   const body = await request.json().catch(() => ({}))
-  const { name, recordingUrl, recordingPath, voicedropRecordingUrl, senderNumber, contactListIds } = body
+  const {
+    name, recordingUrl, recordingPath, voicedropRecordingUrl, senderNumber, contactListIds,
+    phoneColumns, chunkSize, chunkIndex,
+  } = body
 
   if (!name || !recordingUrl || !senderNumber || !Array.isArray(contactListIds) || contactListIds.length === 0) {
     return NextResponse.json(
@@ -40,6 +43,17 @@ export async function POST(request) {
       { status: 400 }
     )
   }
+
+  // Normalize chunk + columns. Defaults preserve the legacy behavior:
+  //   - phone_columns = ['phone_number']  (primary only)
+  //   - chunk_size = 0, chunk_index = 0   (no chunking, send whole list)
+  const normalizedColumns = Array.isArray(phoneColumns) && phoneColumns.length > 0
+    ? phoneColumns.filter(c => typeof c === 'string' && c.trim().length > 0)
+    : ['phone_number']
+  const normalizedChunkSize = Number.isFinite(Number(chunkSize)) ? Math.max(0, Math.floor(Number(chunkSize))) : 0
+  const normalizedChunkIndex = normalizedChunkSize > 0 && Number.isFinite(Number(chunkIndex))
+    ? Math.max(0, Math.floor(Number(chunkIndex)))
+    : 0
 
   // Sender number must belong to this workspace AND be voicedrop_verified
   const { data: pn } = await supabaseAdmin
@@ -67,6 +81,9 @@ export async function POST(request) {
       voicedrop_recording_url: voicedropRecordingUrl || null,
       sender_number: senderNumber,
       contact_list_ids: contactListIds,
+      phone_columns: normalizedColumns,
+      chunk_size: normalizedChunkSize,
+      chunk_index: normalizedChunkIndex,
       status: 'draft',
     })
     .select()
