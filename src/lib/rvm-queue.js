@@ -209,6 +209,14 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
         console.error('[rvm:sweep] message insert failed (send already placed)', {
           to: row.phone, conversation_id: conversation.id, error: msgErr.message,
         })
+      } else if (!msg?.id) {
+        // Insert returned no error AND no row — the case that would silently
+        // drop a chat. Log loudly so we can see it.
+        console.error('[rvm:sweep] message insert returned no row (no error)', {
+          to: row.phone, conversation_id: conversation.id,
+        })
+      } else {
+        console.log('[rvm:sweep] sent', { to: row.phone, conversation_id: conversation.id, message_id: msg.id })
       }
 
       await supabaseAdmin.from('voicemail_campaign_sends')
