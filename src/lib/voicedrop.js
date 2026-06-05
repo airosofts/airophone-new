@@ -13,6 +13,41 @@ function requireKey() {
   if (!VOICEDROP_KEY) throw new Error('VOICEDROP_API_KEY is not set')
 }
 
+const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+
+// Is this a connection-level failure (never reached the provider) vs. an HTTP
+// rejection? Connection failures are transient and worth an immediate re-try.
+function isConnError(err) {
+  const cause = err?.cause?.code || err?.code || ''
+  return /fetch failed|timeout|socket|network|aborted/i.test(err?.message || '')
+    || ['UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET', 'UND_ERR_HEADERS_TIMEOUT', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN'].includes(cause)
+}
+
+// fetch() with a hard per-try timeout + a couple of quick retries on
+// connection-level errors. The voicemail provider sits behind AWS API Gateway
+// and occasionally refuses/slows new connections from a container; retrying
+// within the same call usually catches a good moment instead of failing the
+// whole send. HTTP responses (even 4xx/5xx) are returned as-is — only genuine
+// connection failures are retried here.
+async function fetchResilient(url, options, { tries = 3, timeoutMs = 15000, backoffMs = 600 } = {}) {
+  let lastErr
+  for (let attempt = 1; attempt <= tries; attempt++) {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs)
+    try {
+      return await fetch(url, { ...options, signal: ctrl.signal })
+    } catch (err) {
+      lastErr = err
+      if (!isConnError(err) || attempt === tries) throw err
+      console.warn('[voicedrop] connection error, retrying', { url, attempt, cause: err?.cause?.code || err?.message })
+      await sleep(backoffMs * attempt)   // 600ms, 1200ms …
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+  throw lastErr
+}
+
 // Normalize a phone number → "8382048923" (10 digits, no + or country code).
 // Used for the /sender-numbers/verify endpoint.
 function toLocalDigits(phone) {
@@ -35,7 +70,7 @@ function toE164(phone) {
 
 async function vdPost(path, body) {
   requireKey()
-  const res = await fetch(`${VOICEDROP_BASE}${path}`, {
+  const res = await fetchResilient(`${VOICEDROP_BASE}${path}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -59,11 +94,11 @@ export async function uploadAudio(audioBuffer, filename = 'voicemail.mp3', conte
   const form = new FormData()
   form.append('file', new Blob([audioBuffer], { type: contentType }), filename)
 
-  const res = await fetch(`${VOICEDROP_BASE}/upload-static-audio`, {
+  const res = await fetchResilient(`${VOICEDROP_BASE}/upload-static-audio`, {
     method: 'POST',
     headers: { 'auth-key': VOICEDROP_KEY },
     body: form,
-  })
+  }, { tries: 3, timeoutMs: 30000 })   // uploads are larger — allow more time
   const data = await res.json().catch(() => ({}))
 
   console.log('[voicedrop:upload]', { httpOk: res.ok, httpStatus: res.status, response: data })
