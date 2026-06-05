@@ -1,4 +1,6 @@
-// POST /api/calls/log - Log an outbound call made from the WebRTC UI
+// POST /api/calls/log - Log a call from the WebRTC UI (inbound or outbound).
+// Acts as a reliable client-side fallback for the Telnyx call webhook.
+// Deduplicates against any record the webhook may have already created.
 import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { getUserFromRequest } from '@/lib/session-helper'
@@ -18,7 +20,7 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { toNumber, fromNumber, callControlId, conversationId } = await request.json()
+    const { direction = 'outbound', toNumber, fromNumber, callControlId, conversationId, answeredAt, endedAt, durationSeconds } = await request.json()
 
     if (!toNumber || !fromNumber) {
       return NextResponse.json({ error: 'toNumber and fromNumber required' }, { status: 400 })
@@ -28,14 +30,20 @@ export async function POST(request) {
     const normalizedTo = normalizePhoneNumber(toNumber)
     const normalizedFrom = normalizePhoneNumber(fromNumber)
 
+    // For conversation lookup:
+    //   outbound → contact = to, our line = from
+    //   inbound  → contact = from, our line = to
+    const contactNumber = direction === 'inbound' ? normalizedFrom : normalizedTo
+    const ourNumber = direction === 'inbound' ? normalizedTo : normalizedFrom
+
     // Find or create conversation
     let convId = conversationId
     if (!convId) {
       const { data: existing } = await supabase
         .from('conversations')
         .select('id')
-        .eq('phone_number', normalizedTo)
-        .eq('from_number', normalizedFrom)
+        .eq('phone_number', contactNumber)
+        .eq('from_number', ourNumber)
         .maybeSingle()
 
       if (existing) {
@@ -44,11 +52,11 @@ export async function POST(request) {
         const { data: created } = await supabase
           .from('conversations')
           .insert({
-            phone_number: normalizedTo,
-            from_number: normalizedFrom,
+            phone_number: contactNumber,
+            from_number: ourNumber,
             workspace_id: user.workspaceId,
             status: 'open',
-            last_message_at: new Date().toISOString()
+            last_message_at: endedAt || new Date().toISOString(),
           })
           .select('id')
           .single()
@@ -56,44 +64,59 @@ export async function POST(request) {
       }
     }
 
-    // Check for existing recent call (within 10 seconds) to same number to avoid duplicates
-    // The webhook may create a record with a different telnyx_call_id than the WebRTC call.id
-    const tenSecondsAgo = new Date(Date.now() - 10000).toISOString()
+    // Bump conversation last_message_at so call bubbles to top of inbox
+    if (convId) {
+      await supabase
+        .from('conversations')
+        .update({ last_message_at: endedAt || new Date().toISOString() })
+        .eq('id', convId)
+    }
+
     const fromDigits = normalizedFrom?.replace(/\D/g, '').slice(-10)
     const toDigits = normalizedTo?.replace(/\D/g, '').slice(-10)
+    const windowStart = new Date(Date.now() - 300000).toISOString() // 5-min dedup window
 
-    const { data: recentCall } = await supabase
+    // Check if the Telnyx webhook already created a record for this call
+    const { data: existing } = await supabase
       .from('calls')
-      .select('id')
-      .eq('direction', 'outbound')
+      .select('id, conversation_id')
+      .eq('direction', direction)
       .like('from_number', `%${fromDigits}`)
       .like('to_number', `%${toDigits}`)
-      .gte('created_at', tenSecondsAgo)
+      .gte('created_at', windowStart)
+      .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
 
-    if (recentCall) {
-      // Update existing record with conversation_id
-      await supabase.from('calls')
-        .update({ conversation_id: convId })
-        .eq('id', recentCall.id)
-        .is('conversation_id', null)
+    if (existing) {
+      // Webhook already created the record — patch it with final details
+      const updates = { conversation_id: convId }
+      if (answeredAt) updates.answered_at = answeredAt
+      if (endedAt) updates.ended_at = endedAt
+      if (durationSeconds > 0) updates.duration_seconds = durationSeconds
+      if (answeredAt) updates.status = 'completed'
+      else updates.status = direction === 'inbound' ? 'missed' : 'missed'
 
-      return NextResponse.json({ success: true, callId: recentCall.id, conversationId: convId, deduplicated: true })
+      await supabase.from('calls').update(updates).eq('id', existing.id)
+      return NextResponse.json({ success: true, callId: existing.id, conversationId: convId, deduplicated: true })
     }
 
-    // Insert new call record
+    // No webhook record — create one now
+    const status = answeredAt ? 'completed' : 'missed'
     const { data: call, error } = await supabase
       .from('calls')
       .insert({
         telnyx_call_id: callControlId || `webrtc_${Date.now()}`,
         from_number: normalizedFrom,
         to_number: normalizedTo,
-        direction: 'outbound',
-        status: 'initiated',
+        direction,
+        status,
+        answered_at: answeredAt || null,
+        ended_at: endedAt || null,
+        duration_seconds: durationSeconds > 0 ? durationSeconds : null,
         workspace_id: user.workspaceId,
         conversation_id: convId,
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
       })
       .select('id')
       .single()

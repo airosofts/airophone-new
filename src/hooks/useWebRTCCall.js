@@ -39,6 +39,7 @@ export function useWebRTCCall() {
   const handleCallUpdateRef = useRef(null)
   const ringtoneSourceRef = useRef(null)   // current AudioContext BufferSourceNode (for stopping)
   const telnyxClientRef = useRef(null)     // ref to client so cleanup can disconnect (avoids stale closure)
+  const callLogRef = useRef(null)          // tracks current call details for client-side DB logging
 
   // Keep refs in sync with state every render
   availablePhoneNumbersRef.current = availablePhoneNumbers
@@ -468,6 +469,14 @@ const handleCallUpdate = (call) => {
     isCallActiveRef.current = true
     callStatusRef.current = 'incoming'
     incomingCallRef.current = incomingData
+    callLogRef.current = {
+      direction: 'inbound',
+      fromNumber: callerNumber,
+      toNumber: destNumber || matchedLine?.phoneNumber || '',
+      conversationId: null,
+      callControlId: call.id,
+      answeredAt: null,
+    }
     setMissedCallNotice(null)
     playRingtone()
     showBrowserNotification(callerNumber, toName)
@@ -494,6 +503,9 @@ const handleCallUpdate = (call) => {
         incomingCallRef.current = null
         setupAudioRouting(call, false)
         startCallTimer()
+        if (callLogRef.current && !callLogRef.current.answeredAt) {
+          callLogRef.current.answeredAt = new Date().toISOString()
+        }
         break
       case 'held':
         setCallStatus('held')
@@ -516,6 +528,12 @@ const handleCallUpdate = (call) => {
         if (callStatusRef.current === 'incoming') {
           const missedFrom = incomingCallRef.current?.from || call.params?.caller_id_number || 'Unknown'
           setMissedCallNotice({ from: missedFrom, time: new Date() })
+        }
+        // Log call to DB from client side (webhook may not fire reliably)
+        if (callLogRef.current) {
+          const logData = { ...callLogRef.current }
+          callLogRef.current = null
+          logCallToDb(logData).catch(() => {})
         }
         // Sync refs immediately
         currentCallRef.current = null
@@ -781,7 +799,7 @@ const setupAudioRouting = (call, isParticipant = false) => {
   // This keeps the ref populated before any calls can arrive.
 
   // Log outbound call to DB (uses workspace headers)
-  const logCallToDb = async (toNumber, fromNumber, callControlId, conversationId) => {
+  const logCallToDb = async ({ direction, fromNumber, toNumber, conversationId, callControlId, answeredAt }) => {
     try {
       const userSession = typeof window !== 'undefined' ? localStorage.getItem('user_session') : null
       const user = userSession ? JSON.parse(userSession) : null
@@ -791,11 +809,19 @@ const setupAudioRouting = (call, isParticipant = false) => {
         headers['x-workspace-id'] = user.workspaceId || ''
         headers['x-messaging-profile-id'] = user.messagingProfileId || ''
       }
-      const res = await fetch('/api/calls/log', { method: 'POST', headers, body: JSON.stringify({ toNumber, fromNumber, callControlId, conversationId }) })
+      const endedAt = new Date().toISOString()
+      const durationSeconds = answeredAt
+        ? Math.floor((new Date(endedAt) - new Date(answeredAt)) / 1000)
+        : 0
+      const res = await fetch('/api/calls/log', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ direction, toNumber, fromNumber, callControlId, conversationId, answeredAt, endedAt, durationSeconds }),
+      })
       const data = await res.json()
-      if (data.success) console.log('Call logged to DB:', data.callId)
+      if (data.success) console.log('[calls/log] logged:', data.callId, 'conv:', data.conversationId)
     } catch (err) {
-      console.error('Failed to log call to DB:', err)
+      console.error('[calls/log] failed:', err)
     }
   }
 
@@ -849,11 +875,19 @@ const setupAudioRouting = (call, isParticipant = false) => {
       currentCallRef.current = call
       isCallActiveRef.current = true
 
+      // Track details for client-side logging (webhook may not fire reliably)
+      callLogRef.current = {
+        direction: 'outbound',
+        fromNumber: formattedCaller,
+        toNumber: formattedDestination,
+        conversationId: conversationId || null,
+        callControlId: call.id,
+        answeredAt: null,
+      }
+
       setCurrentCall(call)
       setIsCallActive(true)
       setCallStatus('connecting')
-
-      // Call records are created by the Telnyx webhook — no need to log from UI
 
       return call
 
