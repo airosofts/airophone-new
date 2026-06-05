@@ -73,6 +73,24 @@ export function nextBusinessTime(at, hours) {
   return at
 }
 
+// Is `at` inside one of the campaign's calling windows? `windows` is an array
+// of { start: "HH:MM", end: "HH:MM" } in the given IANA timezone. Empty/missing
+// windows → always true (send anytime). Used by the RVM queue sweeper to gate
+// sends to good calling hours.
+export function isWithinSendWindows(at, windows, tz = 'America/New_York') {
+  if (!Array.isArray(windows) || windows.length === 0) return true
+  const local = toLocal(at, tz)
+  const nowMin = local.hours * 60 + local.minutes
+  for (const w of windows) {
+    const s = parseHHMM(w?.start)
+    const e = parseHHMM(w?.end)
+    const startMin = s.h * 60 + s.m
+    const endMin = e.h * 60 + e.m
+    if (endMin > startMin && nowMin >= startMin && nowMin < endMin) return true
+  }
+  return false
+}
+
 // If `at` is INSIDE business hours, return the next moment OUTSIDE them — i.e.
 // the end of the current window. If already outside, return `at` unchanged.
 // Used by the "only outside business hours" automation mode.

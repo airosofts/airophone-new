@@ -12,6 +12,7 @@
 
 import { supabaseAdmin } from '@/lib/supabase-server'
 import { sendStaticVoicemail } from '@/lib/voicedrop'
+import { isWithinSendWindows } from '@/lib/scheduling'
 
 const WEBHOOK_URL = `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.airophone.com'}/api/webhooks/voicedrop`
 
@@ -45,9 +46,18 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
   const campaignIds = [...new Set(rows.map(r => r.campaign_id))]
   const { data: campaigns } = await supabaseAdmin
     .from('voicemail_campaigns')
-    .select('id, status, sender_number, recording_url, recording_path, voicedrop_recording_url, created_by, throttle_count, throttle_window_seconds')
+    .select('id, status, sender_number, recording_url, recording_path, voicedrop_recording_url, created_by, throttle_count, throttle_window_seconds, send_windows, send_timezone')
     .in('id', campaignIds)
   const campaignById = new Map((campaigns || []).map(c => [c.id, c]))
+
+  // Calling-window gate: a campaign only sends when "now" (in its timezone)
+  // is inside a configured window. Outside → its rows stay queued for the next
+  // tick. Computed once per campaign per sweep.
+  const now = new Date()
+  const inWindowByCampaign = new Map()
+  for (const c of (campaigns || [])) {
+    inWindowByCampaign.set(c.id, isWithinSendWindows(now, c.send_windows, c.send_timezone || 'America/New_York'))
+  }
 
   // Throttle allowance per campaign. For a campaign capped at N every
   // `throttle_window_seconds`, count how many already went out in the trailing
@@ -92,6 +102,12 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
     const campaign = campaignById.get(row.campaign_id)
     if (!campaign || campaign.status !== 'running') {
       // Paused / completed between query and processing — leave row queued.
+      skipped++
+      continue
+    }
+
+    // Calling-window gate: outside the campaign's send windows → leave queued.
+    if (!inWindowByCampaign.get(row.campaign_id)) {
       skipped++
       continue
     }

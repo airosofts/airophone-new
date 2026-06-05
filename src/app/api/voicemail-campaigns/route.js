@@ -38,6 +38,9 @@ export async function POST(request) {
     // Optional throttle: send at most `throttleCount` every
     // `throttleWindowSeconds`. Omitted / 0 → no throttle (max speed).
     throttleCount, throttleWindowSeconds,
+    // Optional calling windows: only send when local time falls in a window.
+    // [{start:"10:00",end:"12:00"}, ...] + an IANA timezone. Empty → anytime.
+    sendWindows, sendTimezone,
     // Optional: an explicit recipient list from the wizard. When the user
     // searches/unticks specific rows on Step 3, we honor exactly that set
     // rather than recomputing the chunk slice server-side.
@@ -71,6 +74,16 @@ export async function POST(request) {
     ? Math.floor(Number(throttleWindowSeconds))
     : 3600
 
+  // Calling windows: keep only well-formed { start, end } "HH:MM" pairs.
+  const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
+  const normalizedWindows = Array.isArray(sendWindows)
+    ? sendWindows.filter(w => w && HHMM.test(w.start) && HHMM.test(w.end) && w.end > w.start)
+                 .map(w => ({ start: w.start, end: w.end }))
+    : null
+  const normalizedTimezone = typeof sendTimezone === 'string' && sendTimezone.trim()
+    ? sendTimezone.trim()
+    : 'America/New_York'
+
   // Sender number must belong to this workspace AND be voicedrop_verified
   const { data: pn } = await supabaseAdmin
     .from('phone_numbers')
@@ -102,6 +115,8 @@ export async function POST(request) {
       chunk_index: normalizedChunkIndex,
       throttle_count: normalizedThrottle,
       throttle_window_seconds: normalizedThrottleWindow,
+      send_windows: (normalizedWindows && normalizedWindows.length > 0) ? normalizedWindows : null,
+      send_timezone: normalizedTimezone,
       status: 'draft',
     })
     .select()

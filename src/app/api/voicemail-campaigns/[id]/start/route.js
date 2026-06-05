@@ -14,6 +14,14 @@ import { drainCampaignInline } from '@/lib/rvm-queue'
 // 2 credits per RVM send (matches AI-reply cost).
 const CREDITS_PER_RVM = 2
 
+// A campaign can drain immediately (fast inline) only when it's NOT metered —
+// i.e. no throttle AND no calling windows. Anything metered is paced by the cron.
+function canDrainInline(campaign) {
+  const hasThrottle = campaign.throttle_count && campaign.throttle_count > 0
+  const hasWindows = Array.isArray(campaign.send_windows) && campaign.send_windows.length > 0
+  return !hasThrottle && !hasWindows
+}
+
 export async function POST(request, { params }) {
   const user = getUserFromRequest(request)
   const workspace = getWorkspaceFromRequest(request)
@@ -132,10 +140,10 @@ export async function POST(request, { params }) {
     await supabaseAdmin.from('voicemail_campaigns')
       .update({ total_recipients: alreadyQueued, sent_count: 0, failed_count: 0 })
       .eq('id', campaignId)
-    // Throttled campaigns are metered by the cron tick-by-tick — skip the fast
-    // inline drain (it would blow past the rate). Un-throttled → drain now via
-    // after() (runs post-response but keeps the function alive on Vercel).
-    if (!campaign.throttle_count || campaign.throttle_count <= 0) {
+    // Metered campaigns (throttle OR calling windows) are paced by the cron —
+    // skip the fast inline drain (it would blow past the rate / spin outside a
+    // window). Only "no throttle + anytime" campaigns drain immediately.
+    if (canDrainInline(campaign)) {
       after(() => drainCampaignInline(campaignId).catch(err =>
         console.error('[voicemail-campaigns:start] inline drain error:', err.message)))
     }
@@ -189,8 +197,8 @@ export async function POST(request, { params }) {
     .update({ total_recipients: actualTotal || contacts.length, sent_count: 0, failed_count: 0 })
     .eq('id', campaignId)
 
-  // Throttled → metered by cron; un-throttled → drain now via after().
-  if (!campaign.throttle_count || campaign.throttle_count <= 0) {
+  // Metered (throttle or windows) → cron-paced; otherwise drain now.
+  if (canDrainInline(campaign)) {
     after(() => drainCampaignInline(campaignId).catch(err =>
       console.error('[voicemail-campaigns:start] inline drain error:', err.message)))
   }

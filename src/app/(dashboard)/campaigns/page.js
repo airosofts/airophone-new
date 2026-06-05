@@ -18,6 +18,20 @@ const THROTTLE_PRESETS = [
   { id: 'ent',   team: 'Enterprise / AI Agent',     volume: '500+ drops / hr',    callbacks: 'Uncapped',             count: null, window: null }, // continuous (no throttle)
 ]
 
+// Calling-window schedule presets. Voicemails only drop during these local
+// windows; the throttle paces the rate within them.
+const SCHEDULE_PRESETS = {
+  best:     [{ start: '10:00', end: '12:00' }, { start: '14:00', end: '16:00' }],
+  business: [{ start: '09:00', end: '17:00' }],
+}
+// Common US timezones for the schedule's basis.
+const TIMEZONES = [
+  { id: 'America/New_York',    label: 'Eastern (ET)' },
+  { id: 'America/Chicago',     label: 'Central (CT)' },
+  { id: 'America/Denver',      label: 'Mountain (MT)' },
+  { id: 'America/Los_Angeles', label: 'Pacific (PT)' },
+]
+
 export default function CampaignsPage() {
   const [campaigns, setCampaigns] = useState([])
   const [contactLists, setContactLists] = useState([])
@@ -1690,8 +1704,11 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
   const [uploadState, setUploadState] = useState(null) // null | 'uploading' | { url, voicedropUrl, path, name }
   const [selectedListIds, setSelectedListIds] = useState([])
   const [selectedColumns, setSelectedColumns] = useState(['phone_number'])
-  const [chunkSize, setChunkSize] = useState(1500)
-  const [chunkIndex, setChunkIndex] = useState(1)
+  // Chunking removed from the UI — the throttle + calling windows now pace the
+  // whole list automatically. chunkSize stays 0 (= send whole list) so all the
+  // `chunkSize > 0` branches below are inert.
+  const [chunkSize] = useState(0)
+  const [chunkIndex] = useState(1)
   // Sending speed. Three modes:
   //   'recommended' → pick a team-size preset (maps to count/window below)
   //   'manual'      → throttleCount every (throttleWindowValue × throttleUnit)
@@ -1703,7 +1720,8 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
   const [throttleCount, setThrottleCount] = useState(100)         // manual mode
   const [throttleWindowValue, setThrottleWindowValue] = useState(15)
   const [throttleUnit, setThrottleUnit] = useState('minute')
-  const manualWindowSeconds = Math.max(60, throttleWindowValue * (throttleUnit === 'hour' ? 3600 : 60))
+  const unitToSeconds = (u) => (u === 'day' ? 86400 : u === 'hour' ? 3600 : 60)
+  const manualWindowSeconds = Math.max(60, throttleWindowValue * unitToSeconds(throttleUnit))
 
   const selectedPreset = THROTTLE_PRESETS.find(p => p.id === presetId) || THROTTLE_PRESETS[1]
   // Resolve the (count, windowSeconds) actually sent to the backend.
@@ -1715,6 +1733,16 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
     throttleMode === 'recommended' ? (selectedPreset.window || 3600)
     : throttleMode === 'manual'    ? manualWindowSeconds
     : 3600
+
+  // Sending schedule (calling windows). 'anytime' | 'best' | 'business' | 'custom'.
+  const [scheduleMode, setScheduleMode] = useState('anytime')
+  const [customWindows, setCustomWindows] = useState([{ start: '10:00', end: '12:00' }])
+  const [sendTimezone, setSendTimezone] = useState('America/New_York')
+  const resolvedSendWindows =
+    scheduleMode === 'best'     ? SCHEDULE_PRESETS.best
+    : scheduleMode === 'business' ? SCHEDULE_PRESETS.business
+    : scheduleMode === 'custom'  ? customWindows.filter(w => w.start && w.end && w.end > w.start)
+    : null   // 'anytime'
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [created, setCreated] = useState(false)
@@ -1750,11 +1778,9 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
 
   const toggleList = (id) => {
     setSelectedListIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
-    setChunkIndex(1)
   }
   const toggleColumn = (k) => {
     setSelectedColumns(prev => prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k])
-    setChunkIndex(1)
   }
 
   // ── Audio upload (unchanged from legacy modal) ─────────────────────────
@@ -1871,6 +1897,8 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
         chunkIndex: chunkSize > 0 ? chunkIndex : 0,
         throttleCount: resolvedThrottleCount,
         throttleWindowSeconds: resolvedThrottleWindowSeconds,
+        sendWindows: resolvedSendWindows,
+        sendTimezone: sendTimezone,
         explicitRecipients: selectedRecipients.map(r => ({
           phone: r.phone,
           contactId: r.contactId,
@@ -1915,7 +1943,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
 
   // ── Wizard chrome ──────────────────────────────────────────────────────
   const stepLabel = (n) => (
-    { 1: 'Basics', 2: 'Audience', 3: 'Chunks & Preview' }[n] || ''
+    { 1: 'Basics', 2: 'Audience', 3: 'Review' }[n] || ''
   )
 
   return (
@@ -2100,32 +2128,100 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
                       >
                         <option value="minute">{throttleWindowValue === 1 ? 'minute' : 'minutes'}</option>
                         <option value="hour">{throttleWindowValue === 1 ? 'hour' : 'hours'}</option>
+                        <option value="day">{throttleWindowValue === 1 ? 'day' : 'days'}</option>
                       </select>
                     </div>
                   </div>
                 )}
 
-                {/* ETA / helper line — shown for recommended + manual */}
-                {throttleMode !== 'max' && (() => {
-                  const audience = chunkSize > 0 ? chunkSize : (totalRecipients || 0)
-                  if (!resolvedThrottleCount) {
-                    return <p className="text-[11px] text-[#9B9890] mt-2">Continuous — sends as fast as the carrier allows.</p>
-                  }
-                  const ratePerMin = resolvedThrottleCount / (resolvedThrottleWindowSeconds / 60)
-                  const etaMin = ratePerMin > 0 ? Math.ceil(audience / ratePerMin) : 0
-                  const etaLabel = etaMin >= 60 ? `~${(etaMin / 60).toFixed(1)} hr` : `~${etaMin} min`
-                  const win = resolvedThrottleWindowSeconds % 3600 === 0
-                    ? `${resolvedThrottleWindowSeconds / 3600} hr`
-                    : `${Math.round(resolvedThrottleWindowSeconds / 60)} min`
-                  return (
-                    <p className="text-[11px] text-[#9B9890] mt-2">
-                      <strong>{resolvedThrottleCount.toLocaleString()}</strong> voicemails every <strong>{win}</strong>.
-                      {audience > 0 && <> {etaLabel} to finish {audience.toLocaleString()} recipients.</>} Metered so callbacks don’t all come at once.
-                    </p>
-                  )
-                })()}
                 {throttleMode === 'max' && (
                   <p className="text-[11px] text-[#9B9890] mt-2">Best for small lists or when you can handle callbacks immediately.</p>
+                )}
+              </div>
+
+              {/* Sending schedule (calling windows) */}
+              <div>
+                <label className="block text-xs font-medium text-[#5C5A55] mb-2">Sending schedule</label>
+                <div className="inline-flex rounded-lg border border-[#D4D1C9] overflow-hidden mb-3 flex-wrap">
+                  {[
+                    { id: 'anytime',  label: 'Anytime' },
+                    { id: 'best',     label: 'Best calling windows' },
+                    { id: 'business', label: 'Business hours' },
+                    { id: 'custom',   label: 'Custom' },
+                  ].map((m, i) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setScheduleMode(m.id)}
+                      className={`px-3.5 py-1.5 text-sm transition-colors ${i > 0 ? 'border-l border-[#D4D1C9]' : ''} ${
+                        scheduleMode === m.id ? 'bg-[#D63B1F] text-white font-medium' : 'bg-white text-[#5C5A55] hover:bg-[#F7F6F3]'
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+
+                {scheduleMode === 'anytime' && (
+                  <p className="text-[11px] text-[#9B9890]">Voicemails drop as soon as they’re due, any time of day.</p>
+                )}
+
+                {(scheduleMode === 'best' || scheduleMode === 'business') && (
+                  <p className="text-[11px] text-[#5C5A55]">
+                    Only drops during{' '}
+                    <strong>
+                      {(scheduleMode === 'best' ? SCHEDULE_PRESETS.best : SCHEDULE_PRESETS.business)
+                        .map(w => `${w.start}–${w.end}`).join(' & ')}
+                    </strong>{' '}
+                    ({TIMEZONES.find(t => t.id === sendTimezone)?.label || sendTimezone}). The throttle paces sends within these hours.
+                  </p>
+                )}
+
+                {scheduleMode === 'custom' && (
+                  <div className="space-y-2">
+                    {customWindows.map((w, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <input
+                          type="time"
+                          value={w.start}
+                          onChange={(e) => setCustomWindows(ws => ws.map((x, i) => i === idx ? { ...x, start: e.target.value } : x))}
+                          className="px-2.5 py-1.5 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
+                        />
+                        <span className="text-sm text-[#5C5A55]">to</span>
+                        <input
+                          type="time"
+                          value={w.end}
+                          onChange={(e) => setCustomWindows(ws => ws.map((x, i) => i === idx ? { ...x, end: e.target.value } : x))}
+                          className="px-2.5 py-1.5 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
+                        />
+                        {customWindows.length > 1 && (
+                          <button type="button" onClick={() => setCustomWindows(ws => ws.filter((_, i) => i !== idx))} className="text-[#9B9890] hover:text-[#D63B1F] px-1">
+                            <i className="fas fa-times" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setCustomWindows(ws => [...ws, { start: '14:00', end: '16:00' }])}
+                      className="text-xs text-[#D63B1F] hover:underline"
+                    >
+                      + Add window
+                    </button>
+                  </div>
+                )}
+
+                {scheduleMode !== 'anytime' && (
+                  <div className="mt-2.5 flex items-center gap-2">
+                    <span className="text-[11px] text-[#9B9890]">Timezone</span>
+                    <select
+                      value={sendTimezone}
+                      onChange={(e) => setSendTimezone(e.target.value)}
+                      className="px-2.5 py-1.5 border border-[#D4D1C9] rounded-md text-sm bg-white focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
+                    >
+                      {TIMEZONES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                    </select>
+                  </div>
                 )}
               </div>
             </div>
@@ -2192,15 +2288,6 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
                   {errors.columns && <p className="text-xs text-red-600 mt-1">{errors.columns}</p>}
                 </div>
               )}
-
-              {selectedListIds.length > 0 && selectedColumns.length > 0 && (
-                <div className="px-3 py-2.5 bg-[#F7F6F3] border border-[#E3E1DB] rounded-lg flex items-center gap-2">
-                  <i className="fas fa-users text-[#D63B1F]" />
-                  <span className="text-sm text-[#131210]">
-                    <strong>{totalRecipients.toLocaleString()}</strong> deduped recipients across {selectedColumns.length} column{selectedColumns.length === 1 ? '' : 's'}
-                  </span>
-                </div>
-              )}
             </div>
             </section>
           )}
@@ -2240,64 +2327,19 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
             }
 
             return (
-              <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-5">
-                {/* ─── Left sidebar: audio preview + chunk size + chunks ─── */}
-                <div className="space-y-4">
-                  {uploadState && uploadState !== 'uploading' && (
-                    <div className="bg-[#F7F6F3] border border-[#E3E1DB] rounded-lg p-3">
-                      <p className="text-[10px] uppercase tracking-wider text-[#9B9890] font-medium mb-1.5">Voicemail audio</p>
-                      <p className="text-xs text-[#131210] truncate mb-2">{uploadState.name}</p>
-                      <audio controls src={uploadState.url} className="w-full" style={{ height: 34 }} />
+              <div className="space-y-4">
+                {/* Audio preview bar */}
+                {uploadState && uploadState !== 'uploading' && (
+                  <div className="bg-[#F7F6F3] border border-[#E3E1DB] rounded-lg p-3 flex items-center gap-3">
+                    <div className="flex-shrink-0">
+                      <p className="text-[10px] uppercase tracking-wider text-[#9B9890] font-medium">Voicemail audio</p>
+                      <p className="text-xs text-[#131210] truncate max-w-[200px]">{uploadState.name}</p>
                     </div>
-                  )}
-
-                  <div>
-                    <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Chunk size</label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={chunkSize}
-                      onChange={(e) => { setChunkSize(Math.max(0, parseInt(e.target.value) || 0)); setChunkIndex(1) }}
-                      className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
-                    />
-                    <p className="text-[10px] text-[#9B9890] mt-1">{totalRecipients.toLocaleString()} total · {chunks.length || 1} chunk{(chunks.length || 1) === 1 ? '' : 's'}. Set to 0 to send the whole list.</p>
+                    <audio controls src={uploadState.url} className="flex-1" style={{ height: 34 }} />
                   </div>
+                )}
 
-                  {chunkSize > 0 && chunks.length > 0 && (
-                    <div>
-                      <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Pick a chunk</label>
-                      <div className="space-y-1 max-h-80 overflow-y-auto pr-1">
-                        {chunks.map(ch => {
-                          const sentMeta = alreadySentChunks.find(s => s.n === ch.n)
-                          const active = ch.n === chunkIndex
-                          return (
-                            <button
-                              key={ch.n}
-                              type="button"
-                              onClick={() => setChunkIndex(ch.n)}
-                              className={`w-full text-left px-3 py-2 rounded-lg border text-xs ${active ? 'border-[#D63B1F] bg-[#FFF8F6]' : 'border-[#E3E1DB] hover:bg-[#F7F6F3]'}`}
-                            >
-                              <div className="font-medium text-[#131210] flex items-center gap-1.5">
-                                Chunk {ch.n}
-                                {sentMeta && <i className="fas fa-check text-green-600 text-[10px]" title={`Launched ${new Date(sentMeta.at).toLocaleDateString()}`} />}
-                              </div>
-                              <div className="text-[10px] text-[#9B9890]">rows {ch.start.toLocaleString()}–{ch.end.toLocaleString()} · {ch.count.toLocaleString()}</div>
-                              {sentMeta && <div className="text-[10px] text-green-700 mt-0.5">Already launched ({sentMeta.status})</div>}
-                            </button>
-                          )
-                        })}
-                      </div>
-                      {alreadySentChunks.some(s => s.n === chunkIndex) && (
-                        <div className="mt-2 px-2.5 py-2 bg-yellow-50 border border-yellow-200 rounded text-[11px] text-yellow-800 flex items-start gap-1.5">
-                          <i className="fas fa-exclamation-triangle mt-0.5" />
-                          <span>This chunk was already launched. Re-sending will drop voicemails twice.</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* ─── Right: searchable, paginated, selectable recipient table ─── */}
+                {/* ─── Searchable, paginated, selectable recipient table ─── */}
                 <div className="min-w-0">
                   {/* Toolbar: search + bulk actions + selected count */}
                   <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -2324,7 +2366,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
                       className="px-3 py-2 text-xs text-[#5C5A55] border border-[#D4D1C9] rounded-md hover:bg-[#F7F6F3]"
                       title="Select every row matching the current search (across all pages)"
                     >
-                      Select all{q ? ' matches' : ' in chunk'}
+                      Select all{q ? ' matches' : ''}
                     </button>
                     <button
                       type="button"
@@ -2405,7 +2447,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
                   </div>
                   {previewTruncated && (
                     <p className="text-[11px] text-yellow-700 mt-2">
-                      Showing first 50,000 rows of the chunk (capped). Smaller chunk sizes will show every row.
+                      Showing first 50,000 recipients (capped). All selected recipients will still be sent.
                     </p>
                   )}
 
@@ -2612,10 +2654,18 @@ function ViewRVMCampaignModal({ campaign: initialCampaign, contactLists, onClose
                 {campaign.throttle_count
                   ? (() => {
                       const w = campaign.throttle_window_seconds || 3600
-                      const label = w % 3600 === 0 ? `${w / 3600} hr` : `${Math.round(w / 60)} min`
+                      const label = w % 86400 === 0 ? `${w / 86400} day` : w % 3600 === 0 ? `${w / 3600} hr` : `${Math.round(w / 60)} min`
                       return `${campaign.throttle_count.toLocaleString()} every ${label}`
                     })()
                   : 'No throttle (max speed)'}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Schedule</p>
+              <p className="text-sm text-[#5C5A55]">
+                {Array.isArray(campaign.send_windows) && campaign.send_windows.length > 0
+                  ? `${campaign.send_windows.map(w => `${w.start}–${w.end}`).join(', ')} (${campaign.send_timezone || 'ET'})`
+                  : 'Anytime'}
               </p>
             </div>
           </div>
