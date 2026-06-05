@@ -95,6 +95,7 @@ export function buildRecipients(contacts, selectedColumns) {
         name: contactDisplayName(c),
         phone: e164,
         sourceColumn: col,
+        status: c.status || null,
       })
     }
   }

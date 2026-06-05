@@ -7,6 +7,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { apiGet, apiPost, fetchWithWorkspace } from '@/lib/api-client'
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz'
 import { estimateSendSchedule } from '@/lib/scheduling'
+import { CONTACT_STATUSES, CONTACT_STATUS_MAP, DEFAULT_EXCLUDED_STATUSES } from '@/lib/contact-status'
 
 // Friendly "how long" from a millisecond span: "about 2 min", "about 3 hours".
 function humanizeSpan(ms) {
@@ -1815,6 +1816,12 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
   const [previewLoading, setPreviewLoading] = useState(false)
   const [detectedColumns, setDetectedColumns] = useState([])  // [{key,label,count,isPrimary}]
   const [totalRecipients, setTotalRecipients] = useState(0)
+  // Contact statuses to skip (call-outcome filter). Pre-checks the "don't
+  // contact" set; the user can adjust on the Audience step.
+  const [excludeStatuses, setExcludeStatuses] = useState(DEFAULT_EXCLUDED_STATUSES)
+  const [excludedByStatus, setExcludedByStatus] = useState(0)
+  const toggleExcludeStatus = (id) =>
+    setExcludeStatuses(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id])
   // Full recipient list for the currently selected chunk (capped at 50k server-side).
   // Step 3 paginates this client-side and lets the user search + per-row toggle.
   const [chunkRecipients, setChunkRecipients] = useState([])
@@ -1893,6 +1900,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
       phoneColumns: step === 3 ? selectedColumns : undefined,
       chunkSize: step === 3 ? chunkSize : 0,
       chunkIndex: step === 3 && chunkSize > 0 ? chunkIndex : 0,
+      excludeStatuses,
     }
     apiPost('/api/voicemail-campaigns/preview', body)
       .then(r => r.json())
@@ -1901,6 +1909,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
         if (data?.success) {
           setDetectedColumns(data.detectedColumns || [])
           setTotalRecipients(data.totalRecipients || 0)
+          setExcludedByStatus(data.excludedByStatus || 0)
           setChunkRecipients(data.recipients || [])
           setPreviewTruncated(!!data.truncated)
           setChunks(data.chunks || [])
@@ -1910,7 +1919,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
       .catch(() => { /* silent — UI just stays empty */ })
       .finally(() => { if (!cancelled) setPreviewLoading(false) })
     return () => { cancelled = true }
-  }, [step, selectedListIds.join(','), selectedColumns.join(','), chunkSize, chunkIndex])
+  }, [step, selectedListIds.join(','), selectedColumns.join(','), chunkSize, chunkIndex, excludeStatuses.join(',')])
 
   // ── Validation per step ────────────────────────────────────────────────
   const validateStep = (s) => {
@@ -1964,6 +1973,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
         sendTimezone: resolvedTimezone,
         sendDays: resolvedSendDays,
         dailyCap: resolvedDailyCap,
+        excludeStatuses,
         startsAt: resolvedStartsAt,
         explicitRecipients: selectedRecipients.map(r => ({
           phone: r.phone,
@@ -2372,6 +2382,39 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
                   {errors.columns && <p className="text-xs text-red-600 mt-1">{errors.columns}</p>}
                 </div>
               )}
+
+              {/* Don't-send filter by call outcome (contact status) */}
+              {selectedListIds.length > 0 && (
+                <div>
+                  <label className="block text-xs font-medium text-[#5C5A55] mb-2">Don’t send to contacts marked</label>
+                  <p className="text-[11px] text-[#9B9890] mb-2">
+                    Skip contacts with these call outcomes. Set a contact’s status from the inbox after a call.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {CONTACT_STATUSES.map(s => {
+                      const on = excludeStatuses.includes(s.id)
+                      return (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => toggleExcludeStatus(s.id)}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium border transition-colors ${on ? 'border-transparent' : 'border-[#E3E1DB] bg-white text-[#9B9890] hover:bg-[#F7F6F3]'}`}
+                          style={on ? { color: s.color, background: s.bg } : undefined}
+                        >
+                          <span className="w-2 h-2 rounded-full" style={{ background: on ? s.color : '#C9C6BF' }} />
+                          {s.label}
+                          {on && <i className="fas fa-check text-[10px]" />}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {excludedByStatus > 0 && (
+                    <p className="text-[11px] text-[#D63B1F] mt-2">
+                      <i className="fas fa-filter mr-1" />{excludedByStatus.toLocaleString()} contact{excludedByStatus === 1 ? '' : 's'} excluded by status.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
             </section>
           )}
@@ -2550,7 +2593,14 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
                               onChange={() => togglePhone(r.phone)}
                               className="w-4 h-4 accent-[#D63B1F]"
                             />
-                            <span className="text-[#131210] truncate">{r.name || '—'}</span>
+                            <span className="text-[#131210] truncate flex items-center gap-1.5 min-w-0">
+                              <span className="truncate">{r.name || '—'}</span>
+                              {CONTACT_STATUS_MAP[r.status] && (
+                                <span className="flex-shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-semibold" style={{ color: CONTACT_STATUS_MAP[r.status].color, background: CONTACT_STATUS_MAP[r.status].bg }}>
+                                  {CONTACT_STATUS_MAP[r.status].label}
+                                </span>
+                              )}
+                            </span>
                             <span className="font-mono text-[#5C5A55] truncate">{r.phone}</span>
                             <span className="text-[#9B9890] text-[10px] truncate">{r.sourceColumn}</span>
                           </label>

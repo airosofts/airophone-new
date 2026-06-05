@@ -58,12 +58,19 @@ export async function POST(request, { params }) {
   }
 
   // Pull contacts from the selected lists, deduped by normalized phone
-  const { data: rawContacts } = await supabaseAdmin
+  const { data: rawContactsAll } = await supabaseAdmin
     .from('contacts')
-    .select('id, phone_number, custom_fields')
+    .select('id, phone_number, custom_fields, status')
     .eq('workspace_id', workspace.workspaceId)
     .in('contact_list_id', campaign.contact_list_ids)
     .order('created_at', { ascending: true })
+
+  // Honor the campaign's excluded statuses (e.g. do_not_call) on this rebuild
+  // path too, so it matches what the wizard's audience filter showed.
+  const excludeStatuses = Array.isArray(campaign.exclude_statuses) ? campaign.exclude_statuses : []
+  const rawContacts = excludeStatuses.length > 0
+    ? (rawContactsAll || []).filter(c => !c.status || !excludeStatuses.includes(c.status))
+    : (rawContactsAll || [])
 
   // Multi-column support: build the recipient list across every selected
   // phone column (primary + any custom_fields keys the wizard picked).

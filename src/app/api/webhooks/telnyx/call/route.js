@@ -83,7 +83,7 @@ export async function POST(request) {
     const payload = event?.data?.payload
     const callId = payload?.call_control_id
 
-    console.log('[call-webhook]', eventType, callId?.slice(0, 20), payload?.from, '->', payload?.to)
+    console.log('[call-webhook]', eventType, callId?.slice(0, 20), payload?.from, '->', payload?.to, '| caller_id:', payload?.caller_id_number, 'direction:', payload?.direction)
 
     const supabase = createSupabaseServerClient()
 
@@ -199,7 +199,13 @@ async function handleCallInitiated(supabase, payload) {
       }
 
       conversationId = await findOrCreateConversation(supabase, contactNumber, ourNumber, workspaceId)
+    } else {
+      console.warn('[call-webhook] Phone number not found in DB — ourNumber:', ourNumber, 'digits:', digits, '. Call will not be stored.')
+      return
     }
+  } else {
+    console.warn('[call-webhook] Could not extract digits from ourNumber:', ourNumber, '. Skipping insert.')
+    return
   }
 
   const { error } = await supabase.from('calls').insert({
@@ -215,12 +221,13 @@ async function handleCallInitiated(supabase, payload) {
   })
 
   if (error && error.code !== '23505') {
-    console.error('[call-webhook] Insert error:', error.message)
+    console.error('[call-webhook] Insert error:', error.message, '| workspaceId:', workspaceId, '| convId:', conversationId)
+  } else if (error?.code === '23505') {
+    console.log('[call-webhook] Duplicate call record skipped:', callControlId?.slice(0, 20))
   } else {
-    console.log('[call-webhook] Created call record:', callControlId?.slice(0, 20), 'conv:', conversationId?.slice(0, 8))
-    // Fire Web Push to all subscriptions for this workspace so background tabs get notified
+    console.log('[call-webhook] Created call record:', callControlId?.slice(0, 20), 'conv:', conversationId?.slice(0, 8), 'workspace:', workspaceId?.slice(0, 8))
     if (isIncoming && workspaceId) {
-      sendCallPush(workspaceId, fromNumber)  // non-blocking, intentionally no await
+      sendCallPush(workspaceId, fromNumber)
     }
   }
 }

@@ -115,7 +115,7 @@ export async function GET(request) {
         const batch = phonesToQuery.slice(i, i + batchSize)
         const { data: contactRows, error: contactError } = await supabaseAdmin
           .from('contacts')
-          .select('phone_number, first_name, last_name, business_name')
+          .select('phone_number, first_name, last_name, business_name, status')
           .eq('workspace_id', workspace.workspaceId)
           .in('phone_number', batch)
 
@@ -129,7 +129,8 @@ export async function GET(request) {
             const entry = {
               first_name: c.first_name || null,
               last_name: c.last_name || null,
-              business_name: c.business_name || null
+              business_name: c.business_name || null,
+              status: c.status || null
             }
             if (c.phone_number) contactMap[c.phone_number] = entry
             const normalized = normalizePhone(c.phone_number)
@@ -159,6 +160,7 @@ export async function GET(request) {
         ...conv,
         contact_first_name: contactFirstName,
         contact_last_name: contactLastName,
+        contact_status: contact?.status || null,
         name: contactName || conv.name || null,
         lastMessage: sortedMessages[0] || null,
         unreadCount: sortedMessages.filter(msg =>

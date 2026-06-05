@@ -37,6 +37,9 @@ export async function POST(request) {
   const contactListIds = Array.isArray(body.contactListIds) ? body.contactListIds : []
   const phoneColumns = Array.isArray(body.phoneColumns) ? body.phoneColumns : null
   const chunkSize = Number.isFinite(Number(body.chunkSize)) ? Math.max(0, Math.floor(Number(body.chunkSize))) : 0
+  // Statuses to skip (e.g. do_not_call). Contacts carrying one are dropped
+  // before counting/columns so the audience count reflects the exclusion live.
+  const excludeStatuses = Array.isArray(body.excludeStatuses) ? body.excludeStatuses.filter(Boolean) : []
 
   if (contactListIds.length === 0) {
     return NextResponse.json({
@@ -49,7 +52,7 @@ export async function POST(request) {
   // column scan, plus identifying fields for the preview table.
   const { data: contacts, error } = await supabaseAdmin
     .from('contacts')
-    .select('id, first_name, last_name, business_name, phone_number, custom_fields')
+    .select('id, first_name, last_name, business_name, phone_number, custom_fields, status')
     .eq('workspace_id', workspace.workspaceId)
     .in('contact_list_id', contactListIds)
     .order('created_at', { ascending: true })
@@ -60,14 +63,23 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Failed to load contacts' }, { status: 500 })
   }
 
-  const detectedColumns = detectPhoneColumns(contacts || [])
+  // Drop excluded-status contacts (do_not_call, etc.) up front.
+  const allContacts = contacts || []
+  const excludedCount = excludeStatuses.length > 0
+    ? allContacts.filter(c => c.status && excludeStatuses.includes(c.status)).length
+    : 0
+  const filteredContacts = excludeStatuses.length > 0
+    ? allContacts.filter(c => !c.status || !excludeStatuses.includes(c.status))
+    : allContacts
+
+  const detectedColumns = detectPhoneColumns(filteredContacts)
 
   // Default the selection to the primary column if the caller didn't specify.
   const selectedColumns = phoneColumns && phoneColumns.length > 0
     ? phoneColumns
     : ['phone_number']
 
-  const recipients = buildRecipients(contacts || [], selectedColumns)
+  const recipients = buildRecipients(filteredContacts, selectedColumns)
   const chunks = chunkRecipients(recipients, chunkSize)
 
   // chunkIndex (1-based). Caller picks which chunk to "zoom into"; we return
@@ -110,6 +122,7 @@ export async function POST(request) {
     success: true,
     detectedColumns,
     totalRecipients: recipients.length,
+    excludedByStatus: excludedCount,
     // Full recipient list (capped) for the selected chunk — used by the
     // wizard table to paginate, search, and per-row select/unselect.
     recipients: returned,

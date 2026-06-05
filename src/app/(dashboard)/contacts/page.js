@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { getCurrentUser } from '@/lib/auth'
 import { apiGet, apiPost, fetchWithWorkspace } from '@/lib/api-client'
+import ContactStatusPicker from '@/components/ContactStatusPicker'
 
 // Helper: derive display name from a contact
 function contactDisplayName(contact) {
@@ -478,6 +479,9 @@ export default function ContactsPage() {
                             <p className="text-sm font-semibold text-[#131210] truncate">{contactDisplayName(contact)}</p>
                             <p className="text-xs text-[#9B9890] truncate">{formatPhoneNumber(contact.phone_number)}{contact.email ? ` · ${contact.email}` : ''}</p>
                           </div>
+                          <div className="shrink-0">
+                            <ContactStatusPicker value={contact.status} onChange={(s) => updateContact(contact.id, { status: s })} align="right" />
+                          </div>
                           <div className="flex items-center gap-0.5 shrink-0">
                             <button onClick={() => setEditingContact({ ...contact })} className="p-2 text-[#9B9890] hover:text-[#5C5A55] rounded-lg"><i className="fas fa-pen text-xs"></i></button>
                             <button onClick={() => setDeleteContactConfirm(contact)} className="p-2 text-[#9B9890] hover:text-[#D63B1F] rounded-lg"><i className="fas fa-trash-alt text-xs"></i></button>
@@ -502,6 +506,7 @@ export default function ContactsPage() {
                         <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Company</th>
                         <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Phone</th>
                         <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Email</th>
+                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Status</th>
                         <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">List</th>
                         <th className="px-5 py-3 text-right text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Actions</th>
                       </tr>
@@ -526,6 +531,7 @@ export default function ContactsPage() {
                           <td className="px-5 py-3">{editingContact?.id === contact.id ? <input type="text" value={editingContact.business_name || ''} onChange={(e) => setEditingContact({ ...editingContact, business_name: e.target.value })} placeholder="Company" className="px-2 py-1.5 border border-[#D63B1F] rounded-md text-sm w-32 focus:outline-none" /> : <span className="text-sm text-[#9B9890]">{contact.business_name || '—'}</span>}</td>
                           <td className="px-5 py-3">{editingContact?.id === contact.id ? <input type="tel" value={editingContact.phone_number || ''} onChange={(e) => setEditingContact({ ...editingContact, phone_number: e.target.value })} className="px-2 py-1.5 border border-[#D63B1F] rounded-md text-sm w-36 focus:outline-none" /> : <span className="text-sm text-[#5C5A55]">{formatPhoneNumber(contact.phone_number)}</span>}</td>
                           <td className="px-5 py-3">{editingContact?.id === contact.id ? <input type="email" value={editingContact.email || ''} onChange={(e) => setEditingContact({ ...editingContact, email: e.target.value })} className="px-2 py-1.5 border border-[#D63B1F] rounded-md text-sm w-40 focus:outline-none" /> : <span className="text-sm text-[#5C5A55]">{contact.email || '—'}</span>}</td>
+                          <td className="px-5 py-3"><ContactStatusPicker value={contact.status} onChange={(s) => updateContact(contact.id, { status: s })} /></td>
                           <td className="px-5 py-3"><span className="text-xs text-[#9B9890]">{contact.contact_lists?.name || '—'}</span></td>
                           <td className="px-5 py-3 text-right">
                             {editingContact?.id === contact.id ? (
@@ -543,7 +549,7 @@ export default function ContactsPage() {
                         </tr>
                       ))}
                       {currentAllContacts.length === 0 && (
-                        <tr><td colSpan="7" className="px-5 py-10 text-center"><p className="text-sm text-[#9B9890]">No contacts found</p><p className="text-xs text-[#9B9890] mt-1">Add contacts or import from CSV</p></td></tr>
+                        <tr><td colSpan="8" className="px-5 py-10 text-center"><p className="text-sm text-[#9B9890]">No contacts found</p><p className="text-xs text-[#9B9890] mt-1">Add contacts or import from CSV</p></td></tr>
                       )}
                     </tbody>
                   </table>
@@ -1102,6 +1108,7 @@ function ViewContactsModal({ list, onClose, onContactsUpdated, onError }) {
                       <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Company</th>
                       <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Phone</th>
                       <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Email</th>
+                      <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Status</th>
                       {columns.map(col => (
                         <th key={col.key} className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">{col.label}</th>
                       ))}
@@ -1150,6 +1157,9 @@ function ViewContactsModal({ list, onClose, onContactsUpdated, onError }) {
                             <span className="text-sm text-[#5C5A55]">{contact.email || '—'}</span>
                           )}
                         </td>
+                        <td className="px-5 py-3">
+                          <ContactStatusPicker value={contact.status} onChange={(s) => updateContact(contact.id, { status: s })} />
+                        </td>
                         {columns.map(col => (
                           <td key={col.key} className="px-5 py-3">
                             {editingContact?.id === contact.id ? (
@@ -1185,7 +1195,7 @@ function ViewContactsModal({ list, onClose, onContactsUpdated, onError }) {
                       </tr>
                     ))}
                     {currentContacts.length === 0 && (
-                      <tr><td colSpan={6 + columns.length} className="px-5 py-10 text-center"><p className="text-sm text-[#9B9890]">No contacts found</p><p className="text-xs text-[#9B9890] mt-1">Add contacts or import from CSV</p></td></tr>
+                      <tr><td colSpan={7 + columns.length} className="px-5 py-10 text-center"><p className="text-sm text-[#9B9890]">No contacts found</p><p className="text-xs text-[#9B9890] mt-1">Add contacts or import from CSV</p></td></tr>
                     )}
                   </tbody>
                 </table>

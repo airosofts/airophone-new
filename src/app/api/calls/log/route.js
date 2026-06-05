@@ -95,7 +95,7 @@ export async function POST(request) {
       if (endedAt) updates.ended_at = endedAt
       if (durationSeconds > 0) updates.duration_seconds = durationSeconds
       if (answeredAt) updates.status = 'completed'
-      else updates.status = direction === 'inbound' ? 'missed' : 'missed'
+      else updates.status = 'missed'
 
       await supabase.from('calls').update(updates).eq('id', existing.id)
       return NextResponse.json({ success: true, callId: existing.id, conversationId: convId, deduplicated: true })

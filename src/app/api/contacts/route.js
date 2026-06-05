@@ -98,7 +98,7 @@ export async function POST(request) {
       )
     }
 
-    if (!first_name?.trim() && !last_name?.trim() && !business_name?.trim()) {
+    if (!first_name?.trim() && !last_name?.trim() && !business_name?.trim() && !status) {
       return NextResponse.json(
         { error: 'At least one of first name, last name, or company name is required' },
         { status: 400 }
@@ -186,6 +186,7 @@ export async function PUT(request) {
     if (city !== undefined) updateData.city = city?.trim() || null
     if (state !== undefined) updateData.state = state?.trim() || null
     if (country !== undefined) updateData.country = country?.trim() || null
+    if (status !== undefined) updateData.status = status || null   // call-outcome label; '' / null clears it
 
     const { data, error } = await supabaseAdmin
       .from('contacts')

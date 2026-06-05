@@ -44,6 +44,9 @@ export async function POST(request) {
     // Optional weekday restriction (1=Mon..7=Sun) — mirrors workspace business
     // days for the "Business hours" option. Empty/omitted → any day.
     sendDays,
+    // Optional contact statuses to skip (e.g. do_not_call). Stored so the
+    // start-route rebuild path also honors the exclusion.
+    excludeStatuses,
     // Optional per-day cap: at most this many voicemails per local day; the rest
     // roll to the next day. Omitted / 0 → no daily limit.
     dailyCap,
@@ -106,6 +109,14 @@ export async function POST(request) {
       })()
     : null
 
+  // Excluded statuses: clean string slugs, else null.
+  const normalizedExcludeStatuses = Array.isArray(excludeStatuses)
+    ? (() => {
+        const set = [...new Set(excludeStatuses.filter(s => typeof s === 'string' && s.trim()))]
+        return set.length > 0 ? set : null
+      })()
+    : null
+
   // Scheduled start: accept a valid future ISO; past/invalid → null (send now).
   let normalizedStartsAt = null
   if (startsAt) {
@@ -147,6 +158,7 @@ export async function POST(request) {
       send_windows: (normalizedWindows && normalizedWindows.length > 0) ? normalizedWindows : null,
       send_timezone: normalizedTimezone,
       send_days: normalizedSendDays,
+      exclude_statuses: normalizedExcludeStatuses,
       daily_cap: normalizedDailyCap,
       starts_at: normalizedStartsAt,
       status: 'draft',

@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef } from 'react'
 import { getAvatarColor, getInitials } from '@/lib/avatar-color'
+import { CONTACT_STATUS_MAP } from '@/lib/contact-status'
 
 export default function ConversationList({
   conversations,
@@ -314,6 +315,17 @@ export default function ConversationList({
                     }}>
                       {displayName}
                     </span>
+                    {CONTACT_STATUS_MAP[conversation.contact_status] && (
+                      <span style={{
+                        flexShrink: 0,
+                        fontSize: '9px', fontWeight: 600, lineHeight: 1,
+                        padding: '2px 5px', borderRadius: 9999,
+                        color: CONTACT_STATUS_MAP[conversation.contact_status].color,
+                        background: CONTACT_STATUS_MAP[conversation.contact_status].bg,
+                      }}>
+                        {CONTACT_STATUS_MAP[conversation.contact_status].label}
+                      </span>
+                    )}
                   </div>
                   <span style={{
                     fontFamily: "'JetBrains Mono', monospace",

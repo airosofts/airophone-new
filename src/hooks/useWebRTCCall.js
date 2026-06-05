@@ -464,7 +464,7 @@ const handleCallUpdate = (call) => {
 
     console.log('[WebRTC] Incoming call from', callerNumber, '-> line:', toName, '(', destNumber || 'no dest in payload', ')')
     if (!destNumber) console.log('[WebRTC] call.params keys (for debugging):', Object.keys(call.params || {}))
-    const incomingData = { from: callerNumber, to: destNumber, toName, callId: call.id }
+    const incomingData = { from: callerNumber, to: destNumber, ourNumber: matchedLine?.phoneNumber || destNumber, toName, callId: call.id }
     currentCallRef.current = call
     isCallActiveRef.current = true
     callStatusRef.current = 'incoming'
@@ -496,7 +496,7 @@ const handleCallUpdate = (call) => {
           callLogRef.current = {
             direction: 'inbound',
             fromNumber: incomingCallRef.current.from,
-            toNumber: incomingCallRef.current.to,
+            toNumber: incomingCallRef.current.ourNumber || incomingCallRef.current.to,
             conversationId: null,
             callControlId: call.id,
             answeredAt: new Date().toISOString(),
@@ -541,8 +541,8 @@ const handleCallUpdate = (call) => {
             logCallToDb(logData).catch(() => {})
           } else if (callStatusRef.current === 'incoming' && incomingCallRef.current) {
             // Missed inbound — caller hung up before we answered
-            const { from, to } = incomingCallRef.current
-            logCallToDb({ direction: 'inbound', fromNumber: from, toNumber: to, conversationId: null, callControlId: call.id, answeredAt: null }).catch(() => {})
+            const { from, ourNumber, to } = incomingCallRef.current
+            logCallToDb({ direction: 'inbound', fromNumber: from, toNumber: ourNumber || to, conversationId: null, callControlId: call.id, answeredAt: null }).catch(() => {})
           }
         } catch (_) { callLogRef.current = null }
         // Sync refs immediately
