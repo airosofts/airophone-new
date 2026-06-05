@@ -12,7 +12,7 @@
 
 import { supabaseAdmin } from '@/lib/supabase-server'
 import { sendStaticVoicemail } from '@/lib/voicedrop'
-import { isWithinSendWindows } from '@/lib/scheduling'
+import { isWithinSendWindows, startOfLocalDayUTC } from '@/lib/scheduling'
 
 const WEBHOOK_URL = `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.airophone.com'}/api/webhooks/voicedrop`
 
@@ -83,7 +83,7 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
   const campaignIds = [...new Set(rows.map(r => r.campaign_id))]
   const { data: campaigns } = await supabaseAdmin
     .from('voicemail_campaigns')
-    .select('id, status, sender_number, recording_url, recording_path, voicedrop_recording_url, created_by, throttle_count, throttle_window_seconds, send_windows, send_timezone, starts_at')
+    .select('id, status, sender_number, recording_url, recording_path, voicedrop_recording_url, created_by, throttle_count, throttle_window_seconds, send_windows, send_timezone, starts_at, daily_cap')
     .in('id', campaignIds)
   const campaignById = new Map((campaigns || []).map(c => [c.id, c]))
 
@@ -103,6 +103,10 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
   // `throttle_window_seconds`, count how many already went out in the trailing
   // window and allow only the remainder this sweep. Un-throttled → Infinity.
   // Throttled rows beyond the allowance are left 'queued' for the next tick.
+  // Count anything already DISPATCHED (sent/delivered/failed) — a delivery
+  // webhook flips 'sent' → 'delivered', so counting only 'sent' would undercount
+  // and let bursts slip past the throttle.
+  const DISPATCHED = ['sent', 'delivered', 'failed']
   const allowanceByCampaign = new Map()
   const processedByCampaign = new Map()
   for (const c of (campaigns || [])) {
@@ -116,9 +120,28 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
       .from('voicemail_campaign_sends')
       .select('id', { count: 'exact', head: true })
       .eq('campaign_id', c.id)
-      .eq('status', 'sent')
+      .in('status', DISPATCHED)
       .gte('sent_at', sinceIso)
     allowanceByCampaign.set(c.id, Math.max(0, c.throttle_count - (recentSent || 0)))
+  }
+
+  // Daily-cap allowance per campaign. Count how many already went out TODAY
+  // (in the campaign's local timezone) and allow only the remainder this sweep.
+  // No cap → Infinity. The effective per-row allowance is min(throttle, daily).
+  const dailyAllowanceByCampaign = new Map()
+  for (const c of (campaigns || [])) {
+    if (!c.daily_cap || c.daily_cap <= 0) {
+      dailyAllowanceByCampaign.set(c.id, Infinity)
+      continue
+    }
+    const dayStartIso = new Date(startOfLocalDayUTC(Date.now(), c.send_timezone || 'America/New_York')).toISOString()
+    const { count: sentToday } = await supabaseAdmin
+      .from('voicemail_campaign_sends')
+      .select('id', { count: 'exact', head: true })
+      .eq('campaign_id', c.id)
+      .in('status', DISPATCHED)
+      .gte('sent_at', dayStartIso)
+    dailyAllowanceByCampaign.set(c.id, Math.max(0, c.daily_cap - (sentToday || 0)))
   }
 
   // Resolve the recording URL per running campaign once.
@@ -158,9 +181,13 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
       continue
     }
 
-    // Throttle gate: if this campaign has already used its allowance for the
-    // current window, leave the row 'queued' for the next tick.
-    const allowance = allowanceByCampaign.get(row.campaign_id) ?? Infinity
+    // Throttle + daily-cap gate: the row may dispatch only if it's under BOTH
+    // the trailing-window throttle allowance AND today's remaining daily cap.
+    // Anything beyond either is left 'queued' for a later tick / the next day.
+    const allowance = Math.min(
+      allowanceByCampaign.get(row.campaign_id) ?? Infinity,
+      dailyAllowanceByCampaign.get(row.campaign_id) ?? Infinity,
+    )
     const usedSoFar = processedByCampaign.get(row.campaign_id) || 0
     if (usedSoFar >= allowance) {
       skipped++

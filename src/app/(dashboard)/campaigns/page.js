@@ -6,19 +6,31 @@ import SearchableDropdown from '@/components/SearchableDropdown'
 import { getCurrentUser } from '@/lib/auth'
 import { apiGet, apiPost, fetchWithWorkspace } from '@/lib/api-client'
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz'
+import { estimateSendSchedule } from '@/lib/scheduling'
+
+// Friendly "how long" from a millisecond span: "about 2 min", "about 3 hours".
+function humanizeSpan(ms) {
+  const mins = ms / 60000
+  if (mins < 1.5) return 'under a minute'
+  if (mins < 90) return `about ${Math.round(mins)} min`
+  const hours = mins / 60
+  if (hours < 24) { const h = hours < 10 ? Math.round(hours * 10) / 10 : Math.round(hours); return `about ${h} hour${h === 1 ? '' : 's'}` }
+  const days = Math.round(hours / 24)
+  return `about ${days} day${days === 1 ? '' : 's'}`
+}
 
 // Recommended RVM send-rate presets, keyed by team size. Each maps to a
 // concrete (count, window-seconds) the backend sweeper enforces — derived from
 // the "spacing/interval" guidance. `callbacks` is shown to help users pick by
 // the inbound load their team can handle; `window: null` (Enterprise) = no throttle.
 const THROTTLE_PRESETS = [
-  { id: 'solo',  team: 'Solo Entrepreneur',         volume: '20–30 drops / hr',   callbacks: '1–2 callbacks / hr',   count: 1,    window: 150  }, // 1 every 2.5 min ≈ 24/hr
-  { id: 'small', team: 'Small Team (2–3 agents)',   volume: '100 drops / hr',     callbacks: '5–8 callbacks / hr',   count: 25,   window: 900  }, // 25 every 15 min
-  { id: 'mid',   team: 'Mid-Sized Team (5+ agents)', volume: '200–250 drops / hr', callbacks: '12–20 callbacks / hr', count: 50,   window: 900  }, // 50 every 15 min
-  { id: 'ent',   team: 'Enterprise / AI Agent',     volume: '500+ drops / hr',    callbacks: 'Uncapped',             count: null, window: null }, // continuous (no throttle)
+  { id: 'solo',  team: 'Solo Entrepreneur',         volume: '20–30 / hr',   callbacks: '1–2 callbacks / hr',   count: 1,    window: 150  }, // 1 every 2.5 min ≈ 24/hr
+  { id: 'small', team: 'Small Team (2–3 agents)',   volume: '100 / hr',     callbacks: '5–8 callbacks / hr',   count: 25,   window: 900  }, // 25 every 15 min
+  { id: 'mid',   team: 'Mid-Sized Team (5+ agents)', volume: '200–250 / hr', callbacks: '12–20 callbacks / hr', count: 50,   window: 900  }, // 50 every 15 min
+  { id: 'ent',   team: 'Enterprise / AI Agent',     volume: '500+ / hr',    callbacks: 'Uncapped',             count: null, window: null }, // continuous (no throttle)
 ]
 
-// Calling-window schedule presets. Voicemails only drop during these local
+// Calling-window schedule presets. Voicemails only send during these local
 // windows; the throttle paces the rate within them.
 const SCHEDULE_PRESETS = {
   best:     [{ start: '10:00', end: '12:00' }, { start: '14:00', end: '16:00' }],
@@ -539,7 +551,7 @@ export default function CampaignsPage() {
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 min-w-0">
                   <h3 className="text-sm font-semibold text-[#131210] whitespace-nowrap">RVM Campaigns</h3>
-                  <span className="hidden sm:inline text-[10px] font-medium text-[#9B9890] bg-[#F7F6F3] border border-[#E3E1DB] px-1.5 py-0.5 rounded whitespace-nowrap">Ringless voicemail drops</span>
+                  <span className="hidden sm:inline text-[10px] font-medium text-[#9B9890] bg-[#F7F6F3] border border-[#E3E1DB] px-1.5 py-0.5 rounded whitespace-nowrap">Ringless voicemail</span>
                 </div>
                 <button
                   onClick={() => setShowCreateRVM(true)}
@@ -1734,24 +1746,30 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
     : throttleMode === 'manual'    ? manualWindowSeconds
     : 3600
 
-  // Sending schedule (calling windows). 'anytime' | 'best' | 'business' | 'custom'.
-  const [scheduleMode, setScheduleMode] = useState('anytime')
-  const [customWindows, setCustomWindows] = useState([{ start: '10:00', end: '12:00' }])
-  const [sendTimezone, setSendTimezone] = useState('America/New_York')
-  const resolvedSendWindows =
-    scheduleMode === 'best'     ? SCHEDULE_PRESETS.best
-    : scheduleMode === 'business' ? SCHEDULE_PRESETS.business
-    : scheduleMode === 'custom'  ? customWindows.filter(w => w.start && w.end && w.end > w.start)
-    : null   // 'anytime'
-
-  // One-time scheduled start. 'now' → send immediately; 'scheduled' → hold
-  // until startAtLocal (interpreted in the chosen timezone).
-  const [startMode, setStartMode] = useState('now')
+  // ONE unified "When to send" control with four mutually-exclusive options:
+  //   'now'      → start immediately, run 24/7 at the throttle rate
+  //   'later'    → start at startAtLocal, then 24/7 at the throttle rate
+  //   'best'     → only 10–12 & 2–4 each day (best callback windows)
+  //   'business' → only 9–5 each day
+  // Each maps to (starts_at, send_windows); the throttle paces the rate within.
+  const [whenMode, setWhenMode] = useState('now')
   const [startAtLocal, setStartAtLocal] = useState('')   // "YYYY-MM-DDTHH:MM"
+  const [sendTimezone, setSendTimezone] = useState('America/New_York')
+
+  const resolvedSendWindows =
+    whenMode === 'best'     ? SCHEDULE_PRESETS.best
+    : whenMode === 'business' ? SCHEDULE_PRESETS.business
+    : null   // 'now' / 'later' → anytime
+
   let resolvedStartsAt = null
-  if (startMode === 'scheduled' && startAtLocal) {
+  if (whenMode === 'later' && startAtLocal) {
     try { resolvedStartsAt = fromZonedTime(startAtLocal, sendTimezone).toISOString() } catch {}
   }
+
+  // Optional per-day cap (works in every speed mode, including No throttle).
+  const [dailyLimitEnabled, setDailyLimitEnabled] = useState(false)
+  const [dailyLimit, setDailyLimit] = useState(500)
+  const resolvedDailyCap = dailyLimitEnabled && dailyLimit > 0 ? Math.floor(dailyLimit) : null
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [created, setCreated] = useState(false)
@@ -1908,6 +1926,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
         throttleWindowSeconds: resolvedThrottleWindowSeconds,
         sendWindows: resolvedSendWindows,
         sendTimezone: sendTimezone,
+        dailyCap: resolvedDailyCap,
         startsAt: resolvedStartsAt,
         explicitRecipients: selectedRecipients.map(r => ({
           phone: r.phone,
@@ -1999,7 +2018,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Reactivate cold leads — June drop"
+                  placeholder="e.g. Reactivate cold leads — June outreach"
                   className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
                 />
                 {errors.name && <p className="text-xs text-red-600 mt-1">{errors.name}</p>}
@@ -2147,30 +2166,73 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
                 {throttleMode === 'max' && (
                   <p className="text-[11px] text-[#9B9890] mt-2">Best for small lists or when you can handle callbacks immediately.</p>
                 )}
+
+                {/* Optional per-day limit — works in every speed mode */}
+                <div className="mt-3 pt-3 border-t border-[#F0EEE9]">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={dailyLimitEnabled}
+                      onChange={(e) => setDailyLimitEnabled(e.target.checked)}
+                      className="w-4 h-4 accent-[#D63B1F]"
+                    />
+                    <span className="text-sm text-[#131210]">Set a daily limit</span>
+                  </label>
+                  {dailyLimitEnabled && (
+                    <div className="mt-2 flex items-center gap-2 flex-wrap pl-6">
+                      <span className="text-sm text-[#5C5A55]">No more than</span>
+                      <input
+                        type="number"
+                        min={1}
+                        value={dailyLimit}
+                        onChange={(e) => setDailyLimit(Math.max(1, parseInt(e.target.value) || 1))}
+                        className="w-24 px-2.5 py-1.5 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
+                      />
+                      <span className="text-sm text-[#5C5A55]">voicemails per day</span>
+                    </div>
+                  )}
+                  <p className="text-[11px] text-[#9B9890] mt-1.5 pl-6">
+                    {dailyLimitEnabled
+                      ? 'Once the day’s limit is reached, the rest automatically continue the next day.'
+                      : 'Optional — cap how many go out each day for a big list. The rest roll to the next day.'}
+                  </p>
+                </div>
               </div>
 
-              {/* When to send — one-time start */}
+              {/* When to send — one unified control (start + calling hours) */}
               <div>
                 <label className="block text-xs font-medium text-[#5C5A55] mb-2">When to send</label>
-                <div className="inline-flex rounded-lg border border-[#D4D1C9] overflow-hidden mb-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {[
-                    { id: 'now',       label: 'Send now' },
-                    { id: 'scheduled', label: 'Schedule for…' },
-                  ].map((m, i) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => setStartMode(m.id)}
-                      className={`px-3.5 py-1.5 text-sm transition-colors ${i > 0 ? 'border-l border-[#D4D1C9]' : ''} ${
-                        startMode === m.id ? 'bg-[#D63B1F] text-white font-medium' : 'bg-white text-[#5C5A55] hover:bg-[#F7F6F3]'
-                      }`}
-                    >
-                      {m.label}
-                    </button>
-                  ))}
+                    { id: 'now',      label: 'Send now',            hint: 'Starts now, around the clock' },
+                    { id: 'later',    label: 'Schedule for later',  hint: 'Starts at a date & time you pick' },
+                    { id: 'best',     label: 'Best calling windows', hint: 'Only 10–12 & 2–4 each day' },
+                    { id: 'business', label: 'Business hours',       hint: 'Only 9–5 each day' },
+                  ].map(m => {
+                    const active = whenMode === m.id
+                    return (
+                      <label
+                        key={m.id}
+                        className={`flex items-start gap-2 px-3 py-2.5 border rounded-lg cursor-pointer ${active ? 'border-[#D63B1F] bg-[#FFF8F6]' : 'border-[#E3E1DB] hover:bg-[#F7F6F3]'}`}
+                      >
+                        <input
+                          type="radio"
+                          name="rvm-when"
+                          checked={active}
+                          onChange={() => setWhenMode(m.id)}
+                          className="w-4 h-4 mt-0.5 accent-[#D63B1F] flex-shrink-0"
+                        />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-[#131210]">{m.label}</p>
+                          <p className="text-[11px] text-[#9B9890]">{m.hint}</p>
+                        </div>
+                      </label>
+                    )
+                  })}
                 </div>
-                {startMode === 'scheduled' && (
-                  <div className="flex items-center gap-2 flex-wrap">
+
+                {whenMode === 'later' && (
+                  <div className="mt-2.5 flex items-center gap-2 flex-wrap">
                     <input
                       type="datetime-local"
                       value={startAtLocal}
@@ -2183,86 +2245,9 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
                     </span>
                   </div>
                 )}
-                <p className="text-[11px] text-[#9B9890] mt-1.5">
-                  {startMode === 'scheduled'
-                    ? 'Sends at or after this time — no need to hit an exact minute.'
-                    : 'Begins dispatching as soon as the campaign is created.'}
-                </p>
-              </div>
 
-              {/* Sending schedule (calling windows) */}
-              <div>
-                <label className="block text-xs font-medium text-[#5C5A55] mb-2">Calling hours <span className="text-[#9B9890] font-normal">(optional, recurring)</span></label>
-                <div className="inline-flex rounded-lg border border-[#D4D1C9] overflow-hidden mb-3 flex-wrap">
-                  {[
-                    { id: 'anytime',  label: 'Anytime' },
-                    { id: 'best',     label: 'Best calling windows' },
-                    { id: 'business', label: 'Business hours' },
-                    { id: 'custom',   label: 'Custom' },
-                  ].map((m, i) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => setScheduleMode(m.id)}
-                      className={`px-3.5 py-1.5 text-sm transition-colors ${i > 0 ? 'border-l border-[#D4D1C9]' : ''} ${
-                        scheduleMode === m.id ? 'bg-[#D63B1F] text-white font-medium' : 'bg-white text-[#5C5A55] hover:bg-[#F7F6F3]'
-                      }`}
-                    >
-                      {m.label}
-                    </button>
-                  ))}
-                </div>
-
-                {scheduleMode === 'anytime' && (
-                  <p className="text-[11px] text-[#9B9890]">Voicemails drop as soon as they’re due, any time of day.</p>
-                )}
-
-                {(scheduleMode === 'best' || scheduleMode === 'business') && (
-                  <p className="text-[11px] text-[#5C5A55]">
-                    Only drops during{' '}
-                    <strong>
-                      {(scheduleMode === 'best' ? SCHEDULE_PRESETS.best : SCHEDULE_PRESETS.business)
-                        .map(w => `${w.start}–${w.end}`).join(' & ')}
-                    </strong>{' '}
-                    ({TIMEZONES.find(t => t.id === sendTimezone)?.label || sendTimezone}). The throttle paces sends within these hours.
-                  </p>
-                )}
-
-                {scheduleMode === 'custom' && (
-                  <div className="space-y-2">
-                    {customWindows.map((w, idx) => (
-                      <div key={idx} className="flex items-center gap-2">
-                        <input
-                          type="time"
-                          value={w.start}
-                          onChange={(e) => setCustomWindows(ws => ws.map((x, i) => i === idx ? { ...x, start: e.target.value } : x))}
-                          className="px-2.5 py-1.5 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
-                        />
-                        <span className="text-sm text-[#5C5A55]">to</span>
-                        <input
-                          type="time"
-                          value={w.end}
-                          onChange={(e) => setCustomWindows(ws => ws.map((x, i) => i === idx ? { ...x, end: e.target.value } : x))}
-                          className="px-2.5 py-1.5 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
-                        />
-                        {customWindows.length > 1 && (
-                          <button type="button" onClick={() => setCustomWindows(ws => ws.filter((_, i) => i !== idx))} className="text-[#9B9890] hover:text-[#D63B1F] px-1">
-                            <i className="fas fa-times" />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={() => setCustomWindows(ws => [...ws, { start: '14:00', end: '16:00' }])}
-                      className="text-xs text-[#D63B1F] hover:underline"
-                    >
-                      + Add window
-                    </button>
-                  </div>
-                )}
-
-                {scheduleMode !== 'anytime' && (
+                {/* Timezone — relevant whenever time-of-day matters */}
+                {whenMode !== 'now' && (
                   <div className="mt-2.5 flex items-center gap-2">
                     <span className="text-[11px] text-[#9B9890]">Timezone</span>
                     <select
@@ -2274,6 +2259,14 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
                     </select>
                   </div>
                 )}
+
+                <p className="text-[11px] text-[#9B9890] mt-2">
+                  {(whenMode === 'best' || whenMode === 'business')
+                    ? <>Only sends during <strong>{(whenMode === 'best' ? SCHEDULE_PRESETS.best : SCHEDULE_PRESETS.business).map(w => `${w.start}–${w.end}`).join(' & ')}</strong> each day. Your sending speed paces voicemails within those hours.</>
+                    : whenMode === 'later'
+                    ? 'Sends at or after this time — no need to hit an exact minute.'
+                    : 'Begins sending as soon as the campaign is created, at your sending speed.'}
+                </p>
               </div>
             </div>
             </section>
@@ -2283,7 +2276,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
           {step === 2 && (
             <section className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-xl p-5 sm:p-6">
               <h4 className="text-sm font-semibold text-[#131210] mb-1">Audience</h4>
-              <p className="text-xs text-[#9B9890] mb-4">Pick the contact lists and which phone columns each contact should be dropped to.</p>
+              <p className="text-xs text-[#9B9890] mb-4">Pick the contact lists and which phone columns each contact should be sent to.</p>
             <div className="space-y-5">
               <div>
                 <label className="block text-xs font-medium text-[#5C5A55] mb-2">Contact lists</label>
@@ -2315,7 +2308,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
                     {previewLoading && <i className="fas fa-spinner fa-spin ml-2 text-[#9B9890]" />}
                   </label>
                   <p className="text-[11px] text-[#9B9890] mb-2">
-                    Pick every column you want a drop to. Each contact gets one voicemail per non-empty column selected.
+                    Pick every column you want to send to. Each contact gets one voicemail per non-empty column selected.
                   </p>
                   {detectedColumns.length === 0 && !previewLoading && (
                     <p className="text-xs text-[#9B9890]">No phone-like values found in these lists.</p>
@@ -2377,21 +2370,37 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
               })
             }
 
-            // Projected delivery: how the throttle + calling hours spread this
-            // list across days. Makes "how much sends per day" concrete.
+            // Projected delivery — simulate the real schedule (sending speed +
+            // calling hours + daily limit) so we can say, in plain language, how
+            // long the whole list takes and when it finishes.
             const projAudience = selectedRecipients.length
-            const projHoursPerDay = (resolvedSendWindows && resolvedSendWindows.length > 0)
-              ? resolvedSendWindows.reduce((sum, w) => {
-                  const [sh, sm] = w.start.split(':').map(Number)
-                  const [eh, em] = w.end.split(':').map(Number)
-                  return sum + Math.max(0, (eh * 60 + em) - (sh * 60 + sm)) / 60
-                }, 0)
-              : 24
             const projRatePerHour = resolvedThrottleCount
               ? resolvedThrottleCount / (resolvedThrottleWindowSeconds / 3600)
-              : null   // no throttle → carrier-limited
-            const projDaily = projRatePerHour ? Math.max(1, Math.round(projRatePerHour * projHoursPerDay)) : null
-            const projDays = projDaily ? Math.ceil(projAudience / projDaily) : null
+              : null   // no throttle → carrier speed
+            const projStartMs = resolvedStartsAt ? Math.max(Date.now(), new Date(resolvedStartsAt).getTime()) : Date.now()
+            const projSchedule = projAudience > 0
+              ? estimateSendSchedule(projAudience, projStartMs, resolvedThrottleCount, resolvedThrottleWindowSeconds, resolvedSendWindows, sendTimezone, resolvedDailyCap || 0)
+              : []
+            const projFirstMs = projSchedule.length ? new Date(projSchedule[0]).getTime() : projStartMs
+            const projLastMs = projSchedule.length ? new Date(projSchedule[projSchedule.length - 1]).getTime() : projStartMs
+            const projSpanMs = projLastMs - projFirstMs
+            const tzAbbr = (TIMEZONES.find(t => t.id === sendTimezone)?.label.match(/\(([^)]+)\)/)?.[1]) || ''
+            const fmtTz = (ms, pat) => { try { return formatInTimeZone(new Date(ms), sendTimezone, pat) } catch { return '' } }
+            const projMultiDay = fmtTz(projFirstMs, 'yyyy-MM-dd') !== fmtTz(projLastMs, 'yyyy-MM-dd')
+            // Effective per-day volume — only shown when it actually spans days.
+            const projHoursPerDay = (resolvedSendWindows && resolvedSendWindows.length > 0)
+              ? resolvedSendWindows.reduce((s, w) => {
+                  const [sh, sm] = w.start.split(':').map(Number)
+                  const [eh, em] = w.end.split(':').map(Number)
+                  return s + Math.max(0, (eh * 60 + em) - (sh * 60 + sm)) / 60
+                }, 0)
+              : 24
+            const projPerDay = projRatePerHour
+              ? Math.min(resolvedDailyCap || Infinity, Math.max(1, Math.round(projRatePerHour * projHoursPerDay)))
+              : (resolvedDailyCap || null)
+            const projDays = projPerDay ? Math.ceil(projAudience / projPerDay) : null
+            const projScheduledFuture = !!(resolvedStartsAt && new Date(resolvedStartsAt).getTime() > Date.now())
+            const projInstant = !projRatePerHour && projSpanMs < 60000   // no throttle, fits one burst
 
             return (
               <div className="space-y-4">
@@ -2406,28 +2415,30 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
                   </div>
                 )}
 
-                {/* Projected delivery — makes daily volume + completion concrete */}
+                {/* Projected delivery — plain-language "how long / when done" */}
                 {projAudience > 0 && (
                   <div className="bg-[#FFF8F6] border border-[rgba(214,59,31,0.2)] rounded-lg p-3.5">
                     <p className="text-[10px] uppercase tracking-wider text-[#D63B1F] font-semibold mb-1.5">Projected delivery</p>
-                    {projDaily ? (
-                      <p className="text-sm text-[#131210] leading-relaxed">
-                        <strong>{projAudience.toLocaleString()}</strong> recipients at{' '}
-                        <strong>{Math.round(projRatePerHour).toLocaleString()}/hr</strong>
-                        {projHoursPerDay < 24
-                          ? <> during <strong>{projHoursPerDay} calling hour{projHoursPerDay === 1 ? '' : 's'}/day</strong></>
-                          : <> ({Math.round(projHoursPerDay)}h/day)</>}
-                        {' '}→ <strong>~{projDaily.toLocaleString()}/day</strong>
-                        {projDays > 1
-                          ? <> · finishes in <strong>~{projDays} days</strong></>
-                          : <> · finishes <strong>today</strong></>}.
-                      </p>
-                    ) : (
-                      <p className="text-sm text-[#131210] leading-relaxed">
-                        <strong>{projAudience.toLocaleString()}</strong> recipients · <strong>No throttle</strong> — sends as fast as the carrier allows
-                        {projHoursPerDay < 24 && <>, only during your <strong>{projHoursPerDay} calling hour{projHoursPerDay === 1 ? '' : 's'}/day</strong></>}.
-                      </p>
-                    )}
+                    <p className="text-sm text-[#131210] leading-relaxed">
+                      <strong>{projAudience.toLocaleString()}</strong> voicemail{projAudience === 1 ? '' : 's'}
+                      {projScheduledFuture && <> — starts <strong>{fmtTz(projFirstMs, "MMM d 'at' h:mm a")} {tzAbbr}</strong></>}
+                      {projMultiDay ? (
+                        <>
+                          {' '}— about <strong>{projPerDay.toLocaleString()}/day</strong>
+                          {projRatePerHour && <> (at {Math.round(projRatePerHour).toLocaleString()}/hour)</>}.
+                          {' '}Finishes around <strong>{fmtTz(projLastMs, 'MMM d')}</strong>
+                          {projDays ? <> — about <strong>{projDays} day{projDays === 1 ? '' : 's'}</strong></> : null}.
+                        </>
+                      ) : projInstant ? (
+                        <>{' '}— sent within a couple of minutes (as fast as the carrier accepts).</>
+                      ) : (
+                        <>
+                          {' '}— finishes in <strong>{humanizeSpan(projSpanMs)}</strong>
+                          {projRatePerHour && <> at <strong>{Math.round(projRatePerHour).toLocaleString()}/hour</strong></>},
+                          {' '}done around <strong>{fmtTz(projLastMs, 'h:mm a')} {tzAbbr}</strong>.
+                        </>
+                      )}
+                    </p>
                   </div>
                 )}
 

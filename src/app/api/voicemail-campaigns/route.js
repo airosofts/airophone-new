@@ -41,6 +41,9 @@ export async function POST(request) {
     // Optional calling windows: only send when local time falls in a window.
     // [{start:"10:00",end:"12:00"}, ...] + an IANA timezone. Empty → anytime.
     sendWindows, sendTimezone,
+    // Optional per-day cap: at most this many voicemails per local day; the rest
+    // roll to the next day. Omitted / 0 → no daily limit.
+    dailyCap,
     // Optional one-time scheduled start (ISO). Holds the whole campaign until
     // this moment, then sends at-or-after it. Null → send now.
     startsAt,
@@ -87,6 +90,11 @@ export async function POST(request) {
     ? sendTimezone.trim()
     : 'America/New_York'
 
+  // Daily cap: positive int, else null (no limit).
+  const normalizedDailyCap = Number.isFinite(Number(dailyCap)) && Number(dailyCap) > 0
+    ? Math.floor(Number(dailyCap))
+    : null
+
   // Scheduled start: accept a valid future ISO; past/invalid → null (send now).
   let normalizedStartsAt = null
   if (startsAt) {
@@ -127,6 +135,7 @@ export async function POST(request) {
       throttle_window_seconds: normalizedThrottleWindow,
       send_windows: (normalizedWindows && normalizedWindows.length > 0) ? normalizedWindows : null,
       send_timezone: normalizedTimezone,
+      daily_cap: normalizedDailyCap,
       starts_at: normalizedStartsAt,
       status: 'draft',
     })

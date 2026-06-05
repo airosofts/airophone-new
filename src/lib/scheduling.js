@@ -113,22 +113,49 @@ export function nextSendTime(at, windows, tz = 'America/New_York') {
   return at
 }
 
+// The UTC instant of local midnight (start of the day) for `ms` in `tz`.
+// Used by the sweeper to count "how many already went out today" for the daily
+// cap, and by the estimator to detect day rollovers. Minute-granularity
+// (offsets for supported zones are whole minutes), which is plenty here.
+export function startOfLocalDayUTC(ms, tz = 'America/New_York') {
+  const local = toLocal(new Date(ms), tz)
+  const minsFromMidnight = local.hours * 60 + local.minutes
+  // Drop to the top of the current minute, then back off to local midnight.
+  const topOfMinute = ms - (ms % 60000)
+  return topOfMinute - minsFromMidnight * 60000
+}
+
+// 'YYYY-MM-DD' for `ms` in `tz` — a stable key to tell which local day a send
+// falls on (so the estimator can reset its per-day counter at midnight).
+function localDayKey(ms, tz) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date(ms))
+}
+
 // Precisely simulate when each of `count` queued sends will go out, given the
-// throttle (N every W seconds, as batches) and calling windows. Models window
-// CAPACITY: a window fits floor(windowLen / W) batches; once full, the rest
-// spill to the next window. Returns an array of ISO timestamps (one per send,
-// in dispatch order). Used to show an accurate "will send at" per recipient.
+// throttle (N every W seconds, as batches), calling windows, AND an optional
+// per-day cap. Models window CAPACITY (a window fits floor(windowLen / W)
+// batches; once full, the rest spill forward) and the daily cap (once `dailyCap`
+// sends land in one local day, the rest roll to the next local day). Returns an
+// array of ISO timestamps (one per send, in dispatch order). Used to show an
+// accurate "will send at" per recipient and to project completion.
 //
 //   throttleCount = 0 / falsy → no throttle (all fire at the first allowed time)
 //   windows = null / []       → anytime (no window snapping)
-export function estimateSendSchedule(count, fromMs, throttleCount, throttleWindowSec, windows, tz = 'America/New_York') {
+//   dailyCap = 0 / falsy      → no per-day limit
+export function estimateSendSchedule(count, fromMs, throttleCount, throttleWindowSec, windows, tz = 'America/New_York', dailyCap = 0) {
   const out = []
   const N = throttleCount && throttleCount > 0 ? throttleCount : Infinity
   const W = (throttleWindowSec && throttleWindowSec > 0 ? throttleWindowSec : 0) * 1000
+  const DCAP = dailyCap && dailyCap > 0 ? dailyCap : Infinity
 
   let cursor = nextSendTime(new Date(fromMs), windows, tz).getTime()
   let batchStart = cursor
   let inBatch = 0
+  let dayKey = localDayKey(cursor, tz)
+  let dayCount = 0
+  let guard = 0
 
   for (let i = 0; i < count; i++) {
     if (inBatch >= N) {
@@ -141,8 +168,25 @@ export function estimateSendSchedule(count, fromMs, throttleCount, throttleWindo
       // Keep the batch inside a window (no-op when already inside).
       cursor = nextSendTime(new Date(cursor), windows, tz).getTime()
     }
+
+    // Day rollover (the cursor may have advanced past midnight) → reset count.
+    let k = localDayKey(cursor, tz)
+    if (k !== dayKey) { dayKey = k; dayCount = 0 }
+
+    // Daily cap reached → jump to the start of the next local day and resnap.
+    if (dayCount >= DCAP && guard < count * 2 + 32) {
+      guard++
+      const nextMidnight = startOfLocalDayUTC(cursor, tz) + 24 * 60 * 60 * 1000
+      cursor = nextSendTime(new Date(nextMidnight), windows, tz).getTime()
+      batchStart = cursor
+      inBatch = 0
+      dayKey = localDayKey(cursor, tz)
+      dayCount = 0
+    }
+
     out.push(new Date(cursor).toISOString())
     inBatch++
+    dayCount++
   }
   return out
 }
