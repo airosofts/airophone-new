@@ -2609,6 +2609,7 @@ function ViewRVMCampaignModal({ campaign: initialCampaign, contactLists, onClose
   const [isTogglingPause, setIsTogglingPause] = useState(false)
   const [recipients, setRecipients] = useState([])
   const [recipientsLoading, setRecipientsLoading] = useState(false)
+  const [summary, setSummary] = useState(null)   // accurate uncapped counts
   const [tab, setTab] = useState('overview')   // 'overview' | 'recipients'
 
   // Poll the campaign row every 2.5s while it's mid-flight.
@@ -2644,7 +2645,10 @@ function ViewRVMCampaignModal({ campaign: initialCampaign, contactLists, onClose
         if (recipients.length === 0) setRecipientsLoading(true)
         const res = await apiGet(`/api/voicemail-campaigns/${campaign.id}/recipients`)
         const data = await res.json()
-        if (!cancelled && data?.success) setRecipients(data.recipients || [])
+        if (!cancelled && data?.success) {
+          setRecipients(data.recipients || [])
+          setSummary(data.summary || null)
+        }
       } catch { /* silent */ }
       finally { if (!cancelled) setRecipientsLoading(false) }
     }
@@ -2677,15 +2681,22 @@ function ViewRVMCampaignModal({ campaign: initialCampaign, contactLists, onClose
 
   // Progress tracks dispatch (all handed to VoiceDrop). Delivered / Not
   // delivered come from VoiceDrop's webhook as a per-row overlay.
-  const dispatched = Number(campaign.sent_count || 0)        // handed to VoiceDrop
-  const delivered = Number(campaign.delivered_count || 0)
-  const failed = Number(campaign.failed_count || 0)
-  const total = Number(campaign.total_recipients || 0)
+  // Prefer the recipients endpoint's UNCAPPED summary counts (accurate for
+  // 15k+ lists and before total_recipients is set); fall back to the campaign
+  // row's counters while the summary is still loading.
+  const dispatched = Number(summary?.dispatched ?? campaign.sent_count ?? 0)   // handed to VoiceDrop
+  const delivered = Number(summary?.delivered ?? campaign.delivered_count ?? 0)
+  const failed = Number(summary?.failed ?? campaign.failed_count ?? 0)
+  const total = Number(summary?.total ?? campaign.total_recipients ?? 0)
   // Progress tracks DISPATCH (everything handed to VoiceDrop). Delivery
   // confirmation overlays per-row but doesn't change the bar.
   const processed = dispatched
   const remaining = Math.max(0, total - processed)
   const pct = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0
+  // Daily-cap context (only when a per-day limit is set).
+  const dailyCap = Number(summary?.dailyCap || campaign.daily_cap || 0)
+  const sentToday = Number(summary?.sentToday || 0)
+  const dailyCapReached = dailyCap > 0 && sentToday >= dailyCap && remaining > 0
 
   const handleLaunch = async () => {
     setIsLaunching(true)
@@ -2746,26 +2757,42 @@ function ViewRVMCampaignModal({ campaign: initialCampaign, contactLists, onClose
         <div className="px-5 py-4 space-y-4 overflow-y-auto flex-1">
           {tab === 'overview' && (
           <>
-          {/* Live progress — updates every 2.5s via polling. */}
+          {/* Live progress — updates every few seconds via polling. */}
           {total > 0 && (
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <p className="text-xs text-[#9B9890] uppercase tracking-wider">Progress</p>
-                <p className="text-xs text-[#5C5A55] font-mono">
-                  {processed.toLocaleString()} / {total.toLocaleString()} <span className="text-[#9B9890]">· {pct}%</span>
-                </p>
+            <div className="bg-[#F7F6F3] border border-[#E3E1DB] rounded-lg p-4">
+              <div className="flex items-end justify-between mb-2">
+                <div>
+                  <p className="text-[10px] text-[#9B9890] uppercase tracking-wider mb-0.5">Sent</p>
+                  <p className="text-2xl font-semibold text-[#131210] leading-none">
+                    {processed.toLocaleString()}
+                    <span className="text-base font-normal text-[#9B9890]"> / {total.toLocaleString()} contacts</span>
+                  </p>
+                </div>
+                <p className="text-2xl font-semibold text-[#D63B1F] leading-none">{pct}%</p>
               </div>
-              <div className="w-full h-2 bg-[#EFEDE8] rounded-full overflow-hidden">
+              <div className="w-full h-2.5 bg-[#EFEDE8] rounded-full overflow-hidden">
                 <div
                   className={`h-full transition-all duration-500 ${campaign.status === 'paused' ? 'bg-yellow-400' : campaign.status === 'completed' ? 'bg-green-500' : 'bg-[#D63B1F]'}`}
                   style={{ width: `${pct}%` }}
                 />
               </div>
-              {(campaign.status === 'running' || campaign.status === 'paused') && (
-                <p className="text-[11px] text-[#9B9890] mt-1.5">
-                  {campaign.status === 'paused' ? 'Paused' : 'Dispatching'} · {remaining.toLocaleString()} remaining
-                </p>
-              )}
+              <div className="flex items-center justify-between mt-2 text-[11px]">
+                <span className="text-[#9B9890]">
+                  {campaign.status === 'completed'
+                    ? 'All contacts sent'
+                    : campaign.status === 'paused'
+                    ? `Paused · ${remaining.toLocaleString()} remaining`
+                    : `${remaining.toLocaleString()} remaining`}
+                </span>
+                {/* Daily-limit context — how today's allowance is tracking. */}
+                {dailyCap > 0 && (campaign.status === 'running' || campaign.status === 'paused') && (
+                  <span className={dailyCapReached ? 'text-[#D63B1F] font-medium' : 'text-[#9B9890]'}>
+                    {dailyCapReached
+                      ? `Daily limit reached (${dailyCap.toLocaleString()}/day) — resumes tomorrow`
+                      : `${sentToday.toLocaleString()} of ${dailyCap.toLocaleString()} sent today`}
+                  </span>
+                )}
+              </div>
             </div>
           )}
 

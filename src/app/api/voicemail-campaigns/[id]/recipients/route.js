@@ -6,7 +6,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
 import { getWorkspaceFromRequest } from '@/lib/session-helper'
-import { estimateSendSchedule } from '@/lib/scheduling'
+import { estimateSendSchedule, startOfLocalDayUTC } from '@/lib/scheduling'
 
 export async function GET(request, { params }) {
   const workspace = getWorkspaceFromRequest(request)
@@ -57,5 +57,47 @@ export async function GET(request, { params }) {
     pending.forEach((r, i) => { r.estimated_at = schedule[i] })
   }
 
-  return NextResponse.json({ success: true, recipients, timezone: tz })
+  // Accurate, UNCAPPED summary counts for the progress bar — the recipients
+  // list above is capped at 5,000 rows, so for big campaigns we must count
+  // server-side rather than trust the (possibly truncated) array length.
+  const DISPATCHED = ['sent', 'delivered', 'failed']
+  const [
+    { count: total },
+    { count: dispatched },
+    { count: deliveredCount },
+    { count: failedCount },
+  ] = await Promise.all([
+    supabaseAdmin.from('voicemail_campaign_sends').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId).eq('workspace_id', workspace.workspaceId),
+    supabaseAdmin.from('voicemail_campaign_sends').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId).eq('workspace_id', workspace.workspaceId).in('status', DISPATCHED),
+    supabaseAdmin.from('voicemail_campaign_sends').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId).eq('workspace_id', workspace.workspaceId).eq('status', 'delivered'),
+    supabaseAdmin.from('voicemail_campaign_sends').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId).eq('workspace_id', workspace.workspaceId).eq('status', 'failed'),
+  ])
+
+  // For a daily-capped campaign, how many already went out TODAY (campaign tz).
+  let sentToday = 0
+  if (dailyCap > 0) {
+    const dayStartIso = new Date(startOfLocalDayUTC(Date.now(), tz)).toISOString()
+    const { count } = await supabaseAdmin
+      .from('voicemail_campaign_sends')
+      .select('id', { count: 'exact', head: true })
+      .eq('campaign_id', campaignId)
+      .eq('workspace_id', workspace.workspaceId)
+      .in('status', DISPATCHED)
+      .gte('sent_at', dayStartIso)
+    sentToday = count || 0
+  }
+
+  return NextResponse.json({
+    success: true,
+    recipients,
+    timezone: tz,
+    summary: {
+      total: total || 0,
+      dispatched: dispatched || 0,
+      delivered: deliveredCount || 0,
+      failed: failedCount || 0,
+      sentToday,
+      dailyCap,
+    },
+  })
 }
