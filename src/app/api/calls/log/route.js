@@ -17,10 +17,13 @@ export async function POST(request) {
   try {
     const user = getUserFromRequest(request)
     if (!user) {
+      console.log('[calls/log] 401 — no user in request headers')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const { direction = 'outbound', toNumber, fromNumber, callControlId, conversationId, answeredAt, endedAt, durationSeconds } = await request.json()
+
+    console.log('[calls/log] received', { direction, fromNumber, toNumber, answeredAt: !!answeredAt, workspaceId: user.workspaceId })
 
     if (!toNumber || !fromNumber) {
       return NextResponse.json({ error: 'toNumber and fromNumber required' }, { status: 400 })

@@ -535,16 +535,19 @@ const handleCallUpdate = (call) => {
         // Log call to DB (webhook may not fire reliably)
         try {
           if (callLogRef.current) {
-            // Answered outbound or answered inbound
             const logData = { ...callLogRef.current }
             callLogRef.current = null
-            logCallToDb(logData).catch(() => {})
+            console.log('[WebRTC] logging call to DB:', logData.direction, logData.fromNumber, '->', logData.toNumber)
+            logCallToDb(logData).catch(e => console.error('[WebRTC] logCallToDb failed:', e))
           } else if (callStatusRef.current === 'incoming' && incomingCallRef.current) {
-            // Missed inbound — caller hung up before we answered
             const { from, ourNumber, to } = incomingCallRef.current
-            logCallToDb({ direction: 'inbound', fromNumber: from, toNumber: ourNumber || to, conversationId: null, callControlId: call.id, answeredAt: null }).catch(() => {})
+            const logData = { direction: 'inbound', fromNumber: from, toNumber: ourNumber || to, conversationId: null, callControlId: call.id, answeredAt: null }
+            console.log('[WebRTC] logging missed inbound call:', logData.fromNumber, '->', logData.toNumber)
+            logCallToDb(logData).catch(e => console.error('[WebRTC] logCallToDb failed:', e))
+          } else {
+            console.log('[WebRTC] hangup — no callLogRef and not incoming, skipping log. status was:', callStatusRef.current)
           }
-        } catch (_) { callLogRef.current = null }
+        } catch (e) { console.error('[WebRTC] call log error:', e); callLogRef.current = null }
         // Sync refs immediately
         currentCallRef.current = null
         isCallActiveRef.current = false

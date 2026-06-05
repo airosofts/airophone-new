@@ -5,7 +5,7 @@
 import { useState, useEffect } from 'react'
 import { getAvatarColor, getInitials } from '@/lib/avatar-color'
 import { fetchWithWorkspace } from '@/lib/api-client'
-import { CONTACT_STATUSES, CONTACT_STATUS_MAP } from '@/lib/contact-status'
+import ContactStatusPicker from '@/components/ContactStatusPicker'
 import MentionTextarea, { renderNoteWithMentions } from './MentionTextarea'
 
 const FIELD_TYPES = [
@@ -47,7 +47,6 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user, on
   const [nameEdit, setNameEdit]         = useState({ first_name: '', last_name: '' })
   const [editingField, setEditingField] = useState(null)
   const [editingValue, setEditingValue] = useState('')
-  const [statusOpen, setStatusOpen] = useState(false)
   const [assignedScenario, setAssignedScenario] = useState(null)
   const [aiPaused, setAiPaused]         = useState(conversation.manual_override || false)
   const [togglingAi, setTogglingAi]     = useState(false)
@@ -307,56 +306,10 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user, on
       {/* ── Contact Fields ── */}
       <div className="px-5 py-3">
         {/* Status (call outcome) — set in realtime; drives campaign filtering */}
-        <div className="flex items-center gap-3 py-2.5 relative">
+        <div className="flex items-center gap-3 py-2.5">
           <span className="flex-shrink-0"><Icon type="ai" /></span>
           <span className="text-sm text-[#9B9890] w-16 flex-shrink-0">Status</span>
-          <button
-            type="button"
-            onClick={() => setStatusOpen(o => !o)}
-            className="flex items-center gap-1.5 text-sm"
-          >
-            {contact?.status && CONTACT_STATUS_MAP[contact.status] ? (
-              <span
-                className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium"
-                style={{ color: CONTACT_STATUS_MAP[contact.status].color, background: CONTACT_STATUS_MAP[contact.status].bg }}
-              >
-                {CONTACT_STATUS_MAP[contact.status].label}
-              </span>
-            ) : (
-              <span className="text-[#9B9890]">Set a status</span>
-            )}
-            <svg className="w-3 h-3 text-[#9B9890]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 9 6 6 6-6"/></svg>
-          </button>
-          {statusOpen && (
-            <>
-              <div className="fixed inset-0 z-10" onClick={() => setStatusOpen(false)} />
-              <div className="absolute left-16 top-9 z-20 w-44 bg-white border border-[#E3E1DB] rounded-lg shadow-lg py-1">
-                {CONTACT_STATUSES.map(s => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => { setStatusOpen(false); saveContact({ ...contact, status: s.id }) }}
-                    className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-[#F7F6F3] ${contact?.status === s.id ? 'bg-[#F7F6F3]' : ''}`}
-                  >
-                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: s.color }} />
-                    <span className="text-[#131210]">{s.label}</span>
-                  </button>
-                ))}
-                {contact?.status && (
-                  <>
-                    <div className="border-t border-[#F0EEE9] my-1" />
-                    <button
-                      type="button"
-                      onClick={() => { setStatusOpen(false); saveContact({ ...contact, status: null }) }}
-                      className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-[#9B9890] hover:bg-[#F7F6F3]"
-                    >
-                      Clear status
-                    </button>
-                  </>
-                )}
-              </div>
-            </>
-          )}
+          <ContactStatusPicker value={contact?.status} onChange={(s) => saveContact({ ...contact, status: s })} />
         </div>
         <ContactField
           icon={<Icon type="company" />}
