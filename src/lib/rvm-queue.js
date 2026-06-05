@@ -23,6 +23,17 @@ const WEBHOOK_URL = `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.airophone
 const SEND_GAP_MS = 400
 const sleep = (ms) => new Promise(r => setTimeout(r, ms))
 
+// A network-level failure (couldn't reach the voicemail provider at all) is
+// transient — re-queue and retry on a later tick instead of permanently failing
+// the recipient. After this many attempts we give up and mark it failed so a
+// real, sustained outage doesn't loop forever.
+const MAX_SEND_ATTEMPTS = 5
+const NETWORK_CAUSE_CODES = ['ENOTFOUND', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN', 'EPIPE', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET', 'UND_ERR_HEADERS_TIMEOUT']
+function isNetworkError(err) {
+  const cause = err?.cause?.code || err?.code || ''
+  return /fetch failed|network|socket|timeout/i.test(err?.message || '') || NETWORK_CAUSE_CODES.includes(cause)
+}
+
 // Recompute a campaign's counts and complete it once every recipient is
 // dispatched. Delivery confirmation (webhook) updates per-row status afterward
 // but doesn't gate completion. Called by the sweep, the cron, and the webhook.
@@ -65,7 +76,7 @@ export async function finalizeRvmCampaign(campaignId) {
 export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) {
   let q = supabaseAdmin
     .from('voicemail_campaign_sends')
-    .select('id, campaign_id, workspace_id, contact_id, phone, source_column')
+    .select('id, campaign_id, workspace_id, contact_id, phone, source_column, attempts')
     .eq('status', 'queued')
     .order('created_at', { ascending: true })
     .limit(batchSize)
@@ -313,9 +324,25 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
         .eq('id', row.id)
       sent++
     } catch (err) {
-      console.error('[rvm:sweep] send error', row.id, err.message)
+      const attempts = (row.attempts || 0) + 1
+      const cause = err?.cause?.code || err?.code || ''
+      // Couldn't even reach the provider → transient. Re-queue (bumping the
+      // attempt count) so a momentary blip doesn't permanently burn a recipient.
+      if (isNetworkError(err) && attempts < MAX_SEND_ATTEMPTS) {
+        console.warn('[rvm:sweep] network error — re-queueing for retry', { id: row.id, cause: cause || err?.message, attempts })
+        await supabaseAdmin.from('voicemail_campaign_sends')
+          .update({ status: 'queued', attempts })
+          .eq('id', row.id)
+        requeued++
+        await sleep(SEND_GAP_MS * 2)
+        continue
+      }
+      const reason = isNetworkError(err)
+        ? `Could not reach the voicemail service after ${attempts} attempts (${cause || 'network error'})`
+        : (err.message || 'Unknown error')
+      console.error('[rvm:sweep] send error', row.id, reason)
       await supabaseAdmin.from('voicemail_campaign_sends')
-        .update({ status: 'failed', error: err.message || 'Unknown error' })
+        .update({ status: 'failed', error: reason, attempts })
         .eq('id', row.id)
       failed++
     }
@@ -365,6 +392,13 @@ export async function drainCampaignInline(campaignId, { batchSize = 25, maxBatch
     const res = await sweepRvmQueue({ batchSize, campaignId })
     if (res.picked === 0) {
       console.log('[rvm:inline] queue drained', { campaignId, batches: i })
+      return
+    }
+    // Nothing got sent but rows were re-queued (provider unreachable). Don't
+    // hammer in this tight loop — hand off to the every-minute cron so retries
+    // are spaced out and a brief blip has time to recover.
+    if (res.sent === 0 && res.requeued > 0) {
+      console.warn('[rvm:inline] provider unreachable — deferring retries to cron', { campaignId, ...res })
       return
     }
     console.log('[rvm:inline] batch', { campaignId, ...res })
