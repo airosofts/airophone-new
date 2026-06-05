@@ -89,7 +89,7 @@ export async function POST(request) {
 
     const body = await request.json()
 
-    const { first_name, last_name, business_name, phone_number, email, role, custom_fields, city, state, country, contact_list_id } = body
+    const { first_name, last_name, business_name, phone_number, email, role, custom_fields, city, state, country, contact_list_id, status } = body
 
     if (!phone_number?.trim()) {
       return NextResponse.json(
@@ -116,6 +116,7 @@ export async function POST(request) {
       city: city?.trim() || null,
       state: state?.trim() || null,
       country: country?.trim() || null,
+      status: status || null,
       contact_list_id: contact_list_id || null,
       workspace_id: workspace.workspaceId,
       created_by: user.userId
@@ -172,7 +173,7 @@ export async function PUT(request) {
       )
     }
 
-    const { first_name, last_name, business_name, phone_number, email, role, custom_fields, city, state, country } = body
+    const { first_name, last_name, business_name, phone_number, email, role, custom_fields, city, state, country, status } = body
 
     const updateData = {}
     if (first_name !== undefined) updateData.first_name = first_name?.trim() || null

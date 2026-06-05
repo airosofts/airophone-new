@@ -469,14 +469,6 @@ const handleCallUpdate = (call) => {
     isCallActiveRef.current = true
     callStatusRef.current = 'incoming'
     incomingCallRef.current = incomingData
-    callLogRef.current = {
-      direction: 'inbound',
-      fromNumber: callerNumber,
-      toNumber: destNumber || matchedLine?.phoneNumber || '',
-      conversationId: null,
-      callControlId: call.id,
-      answeredAt: null,
-    }
     setMissedCallNotice(null)
     playRingtone()
     showBrowserNotification(callerNumber, toName)
@@ -499,13 +491,24 @@ const handleCallUpdate = (call) => {
           setCallStatus('active')
           callStatusRef.current = 'active'
         }
+        // Capture answered inbound call details BEFORE clearing incomingCallRef
+        if (incomingCallRef.current && !callLogRef.current) {
+          callLogRef.current = {
+            direction: 'inbound',
+            fromNumber: incomingCallRef.current.from,
+            toNumber: incomingCallRef.current.to,
+            conversationId: null,
+            callControlId: call.id,
+            answeredAt: new Date().toISOString(),
+          }
+        }
+        if (callLogRef.current && !callLogRef.current.answeredAt) {
+          callLogRef.current.answeredAt = new Date().toISOString()
+        }
         setIncomingCall(null)
         incomingCallRef.current = null
         setupAudioRouting(call, false)
         startCallTimer()
-        if (callLogRef.current && !callLogRef.current.answeredAt) {
-          callLogRef.current.answeredAt = new Date().toISOString()
-        }
         break
       case 'held':
         setCallStatus('held')
@@ -529,12 +532,19 @@ const handleCallUpdate = (call) => {
           const missedFrom = incomingCallRef.current?.from || call.params?.caller_id_number || 'Unknown'
           setMissedCallNotice({ from: missedFrom, time: new Date() })
         }
-        // Log call to DB from client side (webhook may not fire reliably)
-        if (callLogRef.current) {
-          const logData = { ...callLogRef.current }
-          callLogRef.current = null
-          logCallToDb(logData).catch(() => {})
-        }
+        // Log call to DB (webhook may not fire reliably)
+        try {
+          if (callLogRef.current) {
+            // Answered outbound or answered inbound
+            const logData = { ...callLogRef.current }
+            callLogRef.current = null
+            logCallToDb(logData).catch(() => {})
+          } else if (callStatusRef.current === 'incoming' && incomingCallRef.current) {
+            // Missed inbound — caller hung up before we answered
+            const { from, to } = incomingCallRef.current
+            logCallToDb({ direction: 'inbound', fromNumber: from, toNumber: to, conversationId: null, callControlId: call.id, answeredAt: null }).catch(() => {})
+          }
+        } catch (_) { callLogRef.current = null }
         // Sync refs immediately
         currentCallRef.current = null
         isCallActiveRef.current = false
