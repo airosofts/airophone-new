@@ -50,7 +50,9 @@ export async function fetchWithWorkspace(url, options = {}) {
  * GET request with workspace context
  */
 export async function apiGet(url) {
-  return fetchWithWorkspace(url, { method: 'GET' })
+  // Always fetch fresh — dashboard data (contacts, statuses, campaigns) must
+  // never be served stale from an HTTP/Next cache after an edit.
+  return fetchWithWorkspace(url, { method: 'GET', cache: 'no-store' })
 }
 
 /**

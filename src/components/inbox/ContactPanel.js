@@ -67,7 +67,7 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user, on
 
   const fetchContact = async () => {
     try {
-      const res  = await fetchWithWorkspace(`/api/contacts/by-phone/${encodeURIComponent(conversation.phone_number)}`)
+      const res  = await fetchWithWorkspace(`/api/contacts/by-phone/${encodeURIComponent(conversation.phone_number)}`, { cache: 'no-store' })
       const data = await res.json()
       if (data.success) setContact(data.contact)
     } catch (e) { console.error(e) }
