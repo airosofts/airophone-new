@@ -23,6 +23,51 @@ const WEBHOOK_URL = `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.airophone
 const SEND_GAP_MS = 400
 const sleep = (ms) => new Promise(r => setTimeout(r, ms))
 
+// How long a 'sent' (dispatched, awaiting VoiceDrop delivery webhook) row may
+// stay un-confirmed before we stop letting it block campaign completion. A
+// missed/late webhook shouldn't hang a campaign forever. VoiceDrop normally
+// delivers within minutes; 30 min is a generous safety net.
+const DELIVERY_TIMEOUT_MIN = 30
+
+// Recompute a campaign's delivery counts and complete it only when every
+// recipient is delivered/failed — OR any still-'sent' row has aged past the
+// delivery timeout. Called by the sweep AND by the VoiceDrop webhook so
+// completion happens the moment the last delivery is confirmed.
+export async function finalizeRvmCampaign(campaignId) {
+  const timeoutIso = new Date(Date.now() - DELIVERY_TIMEOUT_MIN * 60 * 1000).toISOString()
+
+  const [
+    { count: delivered },
+    { count: failed },
+    { count: queuedOrSending },
+    { count: awaitingFresh },
+    { count: dispatched },
+  ] = await Promise.all([
+    supabaseAdmin.from('voicemail_campaign_sends').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId).eq('status', 'delivered'),
+    supabaseAdmin.from('voicemail_campaign_sends').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId).eq('status', 'failed'),
+    supabaseAdmin.from('voicemail_campaign_sends').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId).in('status', ['queued', 'sending']),
+    // 'sent' rows still within the delivery-confirmation window → still blocking.
+    supabaseAdmin.from('voicemail_campaign_sends').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId).eq('status', 'sent').gt('sent_at', timeoutIso),
+    // everything handed off to VoiceDrop (sent + delivered + failed)
+    supabaseAdmin.from('voicemail_campaign_sends').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId).in('status', ['sent', 'delivered', 'failed']),
+  ])
+
+  const blocking = (queuedOrSending || 0) + (awaitingFresh || 0)
+  const update = {
+    delivered_count: delivered || 0,
+    undelivered_count: failed || 0,
+    failed_count: failed || 0,
+    sent_count: dispatched || 0,   // "Sent" = dispatched to VoiceDrop
+  }
+  if (blocking === 0) {
+    update.status = 'completed'
+    update.completed_at = new Date().toISOString()
+    console.log('[rvm:finalize] campaign completed', { campaignId, delivered, failed, dispatched })
+  }
+  await supabaseAdmin.from('voicemail_campaigns').update(update).eq('id', campaignId)
+  return { delivered: delivered || 0, failed: failed || 0, blocking }
+}
+
 // Process up to `batchSize` queued sends. If `campaignId` is given, only that
 // campaign's rows are considered (used by the inline kick). Returns counts.
 export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) {
@@ -248,29 +293,29 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
     }
   }
 
-  // Recompute counts directly from the sends table (race-proof — the inline
-  // drain and cron can run concurrently, so read-then-write counters drift)
-  // and mark any campaign 'completed' once its queue fully drains.
+  // Recompute counts + decide completion based on DELIVERY, not just dispatch.
   for (const id of campaignIds) {
     const c = campaignById.get(id)
     if (!c || c.status !== 'running') continue
-
-    const [{ count: sentCount }, { count: failedCount }, { count: stillQueued }] = await Promise.all([
-      supabaseAdmin.from('voicemail_campaign_sends').select('id', { count: 'exact', head: true }).eq('campaign_id', id).eq('status', 'sent'),
-      supabaseAdmin.from('voicemail_campaign_sends').select('id', { count: 'exact', head: true }).eq('campaign_id', id).eq('status', 'failed'),
-      supabaseAdmin.from('voicemail_campaign_sends').select('id', { count: 'exact', head: true }).eq('campaign_id', id).in('status', ['queued', 'sending']),
-    ])
-
-    const update = { sent_count: sentCount || 0, failed_count: failedCount || 0 }
-    if ((stillQueued || 0) === 0) {
-      update.status = 'completed'
-      update.completed_at = new Date().toISOString()
-      console.log('[rvm:sweep] campaign completed', { id, sent: sentCount, failed: failedCount })
-    }
-    await supabaseAdmin.from('voicemail_campaigns').update(update).eq('id', id)
+    await finalizeRvmCampaign(id)
   }
 
   return { picked: rows.length, sent, failed, skipped, requeued }
+}
+
+// Sweep all 'running' campaigns through finalizeRvmCampaign — completes those
+// whose deliveries are all confirmed (or timed out). Needed because once a
+// campaign's queue is fully dispatched it no longer appears in the queued-row
+// sweep, yet still needs to transition to 'completed' when deliveries land.
+export async function finalizeRunningCampaigns() {
+  const { data: running } = await supabaseAdmin
+    .from('voicemail_campaigns')
+    .select('id')
+    .eq('status', 'running')
+    .limit(200)
+  for (const c of (running || [])) {
+    await finalizeRvmCampaign(c.id)
+  }
 }
 
 // Drain ONE campaign's queue inline, in batches, until empty or paused.

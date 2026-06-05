@@ -7,6 +7,25 @@
 
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
+import { finalizeRvmCampaign } from '@/lib/rvm-queue'
+
+// Reflect a delivery result onto the campaign send-row (so campaign completion
+// tracks actual delivery, not just dispatch) and re-finalize the campaign.
+// `messageId` is the matched messages.id; `delivered` true→delivered, false→failed.
+async function applyDeliveryToCampaign(messageId, delivered) {
+  if (!messageId) return
+  const { data: sendRow } = await supabaseAdmin
+    .from('voicemail_campaign_sends')
+    .select('id, campaign_id')
+    .eq('message_id', messageId)
+    .maybeSingle()
+  if (!sendRow) return   // not a campaign send (e.g. a one-off voicemail)
+  await supabaseAdmin
+    .from('voicemail_campaign_sends')
+    .update({ status: delivered ? 'delivered' : 'failed', delivered_at: new Date().toISOString() })
+    .eq('id', sendRow.id)
+  await finalizeRvmCampaign(sendRow.campaign_id)
+}
 
 export async function POST(request) {
   const payload = await request.json().catch(() => null)
@@ -60,13 +79,14 @@ export async function POST(request) {
   // Try matching by voice_drop_id first (preferred, if VoiceDrop sends it in webhook)
   const voiceDropId = payload.voice_drop_id || payload.id || payload.job_id || payload.request_id
   if (voiceDropId) {
-    const { count } = await supabaseAdmin
+    const { data: updatedMsgs } = await supabaseAdmin
       .from('messages')
       .update(update)
       .eq('telnyx_message_id', voiceDropId)
-      .select('id', { count: 'exact', head: true })
+      .select('id')
 
-    if (count && count > 0) {
+    if (updatedMsgs && updatedMsgs.length > 0) {
+      await applyDeliveryToCampaign(updatedMsgs[0].id, newStatus === 'delivered')
       return NextResponse.json({ received: true, matched: 'by_id' })
     }
   }
@@ -93,6 +113,7 @@ export async function POST(request) {
 
     if (match) {
       await supabaseAdmin.from('messages').update(update).eq('id', match.id)
+      await applyDeliveryToCampaign(match.id, newStatus === 'delivered')
       return NextResponse.json({ received: true, matched: 'by_phone' })
     }
   }

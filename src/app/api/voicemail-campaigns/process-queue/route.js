@@ -8,7 +8,7 @@
 // pausing a campaign makes the sweeper skip it; resuming picks up where it left.
 
 import { NextResponse } from 'next/server'
-import { sweepRvmQueue } from '@/lib/rvm-queue'
+import { sweepRvmQueue, finalizeRunningCampaigns } from '@/lib/rvm-queue'
 
 const BATCH_SIZE = 50
 
@@ -21,6 +21,10 @@ export async function POST(request) {
   }
 
   const result = await sweepRvmQueue({ batchSize: BATCH_SIZE })
+  // Also finalize fully-dispatched campaigns: complete them once deliveries are
+  // confirmed (or aged past the delivery timeout). This runs every tick so a
+  // campaign awaiting delivery webhooks still transitions to 'completed'.
+  await finalizeRunningCampaigns()
   if (result.picked > 0) {
     console.log('[rvm:process-queue] tick', result)
   }
