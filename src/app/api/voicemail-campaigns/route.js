@@ -41,6 +41,9 @@ export async function POST(request) {
     // Optional calling windows: only send when local time falls in a window.
     // [{start:"10:00",end:"12:00"}, ...] + an IANA timezone. Empty → anytime.
     sendWindows, sendTimezone,
+    // Optional one-time scheduled start (ISO). Holds the whole campaign until
+    // this moment, then sends at-or-after it. Null → send now.
+    startsAt,
     // Optional: an explicit recipient list from the wizard. When the user
     // searches/unticks specific rows on Step 3, we honor exactly that set
     // rather than recomputing the chunk slice server-side.
@@ -84,6 +87,13 @@ export async function POST(request) {
     ? sendTimezone.trim()
     : 'America/New_York'
 
+  // Scheduled start: accept a valid future ISO; past/invalid → null (send now).
+  let normalizedStartsAt = null
+  if (startsAt) {
+    const t = new Date(startsAt)
+    if (!isNaN(t.getTime()) && t.getTime() > Date.now()) normalizedStartsAt = t.toISOString()
+  }
+
   // Sender number must belong to this workspace AND be voicedrop_verified
   const { data: pn } = await supabaseAdmin
     .from('phone_numbers')
@@ -117,6 +127,7 @@ export async function POST(request) {
       throttle_window_seconds: normalizedThrottleWindow,
       send_windows: (normalizedWindows && normalizedWindows.length > 0) ? normalizedWindows : null,
       send_timezone: normalizedTimezone,
+      starts_at: normalizedStartsAt,
       status: 'draft',
     })
     .select()

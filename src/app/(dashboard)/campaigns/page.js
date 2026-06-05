@@ -5,7 +5,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import SearchableDropdown from '@/components/SearchableDropdown'
 import { getCurrentUser } from '@/lib/auth'
 import { apiGet, apiPost, fetchWithWorkspace } from '@/lib/api-client'
-import { formatInTimeZone } from 'date-fns-tz'
+import { formatInTimeZone, fromZonedTime } from 'date-fns-tz'
 
 // Recommended RVM send-rate presets, keyed by team size. Each maps to a
 // concrete (count, window-seconds) the backend sweeper enforces — derived from
@@ -1743,6 +1743,15 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
     : scheduleMode === 'business' ? SCHEDULE_PRESETS.business
     : scheduleMode === 'custom'  ? customWindows.filter(w => w.start && w.end && w.end > w.start)
     : null   // 'anytime'
+
+  // One-time scheduled start. 'now' → send immediately; 'scheduled' → hold
+  // until startAtLocal (interpreted in the chosen timezone).
+  const [startMode, setStartMode] = useState('now')
+  const [startAtLocal, setStartAtLocal] = useState('')   // "YYYY-MM-DDTHH:MM"
+  let resolvedStartsAt = null
+  if (startMode === 'scheduled' && startAtLocal) {
+    try { resolvedStartsAt = fromZonedTime(startAtLocal, sendTimezone).toISOString() } catch {}
+  }
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [created, setCreated] = useState(false)
@@ -1899,6 +1908,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
         throttleWindowSeconds: resolvedThrottleWindowSeconds,
         sendWindows: resolvedSendWindows,
         sendTimezone: sendTimezone,
+        startsAt: resolvedStartsAt,
         explicitRecipients: selectedRecipients.map(r => ({
           phone: r.phone,
           contactId: r.contactId,
@@ -2139,9 +2149,50 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
                 )}
               </div>
 
+              {/* When to send — one-time start */}
+              <div>
+                <label className="block text-xs font-medium text-[#5C5A55] mb-2">When to send</label>
+                <div className="inline-flex rounded-lg border border-[#D4D1C9] overflow-hidden mb-2">
+                  {[
+                    { id: 'now',       label: 'Send now' },
+                    { id: 'scheduled', label: 'Schedule for…' },
+                  ].map((m, i) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setStartMode(m.id)}
+                      className={`px-3.5 py-1.5 text-sm transition-colors ${i > 0 ? 'border-l border-[#D4D1C9]' : ''} ${
+                        startMode === m.id ? 'bg-[#D63B1F] text-white font-medium' : 'bg-white text-[#5C5A55] hover:bg-[#F7F6F3]'
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+                {startMode === 'scheduled' && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <input
+                      type="datetime-local"
+                      value={startAtLocal}
+                      onChange={(e) => setStartAtLocal(e.target.value)}
+                      className="px-2.5 py-1.5 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
+                    />
+                    <span className="text-[11px] text-[#9B9890]">
+                      {TIMEZONES.find(t => t.id === sendTimezone)?.label || sendTimezone}
+                      {resolvedStartsAt && new Date(resolvedStartsAt) <= new Date() && ' — that time is in the past; it will send now'}
+                    </span>
+                  </div>
+                )}
+                <p className="text-[11px] text-[#9B9890] mt-1.5">
+                  {startMode === 'scheduled'
+                    ? 'Sends at or after this time — no need to hit an exact minute.'
+                    : 'Begins dispatching as soon as the campaign is created.'}
+                </p>
+              </div>
+
               {/* Sending schedule (calling windows) */}
               <div>
-                <label className="block text-xs font-medium text-[#5C5A55] mb-2">Sending schedule</label>
+                <label className="block text-xs font-medium text-[#5C5A55] mb-2">Calling hours <span className="text-[#9B9890] font-normal">(optional, recurring)</span></label>
                 <div className="inline-flex rounded-lg border border-[#D4D1C9] overflow-hidden mb-3 flex-wrap">
                   {[
                     { id: 'anytime',  label: 'Anytime' },
@@ -2700,9 +2751,17 @@ function ViewRVMCampaignModal({ campaign: initialCampaign, contactLists, onClose
             <div>
               <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Schedule</p>
               <p className="text-sm text-[#5C5A55]">
-                {Array.isArray(campaign.send_windows) && campaign.send_windows.length > 0
-                  ? `${campaign.send_windows.map(w => `${w.start}–${w.end}`).join(', ')} (${campaign.send_timezone || 'ET'})`
-                  : 'Anytime'}
+                {(() => {
+                  const tz = campaign.send_timezone || 'America/New_York'
+                  const parts = []
+                  if (campaign.starts_at && new Date(campaign.starts_at) > new Date()) {
+                    try { parts.push(`Starts ${formatInTimeZone(new Date(campaign.starts_at), tz, 'MMM dd, h:mm a zzz')}`) } catch {}
+                  }
+                  if (Array.isArray(campaign.send_windows) && campaign.send_windows.length > 0) {
+                    parts.push(`${campaign.send_windows.map(w => `${w.start}–${w.end}`).join(', ')} (${tz})`)
+                  }
+                  return parts.length ? parts.join(' · ') : 'Send now / Anytime'
+                })()}
               </p>
             </div>
           </div>

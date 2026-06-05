@@ -14,12 +14,14 @@ import { drainCampaignInline } from '@/lib/rvm-queue'
 // 2 credits per RVM send (matches AI-reply cost).
 const CREDITS_PER_RVM = 2
 
-// A campaign can drain immediately (fast inline) only when it's NOT metered —
-// i.e. no throttle AND no calling windows. Anything metered is paced by the cron.
+// A campaign can drain immediately (fast inline) only when it's NOT metered or
+// scheduled — no throttle, no calling windows, no future start time. Anything
+// metered/scheduled is paced by the cron.
 function canDrainInline(campaign) {
   const hasThrottle = campaign.throttle_count && campaign.throttle_count > 0
   const hasWindows = Array.isArray(campaign.send_windows) && campaign.send_windows.length > 0
-  return !hasThrottle && !hasWindows
+  const hasFutureStart = campaign.starts_at && new Date(campaign.starts_at).getTime() > Date.now()
+  return !hasThrottle && !hasWindows && !hasFutureStart
 }
 
 export async function POST(request, { params }) {

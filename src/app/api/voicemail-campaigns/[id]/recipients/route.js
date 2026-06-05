@@ -35,7 +35,7 @@ export async function GET(request, { params }) {
   // recipient will actually send.
   const { data: campaign } = await supabaseAdmin
     .from('voicemail_campaigns')
-    .select('throttle_count, throttle_window_seconds, send_windows, send_timezone, status')
+    .select('throttle_count, throttle_window_seconds, send_windows, send_timezone, status, starts_at')
     .eq('id', campaignId)
     .maybeSingle()
 
@@ -49,7 +49,10 @@ export async function GET(request, { params }) {
   // send the remaining estimates shift earlier — realtime as statuses change.
   if (campaign?.status === 'running' || campaign?.status === 'paused' || campaign?.status === 'draft') {
     const pending = recipients.filter(r => r.status === 'queued' || r.status === 'sending')
-    const schedule = estimateSendSchedule(pending.length, Date.now(), throttleCount, windowSec, windows, tz)
+    // Schedule from the later of "now" and the campaign's start time.
+    const startMs = campaign?.starts_at ? new Date(campaign.starts_at).getTime() : 0
+    const fromMs = Math.max(Date.now(), startMs)
+    const schedule = estimateSendSchedule(pending.length, fromMs, throttleCount, windowSec, windows, tz)
     pending.forEach((r, i) => { r.estimated_at = schedule[i] })
   }
 
