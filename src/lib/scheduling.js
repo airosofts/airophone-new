@@ -73,11 +73,20 @@ export function nextBusinessTime(at, hours) {
   return at
 }
 
-// Is `at` inside one of the campaign's calling windows? `windows` is an array
-// of { start: "HH:MM", end: "HH:MM" } in the given IANA timezone. Empty/missing
-// windows → always true (send anytime). Used by the RVM queue sweeper to gate
-// sends to good calling hours.
-export function isWithinSendWindows(at, windows, tz = 'America/New_York') {
+// Is `at` an allowed weekday? `days` is an array of ISO weekday numbers
+// (1=Mon … 7=Sun). Empty/missing → any day allowed.
+function isAllowedDay(at, days, tz) {
+  if (!Array.isArray(days) || days.length === 0) return true
+  return days.includes(toLocal(at, tz).weekday)
+}
+
+// Is `at` inside one of the campaign's calling windows AND on an allowed day?
+// `windows` is an array of { start: "HH:MM", end: "HH:MM" } in the given IANA
+// timezone. `days` optionally restricts to certain weekdays (1=Mon..7=Sun).
+// Empty/missing windows → any time; empty/missing days → any day. Used by the
+// RVM queue sweeper to gate sends to good calling hours/days.
+export function isWithinSendWindows(at, windows, tz = 'America/New_York', days = null) {
+  if (!isAllowedDay(at, days, tz)) return false
   if (!Array.isArray(windows) || windows.length === 0) return true
   const local = toLocal(at, tz)
   const nowMin = local.hours * 60 + local.minutes
@@ -91,18 +100,24 @@ export function isWithinSendWindows(at, windows, tz = 'America/New_York') {
   return false
 }
 
-// Given `at`, return the next moment a send is allowed under `windows` (in tz).
-// Inside a window → `at` unchanged. Otherwise the next window-start (searching
-// up to 8 days). Empty windows → `at` (anytime). Used to estimate when a queued
-// recipient will actually go out.
-export function nextSendTime(at, windows, tz = 'America/New_York') {
-  if (!Array.isArray(windows) || windows.length === 0) return at
-  if (isWithinSendWindows(at, windows, tz)) return at
-  const starts = windows.map(w => { const s = parseHHMM(w?.start); return s.h * 60 + s.m })
-    .sort((a, b) => a - b)
-  for (let dayOffset = 0; dayOffset < 8; dayOffset++) {
+// Given `at`, return the next moment a send is allowed under `windows` + `days`
+// (in tz). Inside an allowed window/day → `at` unchanged. Otherwise the next
+// window-start on an allowed weekday (searching up to ~10 days). Empty windows
+// AND empty days → `at` (anytime). Used to estimate when a queued recipient
+// will actually go out.
+export function nextSendTime(at, windows, tz = 'America/New_York', days = null) {
+  const hasWindows = Array.isArray(windows) && windows.length > 0
+  const hasDays = Array.isArray(days) && days.length > 0
+  if (!hasWindows && !hasDays) return at
+  if (isWithinSendWindows(at, windows, tz, days)) return at
+  // Window start-of-day minutes (or [0] when only a day restriction applies).
+  const starts = hasWindows
+    ? windows.map(w => { const s = parseHHMM(w?.start); return s.h * 60 + s.m }).sort((a, b) => a - b)
+    : [0]
+  for (let dayOffset = 0; dayOffset < 10; dayOffset++) {
     const probe = new Date(at.getTime() + dayOffset * 86400000)
     const local = toLocal(probe, tz)
+    if (hasDays && !days.includes(local.weekday)) continue   // skip disallowed weekdays
     const nowMin = dayOffset === 0 ? local.hours * 60 + local.minutes : -1
     for (const startMin of starts) {
       if (dayOffset === 0 && startMin <= nowMin) continue
@@ -144,13 +159,14 @@ function localDayKey(ms, tz) {
 //   throttleCount = 0 / falsy → no throttle (all fire at the first allowed time)
 //   windows = null / []       → anytime (no window snapping)
 //   dailyCap = 0 / falsy      → no per-day limit
-export function estimateSendSchedule(count, fromMs, throttleCount, throttleWindowSec, windows, tz = 'America/New_York', dailyCap = 0) {
+//   days = null / []          → any weekday (else restrict to 1=Mon..7=Sun)
+export function estimateSendSchedule(count, fromMs, throttleCount, throttleWindowSec, windows, tz = 'America/New_York', dailyCap = 0, days = null) {
   const out = []
   const N = throttleCount && throttleCount > 0 ? throttleCount : Infinity
   const W = (throttleWindowSec && throttleWindowSec > 0 ? throttleWindowSec : 0) * 1000
   const DCAP = dailyCap && dailyCap > 0 ? dailyCap : Infinity
 
-  let cursor = nextSendTime(new Date(fromMs), windows, tz).getTime()
+  let cursor = nextSendTime(new Date(fromMs), windows, tz, days).getTime()
   let batchStart = cursor
   let inBatch = 0
   let dayKey = localDayKey(cursor, tz)
@@ -161,12 +177,12 @@ export function estimateSendSchedule(count, fromMs, throttleCount, throttleWindo
     if (inBatch >= N) {
       // One throttle period elapsed → next batch. Snap into a window; if that
       // pushes past the current window's end, it lands in the next window.
-      cursor = nextSendTime(new Date(batchStart + W), windows, tz).getTime()
+      cursor = nextSendTime(new Date(batchStart + W), windows, tz, days).getTime()
       batchStart = cursor
       inBatch = 0
     } else {
       // Keep the batch inside a window (no-op when already inside).
-      cursor = nextSendTime(new Date(cursor), windows, tz).getTime()
+      cursor = nextSendTime(new Date(cursor), windows, tz, days).getTime()
     }
 
     // Day rollover (the cursor may have advanced past midnight) → reset count.
@@ -177,7 +193,7 @@ export function estimateSendSchedule(count, fromMs, throttleCount, throttleWindo
     if (dayCount >= DCAP && guard < count * 2 + 32) {
       guard++
       const nextMidnight = startOfLocalDayUTC(cursor, tz) + 24 * 60 * 60 * 1000
-      cursor = nextSendTime(new Date(nextMidnight), windows, tz).getTime()
+      cursor = nextSendTime(new Date(nextMidnight), windows, tz, days).getTime()
       batchStart = cursor
       inBatch = 0
       dayKey = localDayKey(cursor, tz)

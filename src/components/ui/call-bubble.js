@@ -8,7 +8,9 @@ export default function CallBubble({ call }) {
   const isOutbound = call.direction === 'outbound'
   const isForwarded = call.status === 'forwarded'
   const isMissed = call.status === 'missed'
-  const isCompleted = call.status === 'completed' || call.status === 'answered'
+  const isRinging = call.status === 'ringing'
+  const isAnswered = call.status === 'answered'
+  const isCompleted = call.status === 'completed' || isAnswered
 
   const formatTimestamp = (timestamp) => {
     if (!timestamp) return ''
@@ -24,57 +26,106 @@ export default function CallBubble({ call }) {
     if (!seconds || seconds <= 0) return null
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
-    if (mins === 0) return `${secs}s`
-    return `${mins}m ${secs}s`
+    if (mins === 0) return `0:${String(secs).padStart(2, '0')}`
+    return `${mins}:${String(secs).padStart(2, '0')}`
   }
 
-  const getCallLabel = () => {
-    if (isForwarded) return 'Forwarded'
+  const getTitle = () => {
+    if (isForwarded) return isOutbound ? 'Call forwarded' : 'Forwarded call'
     if (isMissed) return isOutbound ? 'No answer' : 'Missed call'
-    if (isCompleted) return isOutbound ? 'Outgoing call' : 'Incoming call'
-    return isOutbound ? 'Outgoing call' : 'Incoming call'
+    if (isRinging) return isOutbound ? 'Calling...' : 'Incoming call...'
+    if (isCompleted) return isOutbound ? 'Call ended' : 'Incoming call'
+    return isOutbound ? 'Call ended' : 'Incoming call'
+  }
+
+  const getSubtitle = () => {
+    const duration = formatDuration(call.duration_seconds)
+    if (isForwarded) return call.forwarded_to ? `Forwarded to ${call.forwarded_to}` : 'Forwarded'
+    if (isMissed) return isOutbound ? 'They did not answer' : 'You missed this call'
+    if (isRinging) return 'Not answered yet'
+    if (isCompleted) {
+      const who = isOutbound ? 'You called' : 'They called'
+      return duration ? `${who} · ${duration}` : who
+    }
+    return null
   }
 
   const getIcon = () => {
-    if (isForwarded) return <PhoneForwarded className="w-3.5 h-3.5" />
-    if (isMissed) return <PhoneMissed className="w-3.5 h-3.5" />
-    if (isOutbound) return <PhoneOutgoing className="w-3.5 h-3.5" />
-    return <PhoneIncoming className="w-3.5 h-3.5" />
+    const size = 'w-5 h-5'
+    if (isForwarded) return <PhoneForwarded className={size} />
+    if (isMissed) return <PhoneMissed className={size} />
+    if (isOutbound) return <PhoneOutgoing className={size} />
+    return <PhoneIncoming className={size} />
   }
 
-  const getColors = () => {
-    if (isForwarded) return { bg: 'bg-blue-50', border: 'border-blue-100', icon: 'text-blue-500', text: 'text-blue-700' }
-    if (isMissed) return { bg: 'bg-red-50', border: 'border-red-100', icon: 'text-red-500', text: 'text-red-700' }
-    if (isOutbound) return { bg: 'bg-[#F7F6F3]', border: 'border-[#E3E1DB]', icon: 'text-[#D63B1F]', text: 'text-[#5C5A55]' }
-    return { bg: 'bg-emerald-50', border: 'border-emerald-100', icon: 'text-emerald-500', text: 'text-emerald-700' }
+  const getScheme = () => {
+    if (isForwarded) return {
+      iconBg: 'bg-blue-100',
+      iconColor: 'text-blue-600',
+      title: 'text-[#131210]',
+      subtitle: 'text-[#5C5A55]',
+      border: 'border-[#E3E1DB]',
+    }
+    if (isMissed) return {
+      iconBg: 'bg-red-100',
+      iconColor: 'text-red-600',
+      title: 'text-[#131210]',
+      subtitle: 'text-[#5C5A55]',
+      border: 'border-[#E3E1DB]',
+    }
+    if (isOutbound) return {
+      iconBg: 'bg-[rgba(214,59,31,0.1)]',
+      iconColor: 'text-[#D63B1F]',
+      title: 'text-[#131210]',
+      subtitle: 'text-[#5C5A55]',
+      border: 'border-[#E3E1DB]',
+    }
+    // Inbound answered/completed
+    return {
+      iconBg: 'bg-emerald-100',
+      iconColor: 'text-emerald-600',
+      title: 'text-[#131210]',
+      subtitle: 'text-[#5C5A55]',
+      border: 'border-[#E3E1DB]',
+    }
   }
 
-  const duration = formatDuration(call.duration_seconds)
-  const colors = getColors()
-
-  // Outbound calls align right (like sent messages), inbound align left
-  const alignment = isOutbound ? 'justify-end' : 'justify-start'
+  const scheme = getScheme()
+  const subtitle = getSubtitle()
+  const timestamp = formatTimestamp(call.created_at)
 
   return (
-    <div className={`flex ${alignment} my-2`}>
-      <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-2xl border ${colors.bg} ${colors.border}`}>
-        <div className={colors.icon}>
-          {getIcon()}
+    <div className="flex justify-center my-3 px-4">
+      <div className={`w-full max-w-sm bg-[#FFFFFF] border ${scheme.border} rounded-2xl px-4 py-3 shadow-sm`}>
+        <div className="flex items-center gap-3">
+          {/* Icon circle */}
+          <div className={`w-9 h-9 rounded-full ${scheme.iconBg} flex items-center justify-center shrink-0`}>
+            <span className={scheme.iconColor}>{getIcon()}</span>
+          </div>
+
+          {/* Text */}
+          <div className="flex-1 min-w-0">
+            <p className={`text-sm font-semibold ${scheme.title} leading-tight`}>{getTitle()}</p>
+            {subtitle && (
+              <p className={`text-xs ${scheme.subtitle} mt-0.5`}>{subtitle}</p>
+            )}
+          </div>
+
+          {/* Timestamp */}
+          <span className="text-[11px] text-[#9B9890] shrink-0">{timestamp}</span>
         </div>
-        <span className={`text-xs font-medium ${colors.text}`}>{getCallLabel()}</span>
-        {duration && (
-          <>
-            <span className="text-[#D4D1C9]">·</span>
-            <span className="text-xs text-[#9B9890]">{duration}</span>
-          </>
+
+        {/* Recording player */}
+        {call.recording_url && (
+          <div className="mt-3 pt-3 border-t border-[#F0EEE9]">
+            <audio
+              controls
+              src={call.recording_url}
+              className="w-full"
+              style={{ height: 32 }}
+            />
+          </div>
         )}
-        {isForwarded && call.forwarded_to && (
-          <>
-            <span className="text-[#D4D1C9]">·</span>
-            <span className="text-xs text-blue-600">{call.forwarded_to}</span>
-          </>
-        )}
-        <span className="text-[10px] text-[#9B9890]">{formatTimestamp(call.created_at)}</span>
       </div>
     </div>
   )

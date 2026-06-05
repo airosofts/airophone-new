@@ -44,6 +44,17 @@ const TIMEZONES = [
   { id: 'America/Los_Angeles', label: 'Pacific (PT)' },
 ]
 
+// ISO weekday (1=Mon..7=Sun) helpers for business-day display.
+const WEEKDAY_LABELS = { 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat', 7: 'Sun' }
+const hhmm = (t) => String(t || '').slice(0, 5)   // "09:00:00" → "09:00"
+function formatDays(days) {
+  if (!Array.isArray(days) || days.length === 0 || days.length === 7) return 'every day'
+  const key = [...days].sort((a, b) => a - b).join(',')
+  if (key === '1,2,3,4,5') return 'Mon–Fri'
+  if (key === '6,7') return 'weekends'
+  return [...days].sort((a, b) => a - b).map(d => WEEKDAY_LABELS[d]).join(', ')
+}
+
 export default function CampaignsPage() {
   const [campaigns, setCampaigns] = useState([])
   const [contactLists, setContactLists] = useState([])
@@ -1756,14 +1767,39 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
   const [startAtLocal, setStartAtLocal] = useState('')   // "YYYY-MM-DDTHH:MM"
   const [sendTimezone, setSendTimezone] = useState('America/New_York')
 
+  // Workspace business hours (from Settings) — powers the "Business hours"
+  // option so it mirrors exactly what's configured there (hours, days, tz).
+  const [businessHours, setBusinessHours] = useState(null)
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await apiGet('/api/workspace/business-hours')
+        const data = await res.json()
+        if (!cancelled && data && (data.start || data.end)) setBusinessHours(data)
+      } catch { /* fall back to the 9–5 default below */ }
+    })()
+    return () => { cancelled = true }
+  }, [])
+
+  // Resolve calling windows / weekdays / timezone for the chosen mode.
   const resolvedSendWindows =
     whenMode === 'best'     ? SCHEDULE_PRESETS.best
-    : whenMode === 'business' ? SCHEDULE_PRESETS.business
+    : whenMode === 'business' ? (businessHours
+        ? [{ start: hhmm(businessHours.start), end: hhmm(businessHours.end) }]
+        : SCHEDULE_PRESETS.business)
     : null   // 'now' / 'later' → anytime
+  const resolvedSendDays =
+    whenMode === 'business' && Array.isArray(businessHours?.days) && businessHours.days.length > 0 && businessHours.days.length < 7
+      ? [...businessHours.days].sort((a, b) => a - b)
+      : null
+  // "Business hours" dictates its own timezone (from Settings); other modes use
+  // the user-selected one.
+  const resolvedTimezone = (whenMode === 'business' && businessHours?.tz) ? businessHours.tz : sendTimezone
 
   let resolvedStartsAt = null
   if (whenMode === 'later' && startAtLocal) {
-    try { resolvedStartsAt = fromZonedTime(startAtLocal, sendTimezone).toISOString() } catch {}
+    try { resolvedStartsAt = fromZonedTime(startAtLocal, resolvedTimezone).toISOString() } catch {}
   }
 
   // Optional per-day cap (works in every speed mode, including No throttle).
@@ -1925,7 +1961,8 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
         throttleCount: resolvedThrottleCount,
         throttleWindowSeconds: resolvedThrottleWindowSeconds,
         sendWindows: resolvedSendWindows,
-        sendTimezone: sendTimezone,
+        sendTimezone: resolvedTimezone,
+        sendDays: resolvedSendDays,
         dailyCap: resolvedDailyCap,
         startsAt: resolvedStartsAt,
         explicitRecipients: selectedRecipients.map(r => ({
@@ -2207,7 +2244,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
                     { id: 'now',      label: 'Send now',            hint: 'Starts now, around the clock' },
                     { id: 'later',    label: 'Schedule for later',  hint: 'Starts at a date & time you pick' },
                     { id: 'best',     label: 'Best calling windows', hint: 'Only 10–12 & 2–4 each day' },
-                    { id: 'business', label: 'Business hours',       hint: 'Only 9–5 each day' },
+                    { id: 'business', label: 'Business hours',       hint: businessHours ? `${hhmm(businessHours.start)}–${hhmm(businessHours.end)}, ${formatDays(businessHours.days)}` : 'From your settings' },
                   ].map(m => {
                     const active = whenMode === m.id
                     return (
@@ -2246,8 +2283,9 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
                   </div>
                 )}
 
-                {/* Timezone — relevant whenever time-of-day matters */}
-                {whenMode !== 'now' && (
+                {/* Timezone — user-selectable for later/best; fixed (from
+                    Settings) for business hours. */}
+                {(whenMode === 'later' || whenMode === 'best') && (
                   <div className="mt-2.5 flex items-center gap-2">
                     <span className="text-[11px] text-[#9B9890]">Timezone</span>
                     <select
@@ -2261,8 +2299,10 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
                 )}
 
                 <p className="text-[11px] text-[#9B9890] mt-2">
-                  {(whenMode === 'best' || whenMode === 'business')
-                    ? <>Only sends during <strong>{(whenMode === 'best' ? SCHEDULE_PRESETS.best : SCHEDULE_PRESETS.business).map(w => `${w.start}–${w.end}`).join(' & ')}</strong> each day. Your sending speed paces voicemails within those hours.</>
+                  {whenMode === 'business'
+                    ? <>Mirrors your workspace <strong>business hours</strong>: <strong>{resolvedSendWindows.map(w => `${w.start}–${w.end}`).join(' & ')}</strong>, <strong>{formatDays(resolvedSendDays || businessHours?.days)}</strong> ({TIMEZONES.find(t => t.id === resolvedTimezone)?.label || resolvedTimezone}). Change them in Settings → Business hours.</>
+                    : whenMode === 'best'
+                    ? <>Only sends during <strong>{SCHEDULE_PRESETS.best.map(w => `${w.start}–${w.end}`).join(' & ')}</strong> each day. Your sending speed paces voicemails within those hours.</>
                     : whenMode === 'later'
                     ? 'Sends at or after this time — no need to hit an exact minute.'
                     : 'Begins sending as soon as the campaign is created, at your sending speed.'}
@@ -2379,13 +2419,13 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
               : null   // no throttle → carrier speed
             const projStartMs = resolvedStartsAt ? Math.max(Date.now(), new Date(resolvedStartsAt).getTime()) : Date.now()
             const projSchedule = projAudience > 0
-              ? estimateSendSchedule(projAudience, projStartMs, resolvedThrottleCount, resolvedThrottleWindowSeconds, resolvedSendWindows, sendTimezone, resolvedDailyCap || 0)
+              ? estimateSendSchedule(projAudience, projStartMs, resolvedThrottleCount, resolvedThrottleWindowSeconds, resolvedSendWindows, resolvedTimezone, resolvedDailyCap || 0, resolvedSendDays)
               : []
             const projFirstMs = projSchedule.length ? new Date(projSchedule[0]).getTime() : projStartMs
             const projLastMs = projSchedule.length ? new Date(projSchedule[projSchedule.length - 1]).getTime() : projStartMs
             const projSpanMs = projLastMs - projFirstMs
-            const tzAbbr = (TIMEZONES.find(t => t.id === sendTimezone)?.label.match(/\(([^)]+)\)/)?.[1]) || ''
-            const fmtTz = (ms, pat) => { try { return formatInTimeZone(new Date(ms), sendTimezone, pat) } catch { return '' } }
+            const tzAbbr = (TIMEZONES.find(t => t.id === resolvedTimezone)?.label.match(/\(([^)]+)\)/)?.[1]) || ''
+            const fmtTz = (ms, pat) => { try { return formatInTimeZone(new Date(ms), resolvedTimezone, pat) } catch { return '' } }
             const projMultiDay = fmtTz(projFirstMs, 'yyyy-MM-dd') !== fmtTz(projLastMs, 'yyyy-MM-dd')
             // Effective per-day volume — only shown when it actually spans days.
             const projHoursPerDay = (resolvedSendWindows && resolvedSendWindows.length > 0)
@@ -2837,7 +2877,9 @@ function ViewRVMCampaignModal({ campaign: initialCampaign, contactLists, onClose
                     try { parts.push(`Starts ${formatInTimeZone(new Date(campaign.starts_at), tz, 'MMM dd, h:mm a zzz')}`) } catch {}
                   }
                   if (Array.isArray(campaign.send_windows) && campaign.send_windows.length > 0) {
-                    parts.push(`${campaign.send_windows.map(w => `${w.start}–${w.end}`).join(', ')} (${tz})`)
+                    const dayPart = Array.isArray(campaign.send_days) && campaign.send_days.length > 0 && campaign.send_days.length < 7
+                      ? `${formatDays(campaign.send_days)} ` : ''
+                    parts.push(`${dayPart}${campaign.send_windows.map(w => `${hhmm(w.start)}–${hhmm(w.end)}`).join(', ')} (${tz})`)
                   }
                   return parts.length ? parts.join(' · ') : 'Send now / Anytime'
                 })()}

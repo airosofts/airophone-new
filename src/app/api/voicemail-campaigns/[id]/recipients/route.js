@@ -35,7 +35,7 @@ export async function GET(request, { params }) {
   // recipient will actually send.
   const { data: campaign } = await supabaseAdmin
     .from('voicemail_campaigns')
-    .select('throttle_count, throttle_window_seconds, send_windows, send_timezone, status, starts_at, daily_cap')
+    .select('throttle_count, throttle_window_seconds, send_windows, send_timezone, status, starts_at, daily_cap, send_days')
     .eq('id', campaignId)
     .maybeSingle()
 
@@ -44,6 +44,7 @@ export async function GET(request, { params }) {
   const windowSec = campaign?.throttle_window_seconds || 3600
   const windows = Array.isArray(campaign?.send_windows) ? campaign.send_windows : null
   const dailyCap = campaign?.daily_cap && campaign.daily_cap > 0 ? campaign.daily_cap : 0
+  const days = Array.isArray(campaign?.send_days) && campaign.send_days.length > 0 ? campaign.send_days : null
 
   // Precisely schedule the still-queued rows (in dispatch order) so each shows
   // an accurate "will send at". Recomputed every poll from `now`, so as rows
@@ -53,7 +54,7 @@ export async function GET(request, { params }) {
     // Schedule from the later of "now" and the campaign's start time.
     const startMs = campaign?.starts_at ? new Date(campaign.starts_at).getTime() : 0
     const fromMs = Math.max(Date.now(), startMs)
-    const schedule = estimateSendSchedule(pending.length, fromMs, throttleCount, windowSec, windows, tz, dailyCap)
+    const schedule = estimateSendSchedule(pending.length, fromMs, throttleCount, windowSec, windows, tz, dailyCap, days)
     pending.forEach((r, i) => { r.estimated_at = schedule[i] })
   }
 

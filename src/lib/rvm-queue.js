@@ -94,7 +94,7 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
   const campaignIds = [...new Set(rows.map(r => r.campaign_id))]
   const { data: campaigns } = await supabaseAdmin
     .from('voicemail_campaigns')
-    .select('id, status, sender_number, recording_url, recording_path, voicedrop_recording_url, created_by, throttle_count, throttle_window_seconds, send_windows, send_timezone, starts_at, daily_cap')
+    .select('id, status, sender_number, recording_url, recording_path, voicedrop_recording_url, created_by, throttle_count, throttle_window_seconds, send_windows, send_timezone, starts_at, daily_cap, send_days')
     .in('id', campaignIds)
   const campaignById = new Map((campaigns || []).map(c => [c.id, c]))
 
@@ -107,7 +107,7 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
   const inWindowByCampaign = new Map()
   for (const c of (campaigns || [])) {
     startReachedByCampaign.set(c.id, !c.starts_at || new Date(c.starts_at).getTime() <= now.getTime())
-    inWindowByCampaign.set(c.id, isWithinSendWindows(now, c.send_windows, c.send_timezone || 'America/New_York'))
+    inWindowByCampaign.set(c.id, isWithinSendWindows(now, c.send_windows, c.send_timezone || 'America/New_York', c.send_days))
   }
 
   // Throttle allowance per campaign. For a campaign capped at N every

@@ -41,6 +41,9 @@ export async function POST(request) {
     // Optional calling windows: only send when local time falls in a window.
     // [{start:"10:00",end:"12:00"}, ...] + an IANA timezone. Empty → anytime.
     sendWindows, sendTimezone,
+    // Optional weekday restriction (1=Mon..7=Sun) — mirrors workspace business
+    // days for the "Business hours" option. Empty/omitted → any day.
+    sendDays,
     // Optional per-day cap: at most this many voicemails per local day; the rest
     // roll to the next day. Omitted / 0 → no daily limit.
     dailyCap,
@@ -95,6 +98,14 @@ export async function POST(request) {
     ? Math.floor(Number(dailyCap))
     : null
 
+  // Send days: unique ISO weekday numbers 1..7, else null (any day).
+  const normalizedSendDays = Array.isArray(sendDays)
+    ? (() => {
+        const set = [...new Set(sendDays.map(Number).filter(d => Number.isInteger(d) && d >= 1 && d <= 7))].sort()
+        return set.length > 0 && set.length < 7 ? set : null   // all 7 == no restriction
+      })()
+    : null
+
   // Scheduled start: accept a valid future ISO; past/invalid → null (send now).
   let normalizedStartsAt = null
   if (startsAt) {
@@ -135,6 +146,7 @@ export async function POST(request) {
       throttle_window_seconds: normalizedThrottleWindow,
       send_windows: (normalizedWindows && normalizedWindows.length > 0) ? normalizedWindows : null,
       send_timezone: normalizedTimezone,
+      send_days: normalizedSendDays,
       daily_cap: normalizedDailyCap,
       starts_at: normalizedStartsAt,
       status: 'draft',
