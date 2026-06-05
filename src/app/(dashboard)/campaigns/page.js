@@ -2572,19 +2572,15 @@ function ViewRVMCampaignModal({ campaign: initialCampaign, contactLists, onClose
   const statusLabel = statusMap[campaign.status]?.label || campaign.status
   const statusClass = statusMap[campaign.status]?.cls || 'bg-[#EFEDE8] text-[#5C5A55]'
 
-  // Progress now tracks DELIVERY, not just dispatch. delivered_count/failed_count
-  // come from VoiceDrop's webhook; "pending" = dispatched-but-unconfirmed +
-  // not-yet-dispatched.
+  // Progress tracks dispatch (all handed to VoiceDrop). Delivered / Not
+  // delivered come from VoiceDrop's webhook as a per-row overlay.
   const dispatched = Number(campaign.sent_count || 0)        // handed to VoiceDrop
   const delivered = Number(campaign.delivered_count || 0)
   const failed = Number(campaign.failed_count || 0)
   const total = Number(campaign.total_recipients || 0)
-  const isDone = campaign.status === 'completed' || campaign.status === 'failed'
-  // 'sent' rows with no delivery webhook yet (live: still awaiting; done: old/missed → "Sent")
-  const unconfirmed = Math.max(0, dispatched - delivered - failed)
-  // Progress is delivery-driven while running; once done, dispatched-but-unconfirmed
-  // rows count as processed so a finished campaign isn't stuck at 0%.
-  const processed = delivered + failed + (isDone ? unconfirmed : 0)
+  // Progress tracks DISPATCH (everything handed to VoiceDrop). Delivery
+  // confirmation overlays per-row but doesn't change the bar.
+  const processed = dispatched
   const remaining = Math.max(0, total - processed)
   const pct = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0
 
@@ -2672,11 +2668,9 @@ function ViewRVMCampaignModal({ campaign: initialCampaign, contactLists, onClose
 
           <div className="grid grid-cols-3 gap-3">
             {[
+              { label: 'Sent', value: dispatched, icon: 'fa-paper-plane', color: 'text-green-600' },
               { label: 'Delivered', value: delivered, icon: 'fa-check-circle', color: 'text-green-600' },
               { label: 'Not delivered', value: failed, icon: 'fa-times-circle', color: 'text-[#D63B1F]' },
-              isDone
-                ? { label: 'Sent', value: unconfirmed, icon: 'fa-paper-plane', color: 'text-[#5C5A55]' }
-                : { label: 'Pending', value: remaining, icon: 'fa-clock', color: 'text-[#5C5A55]' },
             ].map(item => (
               <div key={item.label} className="bg-[#F7F6F3] border border-[#E3E1DB] rounded-lg p-3 text-center">
                 <i className={`fas ${item.icon} ${item.color} text-sm mb-1`}></i>
@@ -2738,16 +2732,12 @@ function ViewRVMCampaignModal({ campaign: initialCampaign, contactLists, onClose
                 </p>
               )}
               {recipients.map((r, i) => {
-                // A 'sent' row on a finished campaign never got a delivery
-                // webhook (old data / missed webhook) → show neutral "Sent",
-                // not "Awaiting" (which implies we're still expecting one).
-                const completedish = campaign.status === 'completed' || campaign.status === 'failed'
+                // 'sent' = dispatched to VoiceDrop (baseline success). Delivery
+                // webhook later upgrades it to Delivered / Not delivered.
                 const meta = {
                   delivered: { label: 'Delivered',    cls: 'bg-green-50 text-green-700',   t: r.delivered_at, est: false },
                   failed:    { label: 'Not delivered', cls: 'bg-red-50 text-red-600',       t: r.delivered_at || r.sent_at, est: false },
-                  sent:      completedish
-                              ? { label: 'Sent',       cls: 'bg-[#EFEDE8] text-[#5C5A55]',  t: r.sent_at, est: false }
-                              : { label: 'Awaiting',   cls: 'bg-yellow-50 text-yellow-700', t: r.sent_at, est: false },
+                  sent:      { label: 'Sent',          cls: 'bg-green-50 text-green-700',   t: r.sent_at, est: false },
                   sending:   { label: 'Sending…',      cls: 'bg-blue-50 text-blue-700',     t: r.estimated_at, est: true },
                   queued:    { label: 'Queued',        cls: 'bg-[#EFEDE8] text-[#5C5A55]',  t: r.estimated_at, est: true },
                   skipped:   { label: 'Skipped',       cls: 'bg-[#EFEDE8] text-[#9B9890]',  t: null, est: false },

@@ -23,49 +23,41 @@ const WEBHOOK_URL = `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.airophone
 const SEND_GAP_MS = 400
 const sleep = (ms) => new Promise(r => setTimeout(r, ms))
 
-// How long a 'sent' (dispatched, awaiting VoiceDrop delivery webhook) row may
-// stay un-confirmed before we stop letting it block campaign completion. A
-// missed/late webhook shouldn't hang a campaign forever. VoiceDrop normally
-// delivers within minutes; 30 min is a generous safety net.
-const DELIVERY_TIMEOUT_MIN = 30
-
-// Recompute a campaign's delivery counts and complete it only when every
-// recipient is delivered/failed — OR any still-'sent' row has aged past the
-// delivery timeout. Called by the sweep AND by the VoiceDrop webhook so
-// completion happens the moment the last delivery is confirmed.
+// Recompute a campaign's counts and complete it once every recipient is
+// dispatched. Delivery confirmation (webhook) updates per-row status afterward
+// but doesn't gate completion. Called by the sweep, the cron, and the webhook.
 export async function finalizeRvmCampaign(campaignId) {
-  const timeoutIso = new Date(Date.now() - DELIVERY_TIMEOUT_MIN * 60 * 1000).toISOString()
-
   const [
     { count: delivered },
     { count: failed },
     { count: queuedOrSending },
-    { count: awaitingFresh },
     { count: dispatched },
   ] = await Promise.all([
     supabaseAdmin.from('voicemail_campaign_sends').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId).eq('status', 'delivered'),
     supabaseAdmin.from('voicemail_campaign_sends').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId).eq('status', 'failed'),
     supabaseAdmin.from('voicemail_campaign_sends').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId).in('status', ['queued', 'sending']),
-    // 'sent' rows still within the delivery-confirmation window → still blocking.
-    supabaseAdmin.from('voicemail_campaign_sends').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId).eq('status', 'sent').gt('sent_at', timeoutIso),
     // everything handed off to VoiceDrop (sent + delivered + failed)
     supabaseAdmin.from('voicemail_campaign_sends').select('id', { count: 'exact', head: true }).eq('campaign_id', campaignId).in('status', ['sent', 'delivered', 'failed']),
   ])
 
-  const blocking = (queuedOrSending || 0) + (awaitingFresh || 0)
+  // A campaign is DONE once every recipient is dispatched (no queued/sending
+  // left). Delivery confirmation (the VoiceDrop webhook) is a per-row overlay
+  // that upgrades 'sent' → 'delivered'/'failed' afterward — it does NOT block
+  // completion. This avoids campaigns hanging on "awaiting delivery" forever
+  // (webhooks are async and can't reach localhost at all).
   const update = {
     delivered_count: delivered || 0,
     undelivered_count: failed || 0,
     failed_count: failed || 0,
     sent_count: dispatched || 0,   // "Sent" = dispatched to VoiceDrop
   }
-  if (blocking === 0) {
+  if ((queuedOrSending || 0) === 0 && (dispatched || 0) > 0) {
     update.status = 'completed'
     update.completed_at = new Date().toISOString()
-    console.log('[rvm:finalize] campaign completed', { campaignId, delivered, failed, dispatched })
+    console.log('[rvm:finalize] campaign completed', { campaignId, dispatched, delivered, failed })
   }
   await supabaseAdmin.from('voicemail_campaigns').update(update).eq('id', campaignId)
-  return { delivered: delivered || 0, failed: failed || 0, blocking }
+  return { delivered: delivered || 0, failed: failed || 0, dispatched: dispatched || 0 }
 }
 
 // Process up to `batchSize` queued sends. If `campaignId` is given, only that
