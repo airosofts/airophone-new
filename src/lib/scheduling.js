@@ -91,6 +91,62 @@ export function isWithinSendWindows(at, windows, tz = 'America/New_York') {
   return false
 }
 
+// Given `at`, return the next moment a send is allowed under `windows` (in tz).
+// Inside a window → `at` unchanged. Otherwise the next window-start (searching
+// up to 8 days). Empty windows → `at` (anytime). Used to estimate when a queued
+// recipient will actually go out.
+export function nextSendTime(at, windows, tz = 'America/New_York') {
+  if (!Array.isArray(windows) || windows.length === 0) return at
+  if (isWithinSendWindows(at, windows, tz)) return at
+  const starts = windows.map(w => { const s = parseHHMM(w?.start); return s.h * 60 + s.m })
+    .sort((a, b) => a - b)
+  for (let dayOffset = 0; dayOffset < 8; dayOffset++) {
+    const probe = new Date(at.getTime() + dayOffset * 86400000)
+    const local = toLocal(probe, tz)
+    const nowMin = dayOffset === 0 ? local.hours * 60 + local.minutes : -1
+    for (const startMin of starts) {
+      if (dayOffset === 0 && startMin <= nowMin) continue
+      const target = wallTimeToUTC(probe, tz, Math.floor(startMin / 60), startMin % 60)
+      if (target.getTime() > at.getTime()) return target
+    }
+  }
+  return at
+}
+
+// Precisely simulate when each of `count` queued sends will go out, given the
+// throttle (N every W seconds, as batches) and calling windows. Models window
+// CAPACITY: a window fits floor(windowLen / W) batches; once full, the rest
+// spill to the next window. Returns an array of ISO timestamps (one per send,
+// in dispatch order). Used to show an accurate "will send at" per recipient.
+//
+//   throttleCount = 0 / falsy → no throttle (all fire at the first allowed time)
+//   windows = null / []       → anytime (no window snapping)
+export function estimateSendSchedule(count, fromMs, throttleCount, throttleWindowSec, windows, tz = 'America/New_York') {
+  const out = []
+  const N = throttleCount && throttleCount > 0 ? throttleCount : Infinity
+  const W = (throttleWindowSec && throttleWindowSec > 0 ? throttleWindowSec : 0) * 1000
+
+  let cursor = nextSendTime(new Date(fromMs), windows, tz).getTime()
+  let batchStart = cursor
+  let inBatch = 0
+
+  for (let i = 0; i < count; i++) {
+    if (inBatch >= N) {
+      // One throttle period elapsed → next batch. Snap into a window; if that
+      // pushes past the current window's end, it lands in the next window.
+      cursor = nextSendTime(new Date(batchStart + W), windows, tz).getTime()
+      batchStart = cursor
+      inBatch = 0
+    } else {
+      // Keep the batch inside a window (no-op when already inside).
+      cursor = nextSendTime(new Date(cursor), windows, tz).getTime()
+    }
+    out.push(new Date(cursor).toISOString())
+    inBatch++
+  }
+  return out
+}
+
 // If `at` is INSIDE business hours, return the next moment OUTSIDE them — i.e.
 // the end of the current window. If already outside, return `at` unchanged.
 // Used by the "only outside business hours" automation mode.

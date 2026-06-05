@@ -2506,6 +2506,7 @@ function ViewRVMCampaignModal({ campaign: initialCampaign, contactLists, onClose
   const [isTogglingPause, setIsTogglingPause] = useState(false)
   const [recipients, setRecipients] = useState([])
   const [recipientsLoading, setRecipientsLoading] = useState(false)
+  const [tab, setTab] = useState('overview')   // 'overview' | 'recipients'
 
   // Poll the campaign row every 2.5s while it's mid-flight.
   // We stop polling once the campaign reaches a terminal state to spare cycles.
@@ -2578,7 +2579,12 @@ function ViewRVMCampaignModal({ campaign: initialCampaign, contactLists, onClose
   const delivered = Number(campaign.delivered_count || 0)
   const failed = Number(campaign.failed_count || 0)
   const total = Number(campaign.total_recipients || 0)
-  const processed = delivered + failed                       // delivery-confirmed
+  const isDone = campaign.status === 'completed' || campaign.status === 'failed'
+  // 'sent' rows with no delivery webhook yet (live: still awaiting; done: old/missed → "Sent")
+  const unconfirmed = Math.max(0, dispatched - delivered - failed)
+  // Progress is delivery-driven while running; once done, dispatched-but-unconfirmed
+  // rows count as processed so a finished campaign isn't stuck at 0%.
+  const processed = delivered + failed + (isDone ? unconfirmed : 0)
   const remaining = Math.max(0, total - processed)
   const pct = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0
 
@@ -2613,18 +2619,35 @@ function ViewRVMCampaignModal({ campaign: initialCampaign, contactLists, onClose
           <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1"><i className="fas fa-times text-sm"></i></button>
         </div>
 
-        <div className="px-5 py-4 space-y-4 overflow-y-auto flex-1">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Campaign Name</p>
-              <p className="text-sm font-medium text-[#131210]">{campaign.name}</p>
-            </div>
-            <span className={`inline-flex items-center px-2.5 py-1 rounded text-xs font-medium ${statusClass}`}>{statusLabel}</span>
+        {/* Name + status + tab switcher */}
+        <div className="px-5 pt-3 pb-0 flex-shrink-0">
+          <div className="flex items-center justify-between gap-4 mb-3">
+            <p className="text-base font-semibold text-[#131210] truncate">{campaign.name}</p>
+            <span className={`inline-flex items-center px-2.5 py-1 rounded text-xs font-medium flex-shrink-0 ${statusClass}`}>{statusLabel}</span>
           </div>
+          <div className="flex gap-5 border-b border-[#E3E1DB] -mx-5 px-5">
+            {[
+              { id: 'overview',   label: 'Overview' },
+              { id: 'recipients', label: `Recipients${recipients.length ? ` (${recipients.length})` : ''}` },
+            ].map(t => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTab(t.id)}
+                className={`pb-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                  tab === t.id ? 'border-[#D63B1F] text-[#131210]' : 'border-transparent text-[#9B9890] hover:text-[#5C5A55]'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
-          {/* Live progress — updates every 2.5s via polling.
-              Works whether you stay on the tab or close it; the campaign runs
-              server-side via the cron sweeper either way. */}
+        <div className="px-5 py-4 space-y-4 overflow-y-auto flex-1">
+          {tab === 'overview' && (
+          <>
+          {/* Live progress — updates every 2.5s via polling. */}
           {total > 0 && (
             <div>
               <div className="flex items-center justify-between mb-1.5">
@@ -2651,7 +2674,9 @@ function ViewRVMCampaignModal({ campaign: initialCampaign, contactLists, onClose
             {[
               { label: 'Delivered', value: delivered, icon: 'fa-check-circle', color: 'text-green-600' },
               { label: 'Not delivered', value: failed, icon: 'fa-times-circle', color: 'text-[#D63B1F]' },
-              { label: 'Pending', value: remaining, icon: 'fa-clock', color: 'text-[#5C5A55]' },
+              isDone
+                ? { label: 'Sent', value: unconfirmed, icon: 'fa-paper-plane', color: 'text-[#5C5A55]' }
+                : { label: 'Pending', value: remaining, icon: 'fa-clock', color: 'text-[#5C5A55]' },
             ].map(item => (
               <div key={item.label} className="bg-[#F7F6F3] border border-[#E3E1DB] rounded-lg p-3 text-center">
                 <i className={`fas ${item.icon} ${item.color} text-sm mb-1`}></i>
@@ -2661,18 +2686,10 @@ function ViewRVMCampaignModal({ campaign: initialCampaign, contactLists, onClose
             ))}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <div>
               <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Sender Number</p>
               <p className="text-sm text-[#5C5A55]">{campaign.sender_number}</p>
-            </div>
-            <div>
-              <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Contact Lists</p>
-              <p className="text-sm text-[#5C5A55]">{getContactListName(campaign.contact_list_ids)}</p>
-            </div>
-            <div>
-              <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Created</p>
-              <p className="text-sm text-[#5C5A55]">{formatDate(campaign.created_at)}</p>
             </div>
             <div>
               <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Sending Speed</p>
@@ -2683,7 +2700,7 @@ function ViewRVMCampaignModal({ campaign: initialCampaign, contactLists, onClose
                       const label = w % 86400 === 0 ? `${w / 86400} day` : w % 3600 === 0 ? `${w / 3600} hr` : `${Math.round(w / 60)} min`
                       return `${campaign.throttle_count.toLocaleString()} every ${label}`
                     })()
-                  : 'No throttle (max speed)'}
+                  : 'No throttle'}
               </p>
             </div>
             <div>
@@ -2704,49 +2721,54 @@ function ViewRVMCampaignModal({ campaign: initialCampaign, contactLists, onClose
               </div>
             </div>
           )}
+          </>
+          )}
 
-          {/* Per-recipient breakdown — each number, its delivery status, and time */}
-          <div>
-            <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-2">
-              Recipients {recipients.length > 0 && <span className="text-[#5C5A55]">({recipients.length.toLocaleString()})</span>}
-            </p>
+          {/* Recipients tab — each number, its delivery status, and time */}
+          {tab === 'recipients' && (
             <div className="border border-[#E3E1DB] rounded-lg overflow-hidden">
-              <div className="grid grid-cols-[1fr_140px_160px] gap-2 px-3 py-2 bg-[#F7F6F3] text-[10px] uppercase tracking-wider text-[#9B9890] font-medium border-b border-[#E3E1DB]">
+              <div className="grid grid-cols-[1fr_140px_170px] gap-2 px-3 py-2 bg-[#F7F6F3] text-[10px] uppercase tracking-wider text-[#9B9890] font-medium border-b border-[#E3E1DB] sticky top-0">
                 <span>Number</span>
                 <span>Status</span>
-                <span>Time</span>
+                <span>Time (~ = estimated)</span>
               </div>
-              <div className="overflow-y-auto" style={{ maxHeight: 320 }}>
-                {recipients.length === 0 && (
-                  <p className="px-3 py-5 text-xs text-[#9B9890] text-center">
-                    {recipientsLoading ? 'Loading…' : 'No recipients yet.'}
-                  </p>
-                )}
-                {recipients.map((r, i) => {
-                  const meta = {
-                    delivered: { label: 'Delivered',     cls: 'bg-green-50 text-green-700',   t: r.delivered_at },
-                    failed:    { label: 'Not delivered',  cls: 'bg-red-50 text-red-600',       t: r.delivered_at || r.sent_at },
-                    sent:      { label: 'Awaiting',       cls: 'bg-yellow-50 text-yellow-700', t: r.sent_at },
-                    sending:   { label: 'Sending…',       cls: 'bg-blue-50 text-blue-700',     t: null },
-                    queued:    { label: 'Queued',         cls: 'bg-[#EFEDE8] text-[#5C5A55]',  t: null },
-                    skipped:   { label: 'Skipped',        cls: 'bg-[#EFEDE8] text-[#9B9890]',  t: null },
-                  }[r.status] || { label: r.status, cls: 'bg-[#EFEDE8] text-[#5C5A55]', t: r.sent_at }
-                  return (
-                    <div key={r.phone + i} className="grid grid-cols-[1fr_140px_160px] gap-2 px-3 py-1.5 text-xs border-t border-[#F0EEE9] items-center">
-                      <span className="font-mono text-[#131210] truncate" title={r.error || ''}>{r.phone}</span>
-                      <span>
-                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${meta.cls}`}>{meta.label}</span>
-                      </span>
-                      <span className="text-[#9B9890] text-[11px]">
-                        {meta.t ? formatInTimeZone(new Date(meta.t), 'UTC', 'MMM dd, HH:mm') : '—'}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
+              {recipients.length === 0 && (
+                <p className="px-3 py-6 text-xs text-[#9B9890] text-center">
+                  {recipientsLoading ? 'Loading…' : 'No recipients yet.'}
+                </p>
+              )}
+              {recipients.map((r, i) => {
+                // A 'sent' row on a finished campaign never got a delivery
+                // webhook (old data / missed webhook) → show neutral "Sent",
+                // not "Awaiting" (which implies we're still expecting one).
+                const completedish = campaign.status === 'completed' || campaign.status === 'failed'
+                const meta = {
+                  delivered: { label: 'Delivered',    cls: 'bg-green-50 text-green-700',   t: r.delivered_at, est: false },
+                  failed:    { label: 'Not delivered', cls: 'bg-red-50 text-red-600',       t: r.delivered_at || r.sent_at, est: false },
+                  sent:      completedish
+                              ? { label: 'Sent',       cls: 'bg-[#EFEDE8] text-[#5C5A55]',  t: r.sent_at, est: false }
+                              : { label: 'Awaiting',   cls: 'bg-yellow-50 text-yellow-700', t: r.sent_at, est: false },
+                  sending:   { label: 'Sending…',      cls: 'bg-blue-50 text-blue-700',     t: r.estimated_at, est: true },
+                  queued:    { label: 'Queued',        cls: 'bg-[#EFEDE8] text-[#5C5A55]',  t: r.estimated_at, est: true },
+                  skipped:   { label: 'Skipped',       cls: 'bg-[#EFEDE8] text-[#9B9890]',  t: null, est: false },
+                }[r.status] || { label: r.status, cls: 'bg-[#EFEDE8] text-[#5C5A55]', t: r.sent_at, est: false }
+                const tz = campaign.send_timezone || 'America/New_York'
+                let timeStr = '—'
+                if (meta.t) {
+                  try { timeStr = (meta.est ? '~' : '') + formatInTimeZone(new Date(meta.t), tz, 'MMM dd, h:mm a zzz') } catch {}
+                }
+                return (
+                  <div key={r.phone + i} className="grid grid-cols-[1fr_140px_170px] gap-2 px-3 py-1.5 text-xs border-t border-[#F0EEE9] items-center">
+                    <span className="font-mono text-[#131210] truncate" title={r.error || ''}>{r.phone}</span>
+                    <span>
+                      <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${meta.cls}`}>{meta.label}</span>
+                    </span>
+                    <span className="text-[#9B9890] text-[11px]">{timeStr}</span>
+                  </div>
+                )
+              })}
             </div>
-            <p className="text-[10px] text-[#9B9890] mt-1.5">Times in UTC. Status updates live as VoiceDrop confirms each delivery.</p>
-          </div>
+          )}
         </div>
 
         <div className="border-t border-[#E3E1DB] px-5 py-3.5 flex flex-wrap items-center gap-2 flex-shrink-0">

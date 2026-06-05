@@ -1,9 +1,12 @@
 // Per-recipient breakdown for an RVM campaign — used by the details modal to
-// show each number, its delivery status, and the time it was sent/delivered.
+// show each number, its delivery status, the time it was sent/delivered, and
+// (for still-queued numbers) an ESTIMATED send time based on the campaign's
+// throttle + calling windows.
 
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
 import { getWorkspaceFromRequest } from '@/lib/session-helper'
+import { estimateSendSchedule } from '@/lib/scheduling'
 
 export async function GET(request, { params }) {
   const workspace = getWorkspaceFromRequest(request)
@@ -26,5 +29,29 @@ export async function GET(request, { params }) {
     return NextResponse.json({ error: 'Failed to load recipients' }, { status: 500 })
   }
 
-  return NextResponse.json({ success: true, recipients: data || [] })
+  const recipients = data || []
+
+  // Load the campaign's pacing config so we can estimate when each still-queued
+  // recipient will actually send.
+  const { data: campaign } = await supabaseAdmin
+    .from('voicemail_campaigns')
+    .select('throttle_count, throttle_window_seconds, send_windows, send_timezone, status')
+    .eq('id', campaignId)
+    .maybeSingle()
+
+  const tz = campaign?.send_timezone || 'America/New_York'
+  const throttleCount = campaign?.throttle_count && campaign.throttle_count > 0 ? campaign.throttle_count : 0
+  const windowSec = campaign?.throttle_window_seconds || 3600
+  const windows = Array.isArray(campaign?.send_windows) ? campaign.send_windows : null
+
+  // Precisely schedule the still-queued rows (in dispatch order) so each shows
+  // an accurate "will send at". Recomputed every poll from `now`, so as rows
+  // send the remaining estimates shift earlier — realtime as statuses change.
+  if (campaign?.status === 'running' || campaign?.status === 'paused' || campaign?.status === 'draft') {
+    const pending = recipients.filter(r => r.status === 'queued' || r.status === 'sending')
+    const schedule = estimateSendSchedule(pending.length, Date.now(), throttleCount, windowSec, windows, tz)
+    pending.forEach((r, i) => { r.estimated_at = schedule[i] })
+  }
+
+  return NextResponse.json({ success: true, recipients, timezone: tz })
 }
