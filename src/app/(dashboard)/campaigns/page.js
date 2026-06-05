@@ -2377,6 +2377,22 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
               })
             }
 
+            // Projected delivery: how the throttle + calling hours spread this
+            // list across days. Makes "how much sends per day" concrete.
+            const projAudience = selectedRecipients.length
+            const projHoursPerDay = (resolvedSendWindows && resolvedSendWindows.length > 0)
+              ? resolvedSendWindows.reduce((sum, w) => {
+                  const [sh, sm] = w.start.split(':').map(Number)
+                  const [eh, em] = w.end.split(':').map(Number)
+                  return sum + Math.max(0, (eh * 60 + em) - (sh * 60 + sm)) / 60
+                }, 0)
+              : 24
+            const projRatePerHour = resolvedThrottleCount
+              ? resolvedThrottleCount / (resolvedThrottleWindowSeconds / 3600)
+              : null   // no throttle → carrier-limited
+            const projDaily = projRatePerHour ? Math.max(1, Math.round(projRatePerHour * projHoursPerDay)) : null
+            const projDays = projDaily ? Math.ceil(projAudience / projDaily) : null
+
             return (
               <div className="space-y-4">
                 {/* Audio preview bar */}
@@ -2387,6 +2403,31 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
                       <p className="text-xs text-[#131210] truncate max-w-[200px]">{uploadState.name}</p>
                     </div>
                     <audio controls src={uploadState.url} className="flex-1" style={{ height: 34 }} />
+                  </div>
+                )}
+
+                {/* Projected delivery — makes daily volume + completion concrete */}
+                {projAudience > 0 && (
+                  <div className="bg-[#FFF8F6] border border-[rgba(214,59,31,0.2)] rounded-lg p-3.5">
+                    <p className="text-[10px] uppercase tracking-wider text-[#D63B1F] font-semibold mb-1.5">Projected delivery</p>
+                    {projDaily ? (
+                      <p className="text-sm text-[#131210] leading-relaxed">
+                        <strong>{projAudience.toLocaleString()}</strong> recipients at{' '}
+                        <strong>{Math.round(projRatePerHour).toLocaleString()}/hr</strong>
+                        {projHoursPerDay < 24
+                          ? <> during <strong>{projHoursPerDay} calling hour{projHoursPerDay === 1 ? '' : 's'}/day</strong></>
+                          : <> ({Math.round(projHoursPerDay)}h/day)</>}
+                        {' '}→ <strong>~{projDaily.toLocaleString()}/day</strong>
+                        {projDays > 1
+                          ? <> · finishes in <strong>~{projDays} days</strong></>
+                          : <> · finishes <strong>today</strong></>}.
+                      </p>
+                    ) : (
+                      <p className="text-sm text-[#131210] leading-relaxed">
+                        <strong>{projAudience.toLocaleString()}</strong> recipients · <strong>No throttle</strong> — sends as fast as the carrier allows
+                        {projHoursPerDay < 24 && <>, only during your <strong>{projHoursPerDay} calling hour{projHoursPerDay === 1 ? '' : 's'}/day</strong></>}.
+                      </p>
+                    )}
                   </div>
                 )}
 
