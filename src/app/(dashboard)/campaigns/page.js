@@ -1525,13 +1525,13 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
                     </div>
                   </div>
 
-                  {/* ─── Campaign cost (1 credit / SMS → dollars) ─── */}
+                  {/* ─── Campaign cost (1 credit / SMS → dollar value) ─── */}
                   {recipientCount > 0 && (() => {
                     const credits = recipientCount * 1   // 1 credit per SMS
                     const plan = PLAN_OVERAGE[subscription?.plan_name] || DEFAULT_OVERAGE
                     const balance = Number(creditBalance || 0)
+                    const dollarValue = credits * plan.rate
                     const overageCredits = Math.max(0, credits - balance)
-                    const overageDollars = overageCredits * plan.rate
                     const leftAfter = Math.max(0, balance - credits)
                     const usd = (n) => `$${n.toFixed(2)}`
                     return (
@@ -1545,16 +1545,14 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
                             <p className="text-[11px] text-white/50 mt-1">{recipientCount.toLocaleString()} message{recipientCount === 1 ? '' : 's'} × 1 credit</p>
                           </div>
                           <div className="text-right">
-                            <p className="text-2xl font-semibold leading-none text-[#FF7A5C]">{usd(overageDollars)}</p>
-                            <p className="text-[11px] text-white/50 mt-1">out of pocket</p>
+                            <p className="text-2xl font-semibold leading-none text-[#FF7A5C]">{usd(dollarValue)}</p>
+                            <p className="text-[11px] text-white/50 mt-1">≈ at ${plan.rate.toFixed(2)}/credit · {plan.name}</p>
                           </div>
                         </div>
                         <div className="mt-3 pt-3 border-t border-white/10 text-[11px] text-white/70 leading-relaxed">
-                          {overageCredits === 0 ? (
-                            <>Covered by your <strong className="text-white">{balance.toLocaleString()}</strong>-credit balance — <strong className="text-white">{leftAfter.toLocaleString()}</strong> left after this send.</>
-                          ) : (
-                            <>Balance <strong className="text-white">{balance.toLocaleString()}</strong> · <strong className="text-white">{overageCredits.toLocaleString()}</strong> extra credits at the {plan.name} rate (<strong className="text-white">${plan.rate.toFixed(2)}</strong>/credit) = <strong className="text-white">{usd(overageDollars)}</strong>.</>
-                          )}
+                          {overageCredits === 0
+                            ? <>Uses <strong className="text-white">{credits.toLocaleString()}</strong> of your <strong className="text-white">{balance.toLocaleString()}</strong> credits — <strong className="text-white">{leftAfter.toLocaleString()}</strong> left after this send.</>
+                            : <>Your balance is <strong className="text-white">{balance.toLocaleString()}</strong> — <strong className="text-[#FF7A5C]">{overageCredits.toLocaleString()} short</strong>. Top up before launching.</>}
                         </div>
                       </div>
                     )
@@ -2080,9 +2078,9 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
     // Step 3: ask for the FULL chunk recipient list (capped at 50k server-side).
     const body = {
       contactListIds: selectedListIds,
-      phoneColumns: step === 3 ? selectedColumns : undefined,
-      chunkSize: step === 3 ? chunkSize : 0,
-      chunkIndex: step === 3 && chunkSize > 0 ? chunkIndex : 0,
+      phoneColumns: step >= 3 ? selectedColumns : undefined,
+      chunkSize: step >= 3 ? chunkSize : 0,
+      chunkIndex: step >= 3 && chunkSize > 0 ? chunkIndex : 0,
       excludeStatuses,
     }
     apiPost('/api/voicemail-campaigns/preview', body)
@@ -2123,7 +2121,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
     setErrors(errs)
     return Object.keys(errs).length === 0
   }
-  const goNext = () => { if (validateStep(step)) setStep(s => Math.min(3, s + 1)) }
+  const goNext = () => { if (validateStep(step)) setStep(s => Math.min(4, s + 1)) }
   const goBack = () => { setErrors({}); setStep(s => Math.max(1, s - 1)) }
 
   // ── Launch ─────────────────────────────────────────────────────────────
@@ -2234,7 +2232,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
 
   // ── Wizard chrome ──────────────────────────────────────────────────────
   const stepLabel = (n) => (
-    { 1: 'Basics', 2: 'Audience', 3: 'Review' }[n] || ''
+    { 1: 'Basics', 2: 'Audience', 3: 'Recipients', 4: 'Review' }[n] || ''
   )
 
   return (
@@ -2249,7 +2247,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
         </div>
         {/* Stepper */}
         <div className="flex items-center gap-1 sm:gap-2 px-4 sm:px-8 pb-3 overflow-x-auto">
-          {[1, 2, 3].map(n => {
+          {[1, 2, 3, 4].map(n => {
             const active = step === n
             const done = step > n
             return (
@@ -2258,7 +2256,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
                   <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-semibold ${active ? 'bg-[#D63B1F] text-white' : done ? 'bg-[#1F8C4A] text-white' : 'bg-[#EFEDE8] text-[#9B9890]'}`}>{n}</span>
                   <span className={`text-xs font-medium ${active ? 'text-[#D63B1F]' : done ? 'text-[#5C5A55]' : 'text-[#9B9890]'}`}>{stepLabel(n)}</span>
                 </div>
-                {n < 3 && <span className="w-4 sm:w-8 h-px bg-[#E3E1DB]" />}
+                {n < 4 && <span className="w-4 sm:w-8 h-px bg-[#E3E1DB]" />}
               </div>
             )
           })}
@@ -2791,42 +2789,6 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
                   </div>
                 )}
 
-                {/* ─── Campaign cost (credits → dollars) ─── */}
-                {selectedRecipients.length > 0 && (() => {
-                  const vmCount = selectedRecipients.length
-                  const credits = vmCount * RVM_CREDITS_PER_VM
-                  const plan = PLAN_OVERAGE[subscription?.plan_name] || DEFAULT_OVERAGE
-                  const balance = Number(creditBalance || 0)
-                  const overageCredits = Math.max(0, credits - balance)
-                  const overageDollars = overageCredits * plan.rate
-                  const leftAfter = Math.max(0, balance - credits)
-                  const usd = (n) => `$${n.toFixed(2)}`
-                  return (
-                    <div className="bg-[#131210] text-white rounded-lg p-4">
-                      <div className="flex items-end justify-between gap-3 flex-wrap">
-                        <div>
-                          <p className="text-[10px] uppercase tracking-wider text-white/50 font-semibold mb-1">Campaign cost</p>
-                          <p className="text-2xl font-semibold leading-none">
-                            {credits.toLocaleString()} <span className="text-base font-normal text-white/60">credits</span>
-                          </p>
-                          <p className="text-[11px] text-white/50 mt-1">{vmCount.toLocaleString()} voicemail{vmCount === 1 ? '' : 's'} × {RVM_CREDITS_PER_VM} credits</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-2xl font-semibold leading-none text-[#FF7A5C]">{usd(overageDollars)}</p>
-                          <p className="text-[11px] text-white/50 mt-1">out of pocket</p>
-                        </div>
-                      </div>
-                      <div className="mt-3 pt-3 border-t border-white/10 text-[11px] text-white/70 leading-relaxed">
-                        {overageCredits === 0 ? (
-                          <>Covered by your <strong className="text-white">{balance.toLocaleString()}</strong>-credit balance — <strong className="text-white">{leftAfter.toLocaleString()}</strong> left after this send.</>
-                        ) : (
-                          <>Balance <strong className="text-white">{balance.toLocaleString()}</strong> · <strong className="text-white">{overageCredits.toLocaleString()}</strong> extra credits at the {plan.name} rate (<strong className="text-white">${plan.rate.toFixed(2)}</strong>/credit) = <strong className="text-white">{usd(overageDollars)}</strong>.</>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })()}
-
                 {/* ─── Landline scrub (Telnyx carrier lookup) ─── */}
                 {selectedRecipients.length > 0 && (() => {
                   const uniqueCount = new Set(selectedRecipients.map(r => r.phone)).size
@@ -3031,6 +2993,76 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
               </div>
             )
           })()}
+
+          {/* ─── Step 4: Review & launch (summary + pricing) ─── */}
+          {step === 4 && (() => {
+            const vmCount = selectedRecipients.length
+            const credits = vmCount * RVM_CREDITS_PER_VM
+            const plan = PLAN_OVERAGE[subscription?.plan_name] || DEFAULT_OVERAGE
+            const balance = Number(creditBalance || 0)
+            const dollarValue = credits * plan.rate
+            const overageCredits = Math.max(0, credits - balance)
+            const leftAfter = Math.max(0, balance - credits)
+            const usd = (n) => `$${n.toFixed(2)}`
+            const tzLabel = TIMEZONES.find(t => t.id === resolvedTimezone)?.label || resolvedTimezone
+            const scheduleText = whenMode === 'now' ? 'Send now'
+              : whenMode === 'later' ? `Scheduled — ${startAtLocal || 'not set'} (${tzLabel})`
+              : whenMode === 'best' ? `Best calling windows — 10–12 & 2–4 (${tzLabel})`
+              : `Business hours — ${(resolvedSendWindows || []).map(w => `${w.start}–${w.end}`).join(', ')} (${tzLabel})`
+            const speedText = throttleMode === 'recommended' ? `${selectedPreset.team} · ${selectedPreset.volume} voicemails/hr`
+              : throttleMode === 'manual' ? `${resolvedThrottleCount} every ${throttleWindowValue} ${throttleUnit}${throttleWindowValue === 1 ? '' : 's'}`
+              : 'No throttle — as fast as the carrier accepts'
+            const rows = [
+              ['Campaign', name || '—'],
+              ['Sends from', senderNumber || '—'],
+              ['Audio', uploadState && uploadState !== 'uploading' ? uploadState.name : '—'],
+              ['Recipients', vmCount.toLocaleString()],
+              ['Sending speed', speedText],
+              ['When to send', scheduleText],
+            ]
+            return (
+              <section className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-xl p-5 sm:p-6 space-y-4">
+                <div>
+                  <h4 className="text-sm font-semibold text-[#131210] mb-1">Review &amp; launch</h4>
+                  <p className="text-xs text-[#9B9890]">Confirm the details and cost, then launch.</p>
+                </div>
+                <div className="border border-[#E3E1DB] rounded-lg divide-y divide-[#F0EEE9]">
+                  {rows.map(([k, v]) => (
+                    <div key={k} className="flex items-start justify-between gap-4 px-4 py-2.5">
+                      <span className="text-xs text-[#9B9890] uppercase tracking-wider flex-shrink-0">{k}</span>
+                      <span className="text-sm text-[#131210] text-right break-words">{v}</span>
+                    </div>
+                  ))}
+                </div>
+                {uploadState && uploadState !== 'uploading' && (
+                  <audio controls src={uploadState.url} className="w-full" style={{ height: 34 }} />
+                )}
+
+                {/* Cost — credits + their dollar value at the plan rate */}
+                <div className="bg-[#131210] text-white rounded-lg p-4">
+                  <div className="flex items-end justify-between gap-3 flex-wrap">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-white/50 font-semibold mb-1">Campaign cost</p>
+                      <p className="text-2xl font-semibold leading-none">{credits.toLocaleString()} <span className="text-base font-normal text-white/60">credits</span></p>
+                      <p className="text-[11px] text-white/50 mt-1">{vmCount.toLocaleString()} voicemail{vmCount === 1 ? '' : 's'} × {RVM_CREDITS_PER_VM} credits</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-2xl font-semibold leading-none text-[#FF7A5C]">{usd(dollarValue)}</p>
+                      <p className="text-[11px] text-white/50 mt-1">≈ at ${plan.rate.toFixed(2)}/credit · {plan.name}</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-white/10 text-[11px] text-white/70 leading-relaxed">
+                    {overageCredits === 0
+                      ? <>Uses <strong className="text-white">{credits.toLocaleString()}</strong> of your <strong className="text-white">{balance.toLocaleString()}</strong> credits — <strong className="text-white">{leftAfter.toLocaleString()}</strong> left after this send.</>
+                      : <>Your balance is <strong className="text-white">{balance.toLocaleString()}</strong> — <strong className="text-[#FF7A5C]">{overageCredits.toLocaleString()} short</strong>. Top up before launching.</>}
+                  </div>
+                </div>
+                {errors.submit && (
+                  <div className="px-3 py-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">{errors.submit}</div>
+                )}
+              </section>
+            )
+          })()}
         </div>
       </div>
 
@@ -3043,7 +3075,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
         >
           {step === 1 ? 'Cancel' : 'Back'}
         </button>
-        {step < 3 ? (
+        {step < 4 ? (
           <button
             type="button"
             onClick={goNext}

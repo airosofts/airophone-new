@@ -93,7 +93,7 @@ export async function POST(request) {
 
     if (existing) {
       // Webhook already created the record — patch it with final details
-      const updates = { conversation_id: convId }
+      const updates = { conversation_id: convId, user_id: user.userId }
       if (answeredAt) updates.answered_at = answeredAt
       if (endedAt) updates.ended_at = endedAt
       if (durationSeconds > 0) updates.duration_seconds = durationSeconds
@@ -118,6 +118,7 @@ export async function POST(request) {
         ended_at: endedAt || null,
         duration_seconds: durationSeconds > 0 ? durationSeconds : null,
         workspace_id: user.workspaceId,
+        user_id: user.userId,
         conversation_id: convId,
         created_at: new Date().toISOString(),
       })

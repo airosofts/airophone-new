@@ -267,7 +267,8 @@ export async function POST(request) {
         from_number: normalizedFrom,
         to_number: normalizedTo,
         body: message,
-        status: 'sent'
+        status: 'sent',
+        user_id: user.userId || null
       })
       .select()
       .single()
