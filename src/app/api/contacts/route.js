@@ -122,6 +122,44 @@ export async function POST(request) {
       created_by: user.userId
     }
 
+    // De-dupe: if this number is already in this list, UPDATE that contact
+    // instead of inserting a second row. This is what prevents the duplicate
+    // contacts the import/add flow was creating.
+    if (contactData.contact_list_id) {
+      const { data: existingRows } = await supabaseAdmin
+        .from('contacts')
+        .select('id')
+        .eq('workspace_id', workspace.workspaceId)
+        .eq('phone_number', contactData.phone_number)
+        .eq('contact_list_id', contactData.contact_list_id)
+        .limit(1)
+      const existing = existingRows && existingRows[0]
+      if (existing) {
+        const merge = {
+          first_name: contactData.first_name,
+          last_name: contactData.last_name,
+          business_name: contactData.business_name,
+          email: contactData.email,
+          city: contactData.city,
+          state: contactData.state,
+          country: contactData.country,
+          custom_fields: contactData.custom_fields,
+        }
+        if (status) merge.status = status
+        const { data: updated, error: upErr } = await supabaseAdmin
+          .from('contacts')
+          .update(merge)
+          .eq('id', existing.id)
+          .select()
+          .single()
+        if (upErr) {
+          console.error('Database error updating existing contact:', upErr)
+          return NextResponse.json({ error: 'Failed to update contact', details: upErr.message }, { status: 500 })
+        }
+        return NextResponse.json({ success: true, contact: updated, deduped: true })
+      }
+    }
+
     const { data: contact, error } = await supabaseAdmin
       .from('contacts')
       .insert(contactData)
@@ -202,6 +240,18 @@ export async function PUT(request) {
         { error: 'Failed to update contact', details: error.message },
         { status: 500 }
       )
+    }
+
+    // A contact's status is a property of the PERSON (phone), but the same
+    // number can have one row per list. Propagate the status to every sibling
+    // row so a disposition — especially Do Not Call — applies everywhere.
+    if (status !== undefined && data?.phone_number) {
+      await supabaseAdmin
+        .from('contacts')
+        .update({ status: status || null })
+        .eq('workspace_id', workspace.workspaceId)
+        .eq('phone_number', data.phone_number)
+        .neq('id', contactId)
     }
 
     return NextResponse.json({

@@ -1833,6 +1833,11 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
   // unticked — default is "all included" and the user can unselect rows.
   // Resets whenever the chunk changes (per-chunk selection).
   const [excludedPhones, setExcludedPhones] = useState(() => new Set())
+  // Landline scrub (Telnyx number lookup). scan: null | 'scanning' | {breakdown,byPhone,...}
+  const [scan, setScan] = useState(null)
+  const [scanError, setScanError] = useState('')
+  const [landlinesRemoved, setLandlinesRemoved] = useState(false)
+  const [purgeState, setPurgeState] = useState(null)   // null | 'purging' | 'done'
   const [searchQuery, setSearchQuery] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const PAGE_SIZE = 500
@@ -1947,6 +1952,38 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
   // The exact recipients the user has chosen for THIS launch (after chunk
   // pick + manual unticks + search). The backend will enqueue exactly this set.
   const selectedRecipients = chunkRecipients.filter(r => !excludedPhones.has(r.phone))
+
+  // ── Landline scrub ────────────────────────────────────────────────────────
+  const scanLandlines = async () => {
+    const phones = [...new Set(selectedRecipients.map(r => r.phone))]
+    if (phones.length === 0) return
+    setScanError(''); setScan('scanning'); setLandlinesRemoved(false); setPurgeState(null)
+    try {
+      const res = await apiPost('/api/voicemail-campaigns/landline-scan', { phones })
+      const data = await res.json()
+      if (!data.success) {
+        setScanError(data.error === 'Insufficient credits'
+          ? `Not enough credits — this scan needs ${data.required} (you have ${data.available}).`
+          : (data.error || 'Scan failed'))
+        setScan(null); return
+      }
+      setScan(data)
+    } catch { setScanError('Scan failed — please try again.'); setScan(null) }
+  }
+  const landlinePhones = (scan && scan.byPhone) ? Object.keys(scan.byPhone).filter(p => scan.byPhone[p] === 'landline') : []
+  const removeLandlinesFromCampaign = () => {
+    setExcludedPhones(prev => { const n = new Set(prev); landlinePhones.forEach(p => n.add(p)); return n })
+    setLandlinesRemoved(true)
+  }
+  const purgeLandlinesFromContacts = async () => {
+    setPurgeState('purging')
+    try {
+      const res = await apiPost('/api/contacts/bulk-delete-by-phone', { phones: landlinePhones })
+      const data = await res.json()
+      setPurgeState(data.success ? 'done' : null)
+      if (!data.success) setScanError(data.error || 'Failed to remove from contacts')
+    } catch { setPurgeState(null); setScanError('Failed to remove from contacts') }
+  }
 
   const handleLaunch = async () => {
     if (!validateStep(3)) return
@@ -2524,6 +2561,83 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
                     </p>
                   </div>
                 )}
+
+                {/* ─── Landline scrub (Telnyx carrier lookup) ─── */}
+                {selectedRecipients.length > 0 && (() => {
+                  const uniqueCount = new Set(selectedRecipients.map(r => r.phone)).size
+                  const chip = (n, label, color, bg) => (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium" style={{ color, background: bg }}>
+                      <strong>{n.toLocaleString()}</strong> {label}
+                    </span>
+                  )
+                  return (
+                    <div className="bg-white border border-[#E3E1DB] rounded-lg p-3.5">
+                      <div className="flex items-start justify-between gap-3 flex-wrap">
+                        <div className="min-w-0">
+                          <p className="text-[10px] uppercase tracking-wider text-[#5C5A55] font-semibold">Landline scrub</p>
+                          <p className="text-[11px] text-[#9B9890] mt-0.5">Ringless voicemail can’t land on landlines. Check carrier types and drop them.</p>
+                        </div>
+                        {!scan && (
+                          <button type="button" onClick={scanLandlines}
+                            className="flex-shrink-0 px-3 py-1.5 text-sm rounded-md bg-[#131210] text-white hover:bg-black flex items-center gap-2">
+                            <i className="fas fa-magnifying-glass text-[11px]" /> Scan {uniqueCount.toLocaleString()} numbers
+                          </button>
+                        )}
+                        {scan === 'scanning' && (
+                          <span className="flex-shrink-0 text-sm text-[#5C5A55] flex items-center gap-2"><i className="fas fa-spinner fa-spin" /> Checking carriers…</span>
+                        )}
+                      </div>
+
+                      {!scan && (
+                        <p className="text-[11px] text-[#9B9890] mt-2">Up to <strong>{(uniqueCount * 0.5).toLocaleString()} credits</strong> (0.5 each). Numbers checked before are free.</p>
+                      )}
+                      {scanError && <p className="text-xs text-red-600 mt-2">{scanError}</p>}
+
+                      {scan && scan !== 'scanning' && (
+                        <div className="mt-3">
+                          <div className="flex flex-wrap gap-2">
+                            {chip(scan.breakdown.mobile, 'mobile', '#16A34A', '#EAF7EE')}
+                            {chip(scan.breakdown.voip, 'voip', '#2563EB', '#EAF0FE')}
+                            {chip(scan.breakdown.landline, 'landline', '#D63B1F', '#FDEAEA')}
+                            {scan.breakdown.unknown > 0 && chip(scan.breakdown.unknown, 'unknown', '#6B7280', '#F1F1EF')}
+                          </div>
+                          <p className="text-[11px] text-[#9B9890] mt-2">
+                            Checked {scan.breakdown.total.toLocaleString()} · {scan.newLookups.toLocaleString()} new ({scan.creditsCharged} credits), {scan.cached.toLocaleString()} already known.
+                            {' '}<button type="button" onClick={scanLandlines} className="text-[#D63B1F] hover:underline">Scan again</button>
+                          </p>
+
+                          {landlinePhones.length === 0 ? (
+                            <p className="text-sm text-green-700 mt-2"><i className="fas fa-check-circle mr-1" /> No landlines found — your list is clean.</p>
+                          ) : !landlinesRemoved ? (
+                            <button type="button" onClick={removeLandlinesFromCampaign}
+                              className="mt-2.5 px-3 py-1.5 text-sm rounded-md bg-[#D63B1F] text-white hover:bg-[#c4351b]">
+                              Remove {landlinePhones.length.toLocaleString()} landline{landlinePhones.length === 1 ? '' : 's'} from this campaign
+                            </button>
+                          ) : (
+                            <div className="mt-2.5">
+                              <p className="text-sm text-[#131210]"><i className="fas fa-check-circle text-green-600 mr-1" /> Removed {landlinePhones.length.toLocaleString()} landline{landlinePhones.length === 1 ? '' : 's'} from this send.</p>
+                              {purgeState === 'done' ? (
+                                <p className="text-[11px] text-[#9B9890] mt-1"><i className="fas fa-trash-alt mr-1" />Also deleted from your contacts &amp; lists.</p>
+                              ) : purgeState === 'kept' ? (
+                                <p className="text-[11px] text-[#9B9890] mt-1">Kept in your contacts.</p>
+                              ) : (
+                                <div className="mt-2 flex items-center gap-2 flex-wrap">
+                                  <span className="text-[11px] text-[#5C5A55]">Also delete these {landlinePhones.length.toLocaleString()} landlines from your contacts &amp; lists?</span>
+                                  <button type="button" onClick={purgeLandlinesFromContacts} disabled={purgeState === 'purging'}
+                                    className="px-2.5 py-1 text-xs rounded border border-[#D63B1F] text-[#D63B1F] hover:bg-[#FFF8F6] disabled:opacity-60">
+                                    {purgeState === 'purging' ? 'Removing…' : 'Delete from contacts'}
+                                  </button>
+                                  <button type="button" onClick={() => setPurgeState('kept')}
+                                    className="px-2.5 py-1 text-xs rounded border border-[#E3E1DB] text-[#5C5A55] hover:bg-[#F7F6F3]">Keep</button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
 
                 {/* ─── Searchable, paginated, selectable recipient table ─── */}
                 <div className="min-w-0">

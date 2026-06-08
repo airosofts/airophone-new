@@ -132,9 +132,19 @@ export async function GET(request) {
               business_name: c.business_name || null,
               status: c.status || null
             }
-            if (c.phone_number) contactMap[c.phone_number] = entry
+            // Duplicate rows can share a phone. Don't let a status-less duplicate
+            // overwrite one that already carries a status (or a name) — prefer the
+            // richer entry so the list badge reflects the real disposition.
+            const better = (key) => {
+              const prev = contactMap[key]
+              if (!prev) return true
+              if (!prev.status && entry.status) return true
+              if (!prev.first_name && !prev.last_name && (entry.first_name || entry.last_name)) return true
+              return false
+            }
+            if (c.phone_number && better(c.phone_number)) contactMap[c.phone_number] = entry
             const normalized = normalizePhone(c.phone_number)
-            if (normalized && normalized !== c.phone_number) contactMap[normalized] = entry
+            if (normalized && normalized !== c.phone_number && better(normalized)) contactMap[normalized] = entry
           }
         }
       }

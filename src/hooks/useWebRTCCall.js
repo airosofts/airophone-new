@@ -931,6 +931,20 @@ const setupAudioRouting = (call, isParticipant = false) => {
       }
 
       await currentCall.answer()
+
+      // Set callLogRef here — more reliable than waiting for SDK 'active' event
+      if (incomingCallRef.current && !callLogRef.current) {
+        callLogRef.current = {
+          direction: 'inbound',
+          fromNumber: incomingCallRef.current.from,
+          toNumber: incomingCallRef.current.ourNumber || incomingCallRef.current.to,
+          conversationId: null,
+          callControlId: currentCall.id,
+          answeredAt: new Date().toISOString(),
+        }
+        console.log('[WebRTC] acceptCall — callLogRef set for answered inbound')
+      }
+
       setCallStatus('active')
       setIncomingCall(null)
     } catch (error) {
@@ -945,11 +959,16 @@ const setupAudioRouting = (call, isParticipant = false) => {
     try {
       stopRingtone()
       clearBrowserNotification()
+      // Log the rejected call (user explicitly declined) before cleanup clears refs
+      if (incomingCallRef.current) {
+        const { from, ourNumber, to } = incomingCallRef.current
+        console.log('[WebRTC] rejectCall — logging declined inbound call')
+        logCallToDb({ direction: 'inbound', fromNumber: from, toNumber: ourNumber || to, conversationId: null, callControlId: call.id, answeredAt: null })
+          .catch(e => console.error('[WebRTC] rejectCall logCallToDb failed:', e))
+      }
       // Mark as rejected BEFORE the SIP response so the hangup event handler
       // knows NOT to show a "missed call" notice (we declined, caller didn't hang up)
       callStatusRef.current = 'rejected'
-      // Telnyx v2 SDK: hangup() works for both rejecting unanswered calls and
-      // terminating active calls. reject() does not exist in v2.
       await call.hangup()
       performCompleteCleanup()
     } catch (error) {

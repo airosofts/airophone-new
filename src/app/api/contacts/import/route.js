@@ -218,65 +218,79 @@ export async function POST(request) {
       )
     }
 
-    // Insert contacts in batches
-    const batchSize = 25
+    // ── De-dupe before writing ──────────────────────────────────────────────
+    // 1) Collapse duplicate phones WITHIN this file (last occurrence wins).
+    const byPhone = new Map()
+    for (const c of contacts) byPhone.set(c.phone_number, c)
+    const deduped = [...byPhone.values()]
+
+    // 2) Find which of these numbers already exist IN THIS LIST, so we UPDATE
+    //    them instead of inserting a second row (the source of the duplicates).
+    const existingByPhone = new Map()
+    if (contactListId) {
+      const phones = deduped.map(c => c.phone_number)
+      for (let i = 0; i < phones.length; i += 200) {
+        const { data: rows } = await supabaseAdmin
+          .from('contacts')
+          .select('id, phone_number')
+          .eq('workspace_id', workspace.workspaceId)
+          .eq('contact_list_id', contactListId)
+          .in('phone_number', phones.slice(i, i + 200))
+        for (const r of (rows || [])) if (!existingByPhone.has(r.phone_number)) existingByPhone.set(r.phone_number, r.id)
+      }
+    }
+
+    const toInsert = deduped.filter(c => !existingByPhone.has(c.phone_number))
+    const toUpdate = deduped.filter(c => existingByPhone.has(c.phone_number))
+
     let importedCount = 0
     let duplicateCount = 0
+    let updatedCount = 0
 
-    for (let i = 0; i < contacts.length; i += batchSize) {
-      const batch = contacts.slice(i, i + batchSize)
-      console.log(`Inserting batch ${Math.floor(i/batchSize) + 1}:`, batch.length, 'contacts')
-      
+    // Insert the genuinely-new contacts in batches.
+    const batchSize = 50
+    for (let i = 0; i < toInsert.length; i += batchSize) {
+      const batch = toInsert.slice(i, i + batchSize)
       try {
-        const { data, error } = await supabaseAdmin
-          .from('contacts')
-          .insert(batch)
-          .select('id')
-
+        const { data, error } = await supabaseAdmin.from('contacts').insert(batch).select('id')
         if (error) {
-          console.error('Database error inserting batch:', error)
-          // Whether it's a duplicate conflict (23505) or any other error,
-          // fall back to individual inserts so only the conflicting rows are
-          // skipped and the rest are imported successfully.
           for (const contact of batch) {
-            try {
-              const { data: singleData, error: singleError } = await supabaseAdmin
-                .from('contacts')
-                .insert([contact])
-                .select('id')
-
-              if (!singleError) {
-                importedCount++
-              } else if (singleError.code === '23505') {
-                duplicateCount++
-              } else {
-                console.error('Error inserting single contact:', singleError)
-              }
-            } catch (singleInsertError) {
-              console.error('Single insert error:', singleInsertError)
-            }
+            const { error: se } = await supabaseAdmin.from('contacts').insert([contact]).select('id')
+            if (!se) importedCount++
+            else if (se.code === '23505') duplicateCount++
+            else console.error('Error inserting single contact:', se)
           }
         } else {
           importedCount += data?.length || batch.length
-          console.log(`Successfully inserted ${data?.length || batch.length} contacts`)
         }
-
       } catch (batchError) {
         console.error('Batch insert error:', batchError)
       }
     }
 
+    // Refresh the rows that already exist in this list — no duplicate created.
+    for (const c of toUpdate) {
+      const merge = {
+        first_name: c.first_name, last_name: c.last_name, business_name: c.business_name,
+        email: c.email, city: c.city, state: c.state, country: c.country,
+      }
+      if (c.custom_fields) merge.custom_fields = c.custom_fields
+      const { error } = await supabaseAdmin.from('contacts').update(merge).eq('id', existingByPhone.get(c.phone_number))
+      if (!error) updatedCount++
+    }
+
     const response = {
       success: true,
       imported: importedCount,
+      updated: updatedCount,
       duplicates: duplicateCount,
       total: contacts.length,
       errors: errors.length,
-      message: `Successfully imported ${importedCount} contacts${contactList ? ` to "${contactList.name}"` : ''}`
+      message: `Imported ${importedCount} new contact${importedCount === 1 ? '' : 's'}${updatedCount > 0 ? `, updated ${updatedCount} existing` : ''}${contactList ? ` in "${contactList.name}"` : ''}`
     }
 
     if (duplicateCount > 0) {
-      response.message += `. ${duplicateCount} contacts were skipped due to duplicate phone numbers.`
+      response.message += `. ${duplicateCount} skipped.`
     }
 
     console.log('Import completed:', response)

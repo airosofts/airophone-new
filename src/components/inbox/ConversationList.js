@@ -315,17 +315,6 @@ export default function ConversationList({
                     }}>
                       {displayName}
                     </span>
-                    {CONTACT_STATUS_MAP[conversation.contact_status] && (
-                      <span style={{
-                        flexShrink: 0,
-                        fontSize: '9px', fontWeight: 600, lineHeight: 1,
-                        padding: '2px 5px', borderRadius: 9999,
-                        color: CONTACT_STATUS_MAP[conversation.contact_status].color,
-                        background: CONTACT_STATUS_MAP[conversation.contact_status].bg,
-                      }}>
-                        {CONTACT_STATUS_MAP[conversation.contact_status].label}
-                      </span>
-                    )}
                   </div>
                   <span style={{
                     fontFamily: "'JetBrains Mono', monospace",
@@ -335,26 +324,41 @@ export default function ConversationList({
                     {formatTime(activityTime)}
                   </span>
                 </div>
-                {callSnippet ? (
-                  <p style={{
-                    fontSize: '11.5px', color: callSnippet.color,
-                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                    fontWeight: 500, display: 'flex', alignItems: 'center', gap: 4,
-                  }}>
-                    <span style={{ fontSize: 13 }}>{callSnippet.arrow}</span>
-                    {callSnippet.label}
-                  </p>
-                ) : (
-                  <p style={{
-                    fontSize: '11.5px', color: '#9B9890',
-                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                    fontWeight: hasUnread ? 500 : 400,
-                    ...(hasUnread && { color: '#5C5A55' }),
-                  }}>
-                    {conversation.lastMessage?.direction === 'outbound' && 'You: '}
-                    {truncateMessage(conversation.lastMessage?.body)}
-                  </p>
-                )}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {callSnippet ? (
+                      <p style={{
+                        fontSize: '11.5px', color: callSnippet.color,
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                        fontWeight: 500, display: 'flex', alignItems: 'center', gap: 4,
+                      }}>
+                        <span style={{ fontSize: 13 }}>{callSnippet.arrow}</span>
+                        {callSnippet.label}
+                      </p>
+                    ) : (
+                      <p style={{
+                        fontSize: '11.5px', color: '#9B9890',
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                        fontWeight: hasUnread ? 500 : 400,
+                        ...(hasUnread && { color: '#5C5A55' }),
+                      }}>
+                        {conversation.lastMessage?.direction === 'outbound' && 'You: '}
+                        {truncateMessage(conversation.lastMessage?.body)}
+                      </p>
+                    )}
+                  </div>
+                  {CONTACT_STATUS_MAP[conversation.contact_status] && (
+                    <span style={{
+                      flexShrink: 0,
+                      fontSize: '9px', fontWeight: 600, lineHeight: 1,
+                      padding: '3px 6px', borderRadius: 9999,
+                      color: CONTACT_STATUS_MAP[conversation.contact_status].color,
+                      background: CONTACT_STATUS_MAP[conversation.contact_status].bg,
+                    }}>
+                      {CONTACT_STATUS_MAP[conversation.contact_status].label}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           )
