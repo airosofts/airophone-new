@@ -731,6 +731,8 @@ export default function CampaignsPage() {
         <CreateCampaignModal
           contactLists={contactLists}
           phoneNumbers={phoneNumbers}
+          subscription={subscription}
+          creditBalance={creditBalance}
           onClose={() => setShowCreateCampaign(false)}
           onCampaignCreated={() => { setShowCreateCampaign(false); fetchCampaigns() }}
         />
@@ -804,7 +806,7 @@ export default function CampaignsPage() {
   )
 }
 
-function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCreated }) {
+function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditBalance = 0, onClose, onCampaignCreated }) {
   const [formData, setFormData] = useState({
     name: '', message: '', contactListId: '', phoneNumberId: '',
     scheduleTime: '', scheduleType: 'immediate',
@@ -1522,6 +1524,41 @@ function CreateCampaignModal({ contactLists, phoneNumbers, onClose, onCampaignCr
                       <p className="text-sm text-[#5C5A55] whitespace-pre-wrap">{formData.message || '—'}</p>
                     </div>
                   </div>
+
+                  {/* ─── Campaign cost (1 credit / SMS → dollars) ─── */}
+                  {recipientCount > 0 && (() => {
+                    const credits = recipientCount * 1   // 1 credit per SMS
+                    const plan = PLAN_OVERAGE[subscription?.plan_name] || DEFAULT_OVERAGE
+                    const balance = Number(creditBalance || 0)
+                    const overageCredits = Math.max(0, credits - balance)
+                    const overageDollars = overageCredits * plan.rate
+                    const leftAfter = Math.max(0, balance - credits)
+                    const usd = (n) => `$${n.toFixed(2)}`
+                    return (
+                      <div className="bg-[#131210] text-white rounded-lg p-4 mb-4">
+                        <div className="flex items-end justify-between gap-3 flex-wrap">
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wider text-white/50 font-semibold mb-1">Campaign cost</p>
+                            <p className="text-2xl font-semibold leading-none">
+                              {credits.toLocaleString()} <span className="text-base font-normal text-white/60">credits</span>
+                            </p>
+                            <p className="text-[11px] text-white/50 mt-1">{recipientCount.toLocaleString()} message{recipientCount === 1 ? '' : 's'} × 1 credit</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-2xl font-semibold leading-none text-[#FF7A5C]">{usd(overageDollars)}</p>
+                            <p className="text-[11px] text-white/50 mt-1">out of pocket</p>
+                          </div>
+                        </div>
+                        <div className="mt-3 pt-3 border-t border-white/10 text-[11px] text-white/70 leading-relaxed">
+                          {overageCredits === 0 ? (
+                            <>Covered by your <strong className="text-white">{balance.toLocaleString()}</strong>-credit balance — <strong className="text-white">{leftAfter.toLocaleString()}</strong> left after this send.</>
+                          ) : (
+                            <>Balance <strong className="text-white">{balance.toLocaleString()}</strong> · <strong className="text-white">{overageCredits.toLocaleString()}</strong> extra credits at the {plan.name} rate (<strong className="text-white">${plan.rate.toFixed(2)}</strong>/credit) = <strong className="text-white">{usd(overageDollars)}</strong>.</>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })()}
 
                   {formData.source === 'monday' && (
                     <div className="mb-4">
