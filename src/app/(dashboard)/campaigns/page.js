@@ -61,6 +61,16 @@ const TIMEZONES = [
   { id: 'America/Los_Angeles', label: 'Pacific (PT)' },
 ]
 
+// RVM costs 2 credits per voicemail. Extra credits beyond a plan's monthly
+// allowance are billed at the plan's overage rate (mirrors billing/page.js).
+const RVM_CREDITS_PER_VM = 2
+const PLAN_OVERAGE = {
+  starter:    { name: 'Starter',    rate: 0.04 },
+  growth:     { name: 'Growth',     rate: 0.03 },
+  enterprise: { name: 'Enterprise', rate: 0.02 },
+}
+const DEFAULT_OVERAGE = { name: 'your plan', rate: 0.04 }   // conservative fallback
+
 // ISO weekday (1=Mon..7=Sun) helpers for business-day display.
 const WEEKDAY_LABELS = { 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat', 7: 'Sun' }
 const hhmm = (t) => String(t || '').slice(0, 5)   // "09:00:00" → "09:00"
@@ -84,6 +94,7 @@ export default function CampaignsPage() {
   const [errorModal, setErrorModal] = useState(null)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [subscription, setSubscription] = useState(null)
+  const [creditBalance, setCreditBalance] = useState(0)
   const [showTrialUpsell, setShowTrialUpsell] = useState(false)
 
   const [searchTerm, setSearchTerm] = useState('')
@@ -179,6 +190,7 @@ export default function CampaignsPage() {
         if (contactListData.success) setContactLists(contactListData.contactLists || [])
         if (phoneNumberData.success) setPhoneNumbers(phoneNumberData.phoneNumbers || [])
         if (subData.subscription) setSubscription(subData.subscription)
+        if (typeof subData.credits === 'number') setCreditBalance(subData.credits)
       } catch (error) {
         console.error('Error fetching data:', error)
       }
@@ -752,6 +764,8 @@ export default function CampaignsPage() {
         <CreateRVMCampaignModal
           contactLists={contactLists}
           phoneNumbers={phoneNumbers}
+          subscription={subscription}
+          creditBalance={creditBalance}
           onClose={() => setShowCreateRVM(false)}
           onCreated={() => { setShowCreateRVM(false); fetchRVMCampaigns() }}
         />
@@ -1734,7 +1748,7 @@ function ViewCampaignModal({ campaign, contactLists, phoneNumbers, isTrial, onCl
   )
 }
 
-function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated }) {
+function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, creditBalance = 0, onClose, onCreated }) {
   // Step 1 (Basics): name, sender, audio
   // Step 2 (Audience): contact lists + phone columns
   // Step 3 (Chunks & Preview): chunk size + chunk picker + recipient sample
@@ -1925,6 +1939,33 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
   const recStreamRef = useRef(null)
   const pcmChunksRef = useRef([])
   const recSampleRateRef = useRef(44100)
+  const analyserRef = useRef(null)
+  const rafRef = useRef(null)
+  const canvasRef = useRef(null)
+
+  // Live waveform — animated bars that react to mic volume so you can SEE it's
+  // picking up your voice.
+  const drawVisualizer = () => {
+    rafRef.current = requestAnimationFrame(drawVisualizer)
+    const analyser = analyserRef.current
+    const canvas = canvasRef.current
+    if (!analyser || !canvas) return
+    const ctx = canvas.getContext('2d')
+    const w = canvas.width, h = canvas.height
+    const bins = analyser.frequencyBinCount
+    const data = new Uint8Array(bins)
+    analyser.getByteFrequencyData(data)
+    ctx.clearRect(0, 0, w, h)
+    const bars = 48
+    const step = Math.max(1, Math.floor(bins / bars))
+    const barW = w / bars
+    for (let i = 0; i < bars; i++) {
+      const v = (data[i * step] || 0) / 255
+      const bh = Math.max(2, v * h)
+      ctx.fillStyle = '#D63B1F'
+      ctx.fillRect(i * barW + barW * 0.25, (h - bh) / 2, barW * 0.5, bh)
+    }
+  }
 
   const startRecording = async () => {
     try {
@@ -1942,13 +1983,22 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
       proc.onaudioprocess = (e) => { pcmChunksRef.current.push(new Float32Array(e.inputBuffer.getChannelData(0))) }
       source.connect(proc)
       proc.connect(ctx.destination)
+      // Tap the same signal for the live waveform.
+      const analyser = ctx.createAnalyser()
+      analyser.fftSize = 256
+      analyser.smoothingTimeConstant = 0.7
+      source.connect(analyser)
+      analyserRef.current = analyser
       setErrors(prev => ({ ...prev, audio: null }))
       setRecording('recording')
+      rafRef.current = requestAnimationFrame(drawVisualizer)
     } catch {
       setErrors(prev => ({ ...prev, audio: 'Could not access the microphone — check browser permissions.' }))
     }
   }
   const stopRecording = () => {
+    if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
+    analyserRef.current = null
     try { if (procRef.current) procRef.current.onaudioprocess = null; sourceRef.current?.disconnect(); procRef.current?.disconnect() } catch {}
     recStreamRef.current?.getTracks().forEach(t => t.stop())
     const chunks = pcmChunksRef.current
@@ -1970,6 +2020,12 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
     discardRecording()
     await uploadAudioFile(file, 'Live recording')
   }
+  // Safety: if the modal closes mid-recording, release the mic + stop the loop.
+  useEffect(() => () => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current)
+    recStreamRef.current?.getTracks().forEach(t => t.stop())
+    try { audioCtxRef.current?.close() } catch {}
+  }, [])
 
   // ── Preview fetch (debounced) ──────────────────────────────────────────
   // Step 2: discovers columns (call WITHOUT chunkSize/columns)
@@ -2241,12 +2297,13 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
                   </div>
                 )}
 
-                {/* Recording in progress */}
+                {/* Recording in progress — live waveform reacts to your voice */}
                 {recording === 'recording' && (
                   <div className="flex items-center gap-3 px-4 py-3 border border-[#D63B1F] rounded-lg bg-[#FFF8F6]">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#D63B1F] animate-pulse" />
-                    <span className="text-sm text-[#131210] flex-1">Recording…</span>
-                    <button type="button" onClick={stopRecording} className="px-3 py-1.5 text-sm font-medium text-white bg-[#D63B1F] rounded-md hover:bg-[#c4351b]">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#D63B1F] animate-pulse flex-shrink-0" />
+                    <span className="text-sm text-[#131210] flex-shrink-0">Recording…</span>
+                    <canvas ref={canvasRef} width={480} height={36} className="flex-1 min-w-0 h-9" />
+                    <button type="button" onClick={stopRecording} className="flex-shrink-0 px-3 py-1.5 text-sm font-medium text-white bg-[#D63B1F] rounded-md hover:bg-[#c4351b]">
                       <i className="fas fa-stop mr-1.5 text-[11px]" /> Stop
                     </button>
                   </div>
@@ -2696,6 +2753,42 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
                     </p>
                   </div>
                 )}
+
+                {/* ─── Campaign cost (credits → dollars) ─── */}
+                {selectedRecipients.length > 0 && (() => {
+                  const vmCount = selectedRecipients.length
+                  const credits = vmCount * RVM_CREDITS_PER_VM
+                  const plan = PLAN_OVERAGE[subscription?.plan_name] || DEFAULT_OVERAGE
+                  const balance = Number(creditBalance || 0)
+                  const overageCredits = Math.max(0, credits - balance)
+                  const overageDollars = overageCredits * plan.rate
+                  const leftAfter = Math.max(0, balance - credits)
+                  const usd = (n) => `$${n.toFixed(2)}`
+                  return (
+                    <div className="bg-[#131210] text-white rounded-lg p-4">
+                      <div className="flex items-end justify-between gap-3 flex-wrap">
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wider text-white/50 font-semibold mb-1">Campaign cost</p>
+                          <p className="text-2xl font-semibold leading-none">
+                            {credits.toLocaleString()} <span className="text-base font-normal text-white/60">credits</span>
+                          </p>
+                          <p className="text-[11px] text-white/50 mt-1">{vmCount.toLocaleString()} voicemail{vmCount === 1 ? '' : 's'} × {RVM_CREDITS_PER_VM} credits</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-2xl font-semibold leading-none text-[#FF7A5C]">{usd(overageDollars)}</p>
+                          <p className="text-[11px] text-white/50 mt-1">out of pocket</p>
+                        </div>
+                      </div>
+                      <div className="mt-3 pt-3 border-t border-white/10 text-[11px] text-white/70 leading-relaxed">
+                        {overageCredits === 0 ? (
+                          <>Covered by your <strong className="text-white">{balance.toLocaleString()}</strong>-credit balance — <strong className="text-white">{leftAfter.toLocaleString()}</strong> left after this send.</>
+                        ) : (
+                          <>Balance <strong className="text-white">{balance.toLocaleString()}</strong> · <strong className="text-white">{overageCredits.toLocaleString()}</strong> extra credits at the {plan.name} rate (<strong className="text-white">${plan.rate.toFixed(2)}</strong>/credit) = <strong className="text-white">{usd(overageDollars)}</strong>.</>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })()}
 
                 {/* ─── Landline scrub (Telnyx carrier lookup) ─── */}
                 {selectedRecipients.length > 0 && (() => {
