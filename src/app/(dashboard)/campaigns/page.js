@@ -9,6 +9,22 @@ import { formatInTimeZone, fromZonedTime } from 'date-fns-tz'
 import { estimateSendSchedule } from '@/lib/scheduling'
 import { CONTACT_STATUSES, CONTACT_STATUS_MAP, DEFAULT_EXCLUDED_STATUSES } from '@/lib/contact-status'
 
+// Encode mono Float32 PCM samples into a 16-bit WAV (audio/wav) — the upload
+// route + VoiceDrop accept WAV, but MediaRecorder only gives webm/mp4, so the
+// live recorder captures raw PCM and encodes here.
+function encodeWAV(samples, sampleRate) {
+  const buffer = new ArrayBuffer(44 + samples.length * 2)
+  const view = new DataView(buffer)
+  const writeStr = (off, s) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)) }
+  writeStr(0, 'RIFF'); view.setUint32(4, 36 + samples.length * 2, true); writeStr(8, 'WAVE')
+  writeStr(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true)
+  view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true)
+  writeStr(36, 'data'); view.setUint32(40, samples.length * 2, true)
+  let off = 44
+  for (let i = 0; i < samples.length; i++) { const s = Math.max(-1, Math.min(1, samples[i])); view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true); off += 2 }
+  return view
+}
+
 // Friendly "how long" from a millisecond span: "about 2 min", "about 3 hours".
 function humanizeSpan(ms) {
   const mins = ms / 60000
@@ -25,10 +41,10 @@ function humanizeSpan(ms) {
 // the "spacing/interval" guidance. `callbacks` is shown to help users pick by
 // the inbound load their team can handle; `window: null` (Enterprise) = no throttle.
 const THROTTLE_PRESETS = [
-  { id: 'solo',  team: 'Solo Entrepreneur',         volume: '20–30 / hr',   callbacks: '1–2 callbacks / hr',   count: 1,    window: 150  }, // 1 every 2.5 min ≈ 24/hr
-  { id: 'small', team: 'Small Team (2–3 agents)',   volume: '100 / hr',     callbacks: '5–8 callbacks / hr',   count: 25,   window: 900  }, // 25 every 15 min
-  { id: 'mid',   team: 'Mid-Sized Team (5+ agents)', volume: '200–250 / hr', callbacks: '12–20 callbacks / hr', count: 50,   window: 900  }, // 50 every 15 min
-  { id: 'ent',   team: 'Enterprise / AI Agent',     volume: '500+ / hr',    callbacks: 'Uncapped',             count: null, window: null }, // continuous (no throttle)
+  { id: 'solo',  team: 'Solo Entrepreneur',         volume: '20–30',   callbacks: '1–2 callbacks / hr',   count: 1,    window: 150  }, // 1 every 2.5 min ≈ 24/hr
+  { id: 'small', team: 'Small Team (2–3 agents)',   volume: '100',     callbacks: '5–8 callbacks / hr',   count: 25,   window: 900  }, // 25 every 15 min
+  { id: 'mid',   team: 'Mid-Sized Team (5+ agents)', volume: '200–250', callbacks: '12–20 callbacks / hr', count: 50,   window: 900  }, // 50 every 15 min
+  { id: 'ent',   team: 'Enterprise / AI Agent',     volume: '500+',    callbacks: 'Uncapped',             count: null, window: null }, // continuous (no throttle)
 ]
 
 // Calling-window schedule presets. Voicemails only send during these local
@@ -1858,20 +1874,22 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
     setSelectedColumns(prev => prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k])
   }
 
-  // ── Audio upload (unchanged from legacy modal) ─────────────────────────
-  const handleFileChange = async (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  // ── Audio upload (cancelable) ──────────────────────────────────────────
+  const uploadAbortRef = useRef(null)
+  const uploadAudioFile = async (file, displayName) => {
     setUploadState('uploading')
     setErrors(prev => ({ ...prev, audio: null }))
     const form = new FormData()
-    form.append('file', file)
+    form.append('file', file, file.name)
+    const controller = new AbortController()
+    uploadAbortRef.current = controller
     try {
       const user = getCurrentUser()
       const res = await fetch('/api/voicemail-campaigns/upload-audio', {
         method: 'POST',
         headers: { 'x-workspace-id': user?.workspaceId, 'x-user-id': user?.userId },
         body: form,
+        signal: controller.signal,
       })
       const data = await res.json()
       if (!res.ok || !data.success) {
@@ -1879,11 +1897,78 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
         setUploadState(null)
         return
       }
-      setUploadState({ url: data.url, voicedropUrl: data.voicedrop_url, path: data.path, name: file.name })
-    } catch {
+      setUploadState({ url: data.url, voicedropUrl: data.voicedrop_url, path: data.path, name: displayName || file.name })
+    } catch (err) {
+      if (err?.name === 'AbortError') { setUploadState(null); return }   // cancelled
       setErrors(prev => ({ ...prev, audio: 'Upload failed. Please try again.' }))
       setUploadState(null)
+    } finally {
+      uploadAbortRef.current = null
     }
+  }
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0]
+    if (file) uploadAudioFile(file, file.name)
+  }
+  const cancelUpload = () => {
+    uploadAbortRef.current?.abort()
+    setUploadState(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  // ── Live audio recording (captures PCM → WAV so VoiceDrop accepts it) ───
+  // recording: null | 'recording' | { blob, url, seconds }
+  const [recording, setRecording] = useState(null)
+  const audioCtxRef = useRef(null)
+  const procRef = useRef(null)
+  const sourceRef = useRef(null)
+  const recStreamRef = useRef(null)
+  const pcmChunksRef = useRef([])
+  const recSampleRateRef = useRef(44100)
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      recStreamRef.current = stream
+      const Ctx = window.AudioContext || window.webkitAudioContext
+      const ctx = new Ctx()
+      audioCtxRef.current = ctx
+      recSampleRateRef.current = ctx.sampleRate
+      const source = ctx.createMediaStreamSource(stream)
+      sourceRef.current = source
+      const proc = ctx.createScriptProcessor(4096, 1, 1)
+      procRef.current = proc
+      pcmChunksRef.current = []
+      proc.onaudioprocess = (e) => { pcmChunksRef.current.push(new Float32Array(e.inputBuffer.getChannelData(0))) }
+      source.connect(proc)
+      proc.connect(ctx.destination)
+      setErrors(prev => ({ ...prev, audio: null }))
+      setRecording('recording')
+    } catch {
+      setErrors(prev => ({ ...prev, audio: 'Could not access the microphone — check browser permissions.' }))
+    }
+  }
+  const stopRecording = () => {
+    try { if (procRef.current) procRef.current.onaudioprocess = null; sourceRef.current?.disconnect(); procRef.current?.disconnect() } catch {}
+    recStreamRef.current?.getTracks().forEach(t => t.stop())
+    const chunks = pcmChunksRef.current
+    let len = 0; for (const c of chunks) len += c.length
+    const pcm = new Float32Array(len); let off = 0
+    for (const c of chunks) { pcm.set(c, off); off += c.length }
+    const sr = recSampleRateRef.current
+    const blob = new Blob([encodeWAV(pcm, sr)], { type: 'audio/wav' })
+    setRecording({ blob, url: URL.createObjectURL(blob), seconds: Math.max(1, Math.round(len / sr)) })
+    try { audioCtxRef.current?.close() } catch {}
+  }
+  const discardRecording = () => {
+    if (recording && recording.url) URL.revokeObjectURL(recording.url)
+    setRecording(null)
+  }
+  const useRecording = async () => {
+    if (!recording || !recording.blob) return
+    const file = new File([recording.blob], `recording-${recording.seconds}s.wav`, { type: 'audio/wav' })
+    discardRecording()
+    await uploadAudioFile(file, 'Live recording')
   }
 
   // ── Preview fetch (debounced) ──────────────────────────────────────────
@@ -2135,18 +2220,65 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
               <div>
                 <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Voicemail audio</label>
                 <input ref={fileInputRef} type="file" accept="audio/*" onChange={handleFileChange} className="hidden" />
-                {!uploadState && (
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-full px-4 py-6 border-2 border-dashed border-[#D4D1C9] rounded-lg text-sm text-[#5C5A55] hover:border-[#D63B1F] hover:bg-[#FFF8F6]"
-                  >
-                    <i className="fas fa-cloud-upload-alt mr-2" /> Click to upload an MP3
-                  </button>
+
+                {/* Idle: upload OR record */}
+                {!uploadState && !recording && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-4 py-6 border-2 border-dashed border-[#D4D1C9] rounded-lg text-sm text-[#5C5A55] hover:border-[#D63B1F] hover:bg-[#FFF8F6]"
+                    >
+                      <i className="fas fa-cloud-upload-alt mr-2" /> Upload audio
+                    </button>
+                    <button
+                      type="button"
+                      onClick={startRecording}
+                      className="px-4 py-6 border-2 border-dashed border-[#D4D1C9] rounded-lg text-sm text-[#5C5A55] hover:border-[#D63B1F] hover:bg-[#FFF8F6]"
+                    >
+                      <i className="fas fa-microphone mr-2 text-[#D63B1F]" /> Record now
+                    </button>
+                  </div>
                 )}
+
+                {/* Recording in progress */}
+                {recording === 'recording' && (
+                  <div className="flex items-center gap-3 px-4 py-3 border border-[#D63B1F] rounded-lg bg-[#FFF8F6]">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#D63B1F] animate-pulse" />
+                    <span className="text-sm text-[#131210] flex-1">Recording…</span>
+                    <button type="button" onClick={stopRecording} className="px-3 py-1.5 text-sm font-medium text-white bg-[#D63B1F] rounded-md hover:bg-[#c4351b]">
+                      <i className="fas fa-stop mr-1.5 text-[11px]" /> Stop
+                    </button>
+                  </div>
+                )}
+
+                {/* Recorded — preview, then use or re-record */}
+                {recording && recording !== 'recording' && (
+                  <div className="px-4 py-3 border border-[#E3E1DB] rounded-lg bg-[#F7F6F3] space-y-2.5">
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs text-[#5C5A55] flex-1">Your recording ({recording.seconds}s) — listen back:</p>
+                    </div>
+                    <audio controls src={recording.url} className="w-full" style={{ height: 34 }} />
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={useRecording} className="px-3 py-1.5 text-sm font-medium text-white bg-[#D63B1F] rounded-md hover:bg-[#c4351b]">
+                        <i className="fas fa-check mr-1.5 text-[11px]" /> Use this recording
+                      </button>
+                      <button type="button" onClick={() => { discardRecording(); startRecording() }} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-white">
+                        <i className="fas fa-rotate-left mr-1.5 text-[11px]" /> Re-record
+                      </button>
+                      <button type="button" onClick={discardRecording} className="px-3 py-1.5 text-sm text-[#9B9890] hover:text-[#5C5A55]">Discard</button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Uploading — with cancel */}
                 {uploadState === 'uploading' && (
-                  <div className="px-4 py-3 border border-[#D4D1C9] rounded-lg text-sm text-[#5C5A55]">
-                    <i className="fas fa-spinner fa-spin mr-2" /> Uploading…
+                  <div className="flex items-center gap-3 px-4 py-3 border border-[#D4D1C9] rounded-lg text-sm text-[#5C5A55]">
+                    <i className="fas fa-spinner fa-spin" />
+                    <span className="flex-1">Uploading…</span>
+                    <button type="button" onClick={cancelUpload} className="px-2.5 py-1 text-xs font-medium text-[#D63B1F] border border-[#D63B1F] rounded hover:bg-[#FFF8F6]">
+                      <i className="fas fa-times mr-1" /> Cancel
+                    </button>
                   </div>
                 )}
                 {uploadState && uploadState !== 'uploading' && (
@@ -2207,7 +2339,10 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, onClose, onCreated
                             <p className="text-sm font-medium text-[#131210]">{p.team}</p>
                             <p className="text-[11px] text-[#9B9890]">{p.callbacks}</p>
                           </div>
-                          <div className="text-sm text-[#5C5A55] text-right flex-shrink-0">{p.volume}</div>
+                          <div className="text-right flex-shrink-0">
+                            <span className="text-sm font-medium text-[#131210]">{p.volume}</span>
+                            <span className="block text-[10px] text-[#9B9890]">voicemails / hour</span>
+                          </div>
                         </label>
                       )
                     })}
