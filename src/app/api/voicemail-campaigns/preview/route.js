@@ -19,6 +19,7 @@ import { getWorkspaceFromRequest } from '@/lib/session-helper'
 import {
   detectPhoneColumns, buildRecipients, chunkRecipients,
 } from '@/lib/phone-columns'
+import { fetchAllContacts } from '@/lib/contacts-fetch'
 
 const MAX_RECIPIENTS  = 100_000   // safety cap on contacts pulled from DB
 // When a chunk is selected, return the full chunk's recipient list so the
@@ -50,15 +51,16 @@ export async function POST(request) {
 
   // Pull every contact in the selected lists. We need custom_fields for the
   // column scan, plus identifying fields for the preview table.
-  const { data: contacts, error } = await supabaseAdmin
-    .from('contacts')
-    .select('id, first_name, last_name, business_name, phone_number, custom_fields, status')
-    .eq('workspace_id', workspace.workspaceId)
-    .in('contact_list_id', contactListIds)
-    .order('created_at', { ascending: true })
-    .limit(MAX_RECIPIENTS)
-
-  if (error) {
+  // Page past PostgREST's 1000-row cap so big lists (15k+) preview fully.
+  let contacts
+  try {
+    contacts = await fetchAllContacts({
+      workspaceId: workspace.workspaceId,
+      contactListIds,
+      columns: 'id, first_name, last_name, business_name, phone_number, custom_fields, status',
+      max: MAX_RECIPIENTS,
+    })
+  } catch (error) {
     console.error('[voicemail/preview] contacts query error:', error)
     return NextResponse.json({ error: 'Failed to load contacts' }, { status: 500 })
   }

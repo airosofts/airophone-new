@@ -29,40 +29,52 @@ export async function GET(request) {
     const contactListId = searchParams.get('contact_list_id')
     const q = searchParams.get('q')
 
-    let query = supabaseAdmin
-      .from('contacts')
-      .select(`
-        *,
-        contact_lists(id, name)
-      `)
-      .eq('workspace_id', workspace.workspaceId)
-      .order('created_at', { ascending: false })
-      // PostgREST defaults to 1000 rows — workspaces with bigger contact
-      // imports were getting silently truncated. Raise to 50k.
-      .range(0, 49999)
-
-    if (contactListId) {
-      query = query.eq('contact_list_id', contactListId)
-    }
-
+    // Search: small, capped result — a single query is fine.
     if (q) {
-      query = query.or(`business_name.ilike.%${q}%,phone_number.ilike.%${q}%,first_name.ilike.%${q}%,last_name.ilike.%${q}%`)
-      query = query.limit(10)
+      let sq = supabaseAdmin
+        .from('contacts')
+        .select(`*, contact_lists(id, name)`)
+        .eq('workspace_id', workspace.workspaceId)
+        .or(`business_name.ilike.%${q}%,phone_number.ilike.%${q}%,first_name.ilike.%${q}%,last_name.ilike.%${q}%`)
+        .limit(10)
+      if (contactListId) sq = sq.eq('contact_list_id', contactListId)
+      const { data, error } = await sq
+      if (error) {
+        console.error('Database error fetching contacts:', error)
+        return NextResponse.json({ error: 'Failed to fetch contacts', details: error.message }, { status: 500 })
+      }
+      return NextResponse.json({ success: true, contacts: data || [] })
     }
 
-    const { data: contacts, error } = await query
-
-    if (error) {
-      console.error('Database error fetching contacts:', error)
-      return NextResponse.json(
-        { error: 'Failed to fetch contacts', details: error.message },
-        { status: 500 }
-      )
+    // Full list: PostgREST hard-caps EVERY response at 1000 rows (even with
+    // .range), so a 15k-contact list was silently truncated to 1,000. Page
+    // through in 1000-row chunks to return the whole list.
+    const PAGE = 1000
+    const MAX = 50000   // safety ceiling (≈ largest realistic list)
+    const contacts = []
+    for (let from = 0; from < MAX; from += PAGE) {
+      let pq = supabaseAdmin
+        .from('contacts')
+        .select(`*, contact_lists(id, name)`)
+        .eq('workspace_id', workspace.workspaceId)
+        .order('created_at', { ascending: false })
+        .range(from, from + PAGE - 1)
+      if (contactListId) pq = pq.eq('contact_list_id', contactListId)
+      const { data, error } = await pq
+      if (error) {
+        console.error('Database error fetching contacts:', error)
+        return NextResponse.json(
+          { error: 'Failed to fetch contacts', details: error.message },
+          { status: 500 }
+        )
+      }
+      contacts.push(...(data || []))
+      if (!data || data.length < PAGE) break   // last page reached
     }
 
     return NextResponse.json({
       success: true,
-      contacts: contacts || []
+      contacts
     })
 
   } catch (error) {

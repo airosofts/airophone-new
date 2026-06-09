@@ -185,13 +185,15 @@ export async function POST(request) {
         source_column: r.sourceColumn || 'phone_number',
         status: 'queued',
       }))
-    if (queueRows.length > 0) {
+    // Insert in 1000-row batches (a 15k-row upsert can exceed request limits).
+    for (let i = 0; i < queueRows.length; i += 1000) {
       const { error: enqErr } = await supabaseAdmin
         .from('voicemail_campaign_sends')
-        .upsert(queueRows, { onConflict: 'campaign_id,phone', ignoreDuplicates: true })
+        .upsert(queueRows.slice(i, i + 1000), { onConflict: 'campaign_id,phone', ignoreDuplicates: true })
       if (enqErr) {
         console.error('[voicemail-campaigns:POST] explicit enqueue failed:', enqErr)
-        // Don't fail the create — /start can still fall back to chunk-slice.
+        // Don't fail the create — /start can still fall back to the list rebuild.
+        break
       }
     }
   }

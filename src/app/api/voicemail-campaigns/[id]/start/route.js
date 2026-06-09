@@ -9,6 +9,7 @@ import { normalizePhoneNumber } from '@/lib/phone-utils'
 import { getWorkspaceMessageRate } from '@/lib/pricing'
 import { sendStaticVoicemail } from '@/lib/voicedrop'
 import { buildRecipients } from '@/lib/phone-columns'
+import { fetchAllContacts } from '@/lib/contacts-fetch'
 import { drainCampaignInline } from '@/lib/rvm-queue'
 
 // 2 credits per RVM send (matches AI-reply cost).
@@ -57,13 +58,18 @@ export async function POST(request, { params }) {
     return NextResponse.json({ error: 'Campaign is already running or completed' }, { status: 409 })
   }
 
-  // Pull contacts from the selected lists, deduped by normalized phone
-  const { data: rawContactsAll } = await supabaseAdmin
-    .from('contacts')
-    .select('id, phone_number, custom_fields, status')
-    .eq('workspace_id', workspace.workspaceId)
-    .in('contact_list_id', campaign.contact_list_ids)
-    .order('created_at', { ascending: true })
+  // Pull contacts from the selected lists, deduped by normalized phone.
+  // Pages past PostgREST's 1000-row cap (a 15k list was only enqueuing 1,000).
+  let rawContactsAll = []
+  try {
+    rawContactsAll = await fetchAllContacts({
+      workspaceId: workspace.workspaceId,
+      contactListIds: campaign.contact_list_ids,
+      columns: 'id, phone_number, custom_fields, status',
+    })
+  } catch (e) {
+    console.error('[voicemail-campaigns:start] contact fetch failed:', e.message)
+  }
 
   // Honor the campaign's excluded statuses (e.g. do_not_call) on this rebuild
   // path too, so it matches what the wizard's audience filter showed.
@@ -183,15 +189,18 @@ export async function POST(request, { params }) {
       source_column: c.sourceColumn || 'phone_number',
       status: 'queued',
     }))
-    const { error: enqErr } = await supabaseAdmin
-      .from('voicemail_campaign_sends')
-      .upsert(queueRows, { onConflict: 'campaign_id,phone', ignoreDuplicates: true })
-    if (enqErr) {
-      console.error('[voicemail-campaigns:start] enqueue failed:', enqErr)
-      await supabaseAdmin.from('voicemail_campaigns')
-        .update({ status: 'draft', started_at: null })
-        .eq('id', campaignId)
-      return NextResponse.json({ error: 'Failed to enqueue sends' }, { status: 500 })
+    // Insert in 1000-row batches — a single 15k-row upsert can blow request limits.
+    for (let i = 0; i < queueRows.length; i += 1000) {
+      const { error: enqErr } = await supabaseAdmin
+        .from('voicemail_campaign_sends')
+        .upsert(queueRows.slice(i, i + 1000), { onConflict: 'campaign_id,phone', ignoreDuplicates: true })
+      if (enqErr) {
+        console.error('[voicemail-campaigns:start] enqueue failed:', enqErr)
+        await supabaseAdmin.from('voicemail_campaigns')
+          .update({ status: 'draft', started_at: null })
+          .eq('id', campaignId)
+        return NextResponse.json({ error: 'Failed to enqueue sends' }, { status: 500 })
+      }
     }
   }
 

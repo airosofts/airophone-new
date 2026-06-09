@@ -7,6 +7,7 @@ import { normalizePhoneNumber } from '@/lib/phone-utils'
 import { getUserFromRequest, getWorkspaceFromRequest } from '@/lib/session-helper'
 import { getWorkspaceMessageRate, calculateMessageCost } from '@/lib/pricing'
 import { listAllItems, extractPhone, columnTitleToPlaceholder, listColumns } from '@/lib/monday'
+import { fetchAllContacts } from '@/lib/contacts-fetch'
 
 export async function POST(request, { params }) {
   try {
@@ -122,14 +123,16 @@ export async function POST(request, { params }) {
         })
       }
     } else {
-      // Get contacts from selected lists (workspace-filtered)
-      const { data: rawContacts, error: contactsError } = await supabaseAdmin
-        .from('contacts')
-        .select('*')
-        .eq('workspace_id', workspace.workspaceId)
-        .in('contact_list_id', campaign.contact_list_ids)
-
-      if (contactsError) {
+      // Get ALL contacts from selected lists — page past PostgREST's 1000-row
+      // cap so a 15k list isn't silently truncated to 1,000 recipients.
+      let rawContacts = []
+      try {
+        rawContacts = await fetchAllContacts({
+          workspaceId: workspace.workspaceId,
+          contactListIds: campaign.contact_list_ids,
+          columns: '*',
+        })
+      } catch (contactsError) {
         console.error('Error fetching contacts:', contactsError)
         return NextResponse.json(
           { error: 'Failed to fetch contacts' },
