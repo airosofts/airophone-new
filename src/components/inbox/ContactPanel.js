@@ -279,29 +279,29 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user, on
         )}
       </div>
 
-      {/* ── AI Scenario (only show if a scenario is assigned) ── */}
-      {assignedScenario && (
-        <div className="px-5 py-3 border-b border-[#E3E1DB] flex items-center justify-between">
-          <div className="flex items-center gap-2 min-w-0">
-            <Icon type="ai" className="w-4 h-4 text-[#9B9890] flex-shrink-0" />
-            <span className="text-sm text-[#9B9890] truncate">
-              {assignedScenario.name}
-            </span>
-          </div>
-          <button
-            onClick={handleToggleAi}
-            disabled={togglingAi}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 ml-2 transition-colors ${
-              aiPaused
-                ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
-                : 'bg-green-100 text-green-700 hover:bg-green-200'
-            } ${togglingAi ? 'opacity-50 cursor-not-allowed' : ''}`}
-          >
-            <span className={`w-1.5 h-1.5 rounded-full ${aiPaused ? 'bg-amber-500' : 'bg-green-500'}`} />
-            {aiPaused ? 'Paused' : 'Active'}
-          </button>
+      {/* ── AI auto-reply control — always available so an agent can pause the
+             AI for this contact, however the scenario was matched ── */}
+      <div className="px-5 py-3 border-b border-[#E3E1DB] flex items-center justify-between">
+        <div className="flex items-center gap-2 min-w-0">
+          <Icon type="ai" className="w-4 h-4 text-[#9B9890] flex-shrink-0" />
+          <span className="text-sm text-[#9B9890] truncate">
+            {assignedScenario ? assignedScenario.name : 'AI auto-reply'}
+          </span>
         </div>
-      )}
+        <button
+          onClick={handleToggleAi}
+          disabled={togglingAi}
+          title={aiPaused ? 'AI is paused for this contact — tap to let the AI reply again' : 'AI is replying to this contact — tap to pause and take over'}
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 ml-2 transition-colors ${
+            aiPaused
+              ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+              : 'bg-green-100 text-green-700 hover:bg-green-200'
+          } ${togglingAi ? 'opacity-50 cursor-not-allowed' : ''}`}
+        >
+          <span className={`w-1.5 h-1.5 rounded-full ${aiPaused ? 'bg-amber-500' : 'bg-green-500'}`} />
+          {aiPaused ? 'AI paused' : 'AI active'}
+        </button>
+      </div>
 
       {/* ── Contact Fields ── */}
       <div className="px-5 py-3">
