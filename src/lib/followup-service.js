@@ -230,6 +230,11 @@ export async function processScheduledFollowups() {
 
     console.log(`Found ${dueFollowups.length} conversations due for follow-up`)
 
+    // Lines with AI auto-reply switched off — suppress their follow-ups too.
+    const { data: offLines } = await supabaseAdmin
+      .from('phone_numbers').select('phone_number').eq('ai_enabled', false)
+    const aiOffLines = new Set((offLines || []).map(p => p.phone_number?.replace(/\D/g, '').slice(-10)).filter(Boolean))
+
     let processed = 0
     let skipped = 0
 
@@ -237,6 +242,14 @@ export async function processScheduledFollowups() {
       // Skip if manual override is active
       if (followupState.conversations?.manual_override) {
         console.log(`Skipping conversation ${followupState.conversation_id} - manual override active`)
+        skipped++
+        continue
+      }
+
+      // Skip if the sending line has AI turned off.
+      const fromDigits = followupState.conversations?.from_number?.replace(/\D/g, '').slice(-10)
+      if (fromDigits && aiOffLines.has(fromDigits)) {
+        console.log(`Skipping conversation ${followupState.conversation_id} - line AI disabled`)
         skipped++
         continue
       }

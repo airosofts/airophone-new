@@ -281,6 +281,22 @@ async function handleIncomingMessage(event) {
     if (scenario) {
       console.log(`Found matching scenario: ${scenario.name} (ID: ${scenario.id})`)
 
+      // Per-LINE AI switch — if auto-reply is turned off for this number, a human
+      // is handling the whole line; never auto-respond.
+      const ourDigits = normalizePhoneNumber(toNumber)?.replace(/\D/g, '').slice(-10)
+      if (ourDigits) {
+        const { data: lineRow } = await supabaseAdmin
+          .from('phone_numbers')
+          .select('ai_enabled')
+          .like('phone_number', `%${ourDigits}`)
+          .limit(1)
+          .maybeSingle()
+        if (lineRow && lineRow.ai_enabled === false) {
+          console.log(`AI disabled for line ${normalizePhoneNumber(toNumber)} - skipping AI response`)
+          return
+        }
+      }
+
       // Skip if manual override is active
       if (conversation.manual_override) {
         console.log(`Manual override active for conversation ${conversation.id} - skipping AI response`)

@@ -1856,7 +1856,8 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
         : SCHEDULE_PRESETS.business)
     : null   // 'now' / 'later' → anytime
   const resolvedSendDays =
-    whenMode === 'business' && Array.isArray(businessHours?.days) && businessHours.days.length > 0 && businessHours.days.length < 7
+    whenMode === 'best'   ? [1, 2, 3, 4, 5]   // Best calling windows = weekdays only (no Sat/Sun)
+    : whenMode === 'business' && Array.isArray(businessHours?.days) && businessHours.days.length > 0 && businessHours.days.length < 7
       ? [...businessHours.days].sort((a, b) => a - b)
       : null
   // "Business hours" dictates its own timezone (from Settings); other modes use
@@ -2517,7 +2518,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
                   {[
                     { id: 'now',      label: 'Send now',            hint: 'Starts now, around the clock' },
                     { id: 'later',    label: 'Schedule for later',  hint: 'Starts at a date & time you pick' },
-                    { id: 'best',     label: 'Best calling windows', hint: 'Only 10–12 & 2–4 each day' },
+                    { id: 'best',     label: 'Best calling windows', hint: 'Mon–Fri, 10–12 & 2–4 only' },
                     { id: 'business', label: 'Business hours',       hint: businessHours ? `${hhmm(businessHours.start)}–${hhmm(businessHours.end)}, ${formatDays(businessHours.days)}` : 'From your settings' },
                   ].map(m => {
                     const active = whenMode === m.id
@@ -2576,7 +2577,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
                   {whenMode === 'business'
                     ? <>Mirrors your workspace <strong>business hours</strong>: <strong>{resolvedSendWindows.map(w => `${w.start}–${w.end}`).join(' & ')}</strong>, <strong>{formatDays(resolvedSendDays || businessHours?.days)}</strong> ({TIMEZONES.find(t => t.id === resolvedTimezone)?.label || resolvedTimezone}). Change them in Settings → Business hours.</>
                     : whenMode === 'best'
-                    ? <>Only sends during <strong>{SCHEDULE_PRESETS.best.map(w => `${w.start}–${w.end}`).join(' & ')}</strong> each day. Your sending speed paces voicemails within those hours.</>
+                    ? <>Only sends <strong>Mon–Fri</strong> during <strong>{SCHEDULE_PRESETS.best.map(w => `${w.start}–${w.end}`).join(' & ')}</strong> (no weekends). Your sending speed paces voicemails within those hours.</>
                     : whenMode === 'later'
                     ? 'Sends at or after this time — no need to hit an exact minute.'
                     : 'Begins sending as soon as the campaign is created, at your sending speed.'}
@@ -3007,7 +3008,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
             const tzLabel = TIMEZONES.find(t => t.id === resolvedTimezone)?.label || resolvedTimezone
             const scheduleText = whenMode === 'now' ? 'Send now'
               : whenMode === 'later' ? `Scheduled — ${startAtLocal || 'not set'} (${tzLabel})`
-              : whenMode === 'best' ? `Best calling windows — 10–12 & 2–4 (${tzLabel})`
+              : whenMode === 'best' ? `Best calling windows — Mon–Fri, 10–12 & 2–4 (${tzLabel})`
               : `Business hours — ${(resolvedSendWindows || []).map(w => `${w.start}–${w.end}`).join(', ')} (${tzLabel})`
             const speedText = throttleMode === 'recommended' ? `${selectedPreset.team} · ${selectedPreset.volume} voicemails/hr`
               : throttleMode === 'manual' ? `${resolvedThrottleCount} every ${throttleWindowValue} ${throttleUnit}${throttleWindowValue === 1 ? '' : 's'}`

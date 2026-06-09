@@ -58,6 +58,7 @@ export async function GET(request) {
           approval_notified_at: phone.approval_notified_at,
           next_billing_at: phone.next_billing_at,
           voicedrop_verified: phone.voicedrop_verified,
+          ai_enabled: phone.ai_enabled !== false,   // default on
         }))
 
         // Deduplicate by phone number (keep the most recent entry)
@@ -269,7 +270,7 @@ export async function PATCH(request) {
     }
 
     const body = await request.json()
-    const { phoneNumberId, customName, prefix } = body
+    const { phoneNumberId, customName, prefix, aiEnabled } = body
 
     if (!phoneNumberId) {
       return NextResponse.json(
@@ -278,11 +279,12 @@ export async function PATCH(request) {
       )
     }
 
-    console.log('Updating phone number:', phoneNumberId, { customName, prefix })
+    console.log('Updating phone number:', phoneNumberId, { customName, prefix, aiEnabled })
 
     const updateFields = { updated_at: new Date().toISOString() }
     if (customName !== undefined) updateFields.custom_name = customName
     if (prefix !== undefined) updateFields.prefix = prefix
+    if (aiEnabled !== undefined) updateFields.ai_enabled = !!aiEnabled   // per-line AI auto-reply switch
 
     // Update in database — match by id only since workspace is already verified via session
     const { data, error } = await supabaseAdmin
@@ -309,7 +311,8 @@ export async function PATCH(request) {
         id: data.id,
         phoneNumber: data.phone_number,
         custom_name: data.custom_name,
-        prefix: data.prefix
+        prefix: data.prefix,
+        ai_enabled: data.ai_enabled
       },
       timestamp: new Date().toISOString()
     })

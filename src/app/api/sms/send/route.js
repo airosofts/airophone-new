@@ -32,7 +32,10 @@ export async function POST(request) {
     }
 
     const body = await request.json()
-    const { from, to, message, conversationId } = body
+    // `agentReply` is set by the inbox when a HUMAN agent sends a reply — it
+    // auto-pauses the AI for that conversation so the agent can take over.
+    // Automated senders (follow-ups, AI replies) omit it, so they never pause.
+    const { from, to, message, conversationId, agentReply } = body
 
     // Validate required fields
     if (!from || !to || !message) {
@@ -314,11 +317,14 @@ export async function POST(request) {
       console.log(`[sms/send] Deducted $${messageRate} — new balance: ${deductionResult.new_balance}`)
     }
 
-    // Update conversation timestamp
+    // Update conversation timestamp + auto-pause AI on a human agent reply so
+    // the agent and the AI don't talk over each other. The agent can hand back
+    // to the AI with the "Pause AI" toggle in the contact panel.
     await supabaseAdmin
       .from('conversations')
       .update({
-        last_message_at: new Date().toISOString()
+        last_message_at: new Date().toISOString(),
+        ...(agentReply ? { manual_override: true } : {}),
       })
       .eq('id', conversation.id)
 
@@ -326,7 +332,8 @@ export async function POST(request) {
       success: true,
       messageId: result.messageId,
       message: messageRecord,
-      conversation: conversation
+      conversation: conversation,
+      aiPaused: !!agentReply,
     })
 
   } catch (error) {

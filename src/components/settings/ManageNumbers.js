@@ -321,6 +321,29 @@ export default function ManageNumbers() {
     setEditingNumberPrefix('')
   }
 
+  // Per-line AI auto-reply switch. Optimistic toggle, reverts on error.
+  const toggleNumberAi = async (number) => {
+    const next = number.ai_enabled === false   // currently off → turn on, else off
+    setMyNumbers(prev => prev.map(n => n.id === number.id ? { ...n, ai_enabled: next } : n))
+    try {
+      const res = await fetch('/api/phone-numbers', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': user.userId,
+          'x-workspace-id': user.workspaceId,
+          'x-messaging-profile-id': user.messagingProfileId || '',
+        },
+        body: JSON.stringify({ phoneNumberId: number.id, aiEnabled: next }),
+      })
+      const data = await res.json()
+      if (!data.success) throw new Error(data.error || 'Failed')
+    } catch (e) {
+      setMyNumbers(prev => prev.map(n => n.id === number.id ? { ...n, ai_enabled: !next } : n))
+      setShowError({ title: 'Update Failed', message: e.message || 'Could not change AI setting' })
+    }
+  }
+
   const saveCustomName = async (numberId) => {
     try {
       const response = await fetch('/api/phone-numbers', {
@@ -684,6 +707,17 @@ export default function ManageNumbers() {
                           <i className="fas fa-microphone mr-1"></i>Verify for voicemail
                         </button>
                       )
+                    )}
+                    {!isEditing && (
+                      <button
+                        onClick={() => toggleNumberAi(number)}
+                        title={number.ai_enabled === false ? 'AI auto-reply is OFF for this line — a human handles it' : 'AI auto-reply is ON for this line'}
+                        className={`px-2 py-0.5 text-xs rounded-full font-medium border ${number.ai_enabled === false
+                          ? 'border-[#E3E1DB] text-[#9B9890] hover:bg-[#F7F6F3]'
+                          : 'border-transparent bg-[rgba(31,140,74,0.08)] text-[#1F8C4A] hover:bg-[rgba(31,140,74,0.14)]'}`}
+                      >
+                        <i className="fas fa-robot mr-1" />AI {number.ai_enabled === false ? 'off' : 'on'}
+                      </button>
                     )}
                     {isEditing ? (
                       <div className="flex gap-1.5">

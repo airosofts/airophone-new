@@ -130,7 +130,8 @@ export default function ChatWindow({
         to: conversation.phone_number,
         message: messageText,
         conversationId: conversation.id,
-        userId: user.userId
+        userId: user.userId,
+        agentReply: true,   // a human is replying → auto-pause the AI for this chat
       })
 
       const result = await response.json()
@@ -142,6 +143,8 @@ export default function ChatWindow({
       if (result.message) {
         replaceOptimisticMessage(optimisticId, result.message)
       }
+      // Reflect the auto-pause in the panel immediately.
+      if (result.aiPaused) onRefreshConversations?.()
 
       onRefreshConversations()
 
