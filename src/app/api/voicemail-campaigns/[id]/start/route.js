@@ -103,7 +103,10 @@ export async function POST(request, { params }) {
     sourceColumn: r.sourceColumn,
   }))
 
-  // Credit check up front so we fail clean before any sends
+  // Credit gate. We DON'T require the whole campaign up front — that would block
+  // a 15k launch on a 15k balance. Instead, require enough for at least one send
+  // and let it run; the sweeper deducts per send and auto-pauses (resumable
+  // after top-up) the moment credits run out.
   const totalCreditsNeeded = contacts.length * CREDITS_PER_RVM
   const { data: wallet } = await supabaseAdmin
     .from('wallets')
@@ -112,15 +115,16 @@ export async function POST(request, { params }) {
     .single()
 
   const available = Number(wallet?.credits || 0)
-  if (available < totalCreditsNeeded) {
+  if (available < CREDITS_PER_RVM) {
     await supabaseAdmin
       .from('voicemail_campaigns')
       .update({ status: 'draft', started_at: null })
       .eq('id', campaignId)
     return NextResponse.json({
       error: 'Insufficient credits',
-      required: totalCreditsNeeded,
+      required: CREDITS_PER_RVM,
       available,
+      message: `You need at least ${CREDITS_PER_RVM} credits to start. Top up and launch again.`,
     }, { status: 402 })
   }
 

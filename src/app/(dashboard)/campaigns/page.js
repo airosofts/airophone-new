@@ -3259,6 +3259,23 @@ function ViewRVMCampaignModal({ campaign: initialCampaign, contactLists, onClose
         <div className="px-5 py-4 space-y-4 overflow-y-auto flex-1">
           {tab === 'overview' && (
           <>
+          {/* Out-of-credits banner — paused automatically; resume after top-up. */}
+          {campaign.status === 'paused' && campaign.paused_reason === 'insufficient_credits' && (
+            <div className="bg-[#FFF8F6] border border-[rgba(214,59,31,0.3)] rounded-lg p-3.5 flex items-start gap-3">
+              <i className="fas fa-circle-exclamation text-[#D63B1F] mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-[#131210]">Paused — out of credits</p>
+                <p className="text-xs text-[#9B9890] mt-0.5">{remaining.toLocaleString()} recipients are still queued. Top up your wallet, then resume to finish the rest.</p>
+              </div>
+              <button
+                onClick={togglePause}
+                disabled={isTogglingPause}
+                className="flex-shrink-0 px-3 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c4351b] rounded-md disabled:opacity-50"
+              >
+                {isTogglingPause ? 'Resuming…' : 'Resume'}
+              </button>
+            </div>
+          )}
           {/* Live progress — updates every few seconds via polling. */}
           {total > 0 && (
             <div className="bg-[#F7F6F3] border border-[#E3E1DB] rounded-lg p-4">
