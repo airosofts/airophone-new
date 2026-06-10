@@ -118,12 +118,22 @@ export default function CallBubble({ call }) {
         {/* Recording player */}
         {call.recording_url && (
           <div className="mt-3 pt-3 border-t border-[#F0EEE9]">
-            <audio
-              controls
-              src={call.recording_url}
-              className="w-full"
-              style={{ height: 32 }}
-            />
+            <div className="flex items-center gap-2">
+              <audio
+                controls
+                src={call.recording_url}
+                className="flex-1 min-w-0"
+                style={{ height: 32 }}
+              />
+              <a
+                href={call.recording_url}
+                download={`call-${call.id?.slice(0, 8) || 'recording'}.mp3`}
+                title="Download recording"
+                className="shrink-0 w-7 h-7 flex items-center justify-center rounded-md text-[#9B9890] hover:text-[#D63B1F] hover:bg-[rgba(214,59,31,0.07)] transition-colors"
+              >
+                <i className="fas fa-download text-xs"></i>
+              </a>
+            </div>
           </div>
         )}
       </div>

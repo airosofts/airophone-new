@@ -223,7 +223,7 @@ export async function PUT(request) {
       )
     }
 
-    const { first_name, last_name, business_name, phone_number, email, role, custom_fields, city, state, country, status } = body
+    const { first_name, last_name, business_name, phone_number, email, role, custom_fields, city, state, country, address, status } = body
 
     const updateData = {}
     if (first_name !== undefined) updateData.first_name = first_name?.trim() || null
@@ -236,6 +236,7 @@ export async function PUT(request) {
     if (city !== undefined) updateData.city = city?.trim() || null
     if (state !== undefined) updateData.state = state?.trim() || null
     if (country !== undefined) updateData.country = country?.trim() || null
+    if (address !== undefined) updateData.address = address?.trim() || null
     if (status !== undefined) updateData.status = status || null   // call-outcome label; '' / null clears it
 
     const { data, error } = await supabaseAdmin

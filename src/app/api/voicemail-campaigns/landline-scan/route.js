@@ -43,18 +43,16 @@ export async function POST(request) {
   //    scrubbing is allowed to run the wallet negative (the user can top up
   //    later); it's a cheap, high-value hygiene step we never want to stop.
   const cost = uncached.length * CREDITS_PER_LOOKUP
-  const { data: wallet } = await supabaseAdmin
-    .from('wallets').select('id, credits').eq('workspace_id', workspace.workspaceId).single()
-  const available = Number(wallet?.credits || 0)
 
   // 3) Look up the uncached numbers via Telnyx.
   const fresh = uncached.length > 0 ? await lookupManyLineTypes(uncached, { concurrency: 12 }) : new Map()
 
-  // 4) Charge for the new lookups (balance may go negative) + log a transaction.
-  if (uncached.length > 0 && wallet?.id) {
-    await supabaseAdmin.from('wallets')
-      .update({ credits: available - cost, updated_at: new Date().toISOString() })
-      .eq('id', wallet.id)
+  // 4) Charge — ATOMIC (safe under concurrent batches) and allowed to go
+  //    negative. Returns the true new balance.
+  let newBalance = null
+  if (uncached.length > 0) {
+    const { data: nb } = await supabaseAdmin.rpc('deduct_wallet_credits', { p_workspace_id: workspace.workspaceId, p_amount: cost })
+    newBalance = typeof nb === 'number' ? nb : null
     await supabaseAdmin.from('transactions').insert({
       workspace_id: workspace.workspaceId,
       user_id: user.userId,
@@ -72,6 +70,10 @@ export async function POST(request) {
   const byType = { mobile: [], voip: [], landline: [], unknown: [] }
   for (const [phone, lt] of fresh) (byType[lt] || byType.unknown).push(phone)
   for (const [lt, list] of Object.entries(byType)) {
+    // Do NOT cache 'unknown' — a Telnyx hiccup/rate-limit yields 'unknown', and
+    // caching it would permanently hide a real landline. Leaving line_type null
+    // means the next scan re-checks it.
+    if (lt === 'unknown') continue
     for (let i = 0; i < list.length; i += 200) {
       await supabaseAdmin.from('contacts')
         .update({ line_type: lt, line_type_checked_at: now })
@@ -96,6 +98,6 @@ export async function POST(request) {
     newLookups: uncached.length,
     cached: phones.length - uncached.length,
     creditsCharged: cost,
-    balance: Math.max(0, available - cost),
+    balance: newBalance,   // true balance (may be negative)
   })
 }

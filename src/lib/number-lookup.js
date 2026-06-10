@@ -19,17 +19,24 @@ export function classifyLineType(carrierType) {
 export async function lookupLineType(e164) {
   const key = process.env.TELNYX_API_KEY
   if (!key) return { lineType: 'unknown', ok: false, error: 'TELNYX_API_KEY not set' }
-  try {
-    const res = await fetch(`${BASE}/${encodeURIComponent(e164)}?type=carrier`, {
-      headers: { Authorization: `Bearer ${key}` },
-    })
-    if (!res.ok) return { lineType: 'unknown', ok: false, status: res.status }
-    const json = await res.json().catch(() => ({}))
-    const carrier = json?.data?.carrier || {}
-    return { lineType: classifyLineType(carrier.type), ok: true, carrier: carrier.name || null }
-  } catch (err) {
-    return { lineType: 'unknown', ok: false, error: err.message }
+  // Retry transient failures (429 rate-limit / 5xx / network) a couple times
+  // so a temporary hiccup doesn't mis-classify a real landline as 'unknown'.
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(`${BASE}/${encodeURIComponent(e164)}?type=carrier`, {
+        headers: { Authorization: `Bearer ${key}` },
+      })
+      if (res.ok) {
+        const json = await res.json().catch(() => ({}))
+        const carrier = json?.data?.carrier || {}
+        return { lineType: classifyLineType(carrier.type), ok: true, carrier: carrier.name || null }
+      }
+      // 4xx other than 429 won't get better by retrying → stop.
+      if (res.status !== 429 && res.status < 500) return { lineType: 'unknown', ok: false, status: res.status }
+    } catch { /* network — retry */ }
+    if (attempt < 3) await new Promise(r => setTimeout(r, 400 * attempt))
   }
+  return { lineType: 'unknown', ok: false }
 }
 
 // Look up MANY numbers with bounded concurrency. Returns Map<phone, lineType>.

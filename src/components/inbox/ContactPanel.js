@@ -354,6 +354,18 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user, on
           onCancel={() => setEditingField(null)}
           inputType="email"
         />
+        <ContactField
+          icon={<Icon type="address" />}
+          label="Address"
+          value={contact?.address}
+          placeholder="Set an address…"
+          editing={editingField === 'address'}
+          editValue={editingValue}
+          onEditValueChange={setEditingValue}
+          onStartEdit={() => { setEditingField('address'); setEditingValue(contact?.address || '') }}
+          onSave={() => saveField('address')}
+          onCancel={() => setEditingField(null)}
+        />
 
         {/* Custom fields */}
         {customFields.map((field, idx) => (
