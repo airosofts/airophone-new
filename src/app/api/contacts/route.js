@@ -101,7 +101,7 @@ export async function POST(request) {
 
     const body = await request.json()
 
-    const { first_name, last_name, business_name, phone_number, email, role, custom_fields, city, state, country, contact_list_id, status } = body
+    const { first_name, last_name, business_name, phone_number, email, role, custom_fields, address, city, state, country, contact_list_id, status } = body
 
     if (!phone_number?.trim()) {
       return NextResponse.json(
@@ -125,6 +125,7 @@ export async function POST(request) {
       email: email?.trim() || null,
       role: role?.trim() || null,
       custom_fields: custom_fields ?? null,
+      address: address?.trim() || null,
       city: city?.trim() || null,
       state: state?.trim() || null,
       country: country?.trim() || null,
@@ -152,6 +153,7 @@ export async function POST(request) {
           last_name: contactData.last_name,
           business_name: contactData.business_name,
           email: contactData.email,
+          address: contactData.address,
           city: contactData.city,
           state: contactData.state,
           country: contactData.country,

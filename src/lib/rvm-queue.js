@@ -79,13 +79,26 @@ export async function finalizeRvmCampaign(campaignId) {
 // Process up to `batchSize` queued sends. If `campaignId` is given, only that
 // campaign's rows are considered (used by the inline kick). Returns counts.
 export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) {
-  let q = supabaseAdmin
+  // Only pull rows from RUNNING campaigns. Otherwise a PAUSED campaign's old
+  // queued rows (e.g. a 15k list) are the oldest, fill the whole batch, get
+  // skipped, and STARVE every running campaign — the cron does 0 work forever.
+  let runningIds
+  if (campaignId) {
+    runningIds = [campaignId]
+  } else {
+    const { data: rc } = await supabaseAdmin
+      .from('voicemail_campaigns').select('id').eq('status', 'running').limit(1000)
+    runningIds = (rc || []).map(c => c.id)
+    if (runningIds.length === 0) return { picked: 0, sent: 0, failed: 0, skipped: 0 }
+  }
+
+  const q = supabaseAdmin
     .from('voicemail_campaign_sends')
     .select('id, campaign_id, workspace_id, contact_id, phone, source_column, attempts')
     .eq('status', 'queued')
+    .in('campaign_id', runningIds)
     .order('created_at', { ascending: true })
     .limit(batchSize)
-  if (campaignId) q = q.eq('campaign_id', campaignId)
 
   const { data: rows, error } = await q
   if (error) {

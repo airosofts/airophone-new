@@ -17,39 +17,40 @@ export async function POST(request) {
   }
 
   const { callControlId } = await request.json().catch(() => ({}))
+  console.log('[record-start] ▶️ request received — callControlId:', callControlId)
   if (!callControlId) {
     return NextResponse.json({ error: 'callControlId required' }, { status: 400 })
   }
 
+  const recordUrl = `https://api.telnyx.com/v2/calls/${callControlId}/actions/record_start`
+  console.log('[record-start] calling Telnyx:', recordUrl)
+
   try {
-    const res = await fetch(
-      `https://api.telnyx.com/v2/calls/${callControlId}/actions/record_start`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.TELNYX_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          format: 'mp3',
-          channels: 'dual',
-          play_beep: false,
-        }),
-      }
-    )
+    const res = await fetch(recordUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.TELNYX_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        format: 'mp3',
+        channels: 'dual',
+        play_beep: false,
+      }),
+    })
 
     const data = await res.json().catch(() => ({}))
 
     if (res.ok) {
-      console.log('[record-start] Recording started for call:', callControlId?.slice(0, 20))
+      console.log('[record-start] ✅ Telnyx accepted record_start for:', callControlId)
       return NextResponse.json({ success: true })
     } else {
-      const detail = data.errors?.[0]?.detail || JSON.stringify(data)
-      console.error('[record-start] Telnyx error:', res.status, detail)
-      return NextResponse.json({ error: detail }, { status: 502 })
+      console.error('[record-start] ❌ Telnyx rejected — status:', res.status, 'body:', JSON.stringify(data))
+      const detail = data.errors?.[0]?.detail || data.errors?.[0]?.title || JSON.stringify(data)
+      return NextResponse.json({ error: detail, telnyxStatus: res.status, telnyxBody: data }, { status: 502 })
     }
   } catch (e) {
-    console.error('[record-start] Error:', e.message)
+    console.error('[record-start] ❌ Error:', e.message)
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
 }

@@ -90,7 +90,7 @@ export async function POST(request) {
 
     // Build field mapping: header index -> field assignment
     // If columnMapping provided (from UI), use it. Otherwise auto-detect.
-    const STANDARD_FIELDS = ['first_name', 'last_name', 'business_name', 'phone_number', 'email', 'city', 'state', 'country']
+    const STANDARD_FIELDS = ['first_name', 'last_name', 'business_name', 'phone_number', 'email', 'address', 'city', 'state', 'country']
 
     // headerFieldMap[i] = 'first_name' | 'phone_number' | 'custom:some_key' | 'skip'
     const headerFieldMap = headers.map((h, i) => {
@@ -105,6 +105,7 @@ export async function POST(request) {
       if ((h.includes('business') && h.includes('name')) || h === 'company' || h === 'company name') return 'business_name'
       if (h === 'phone_number_1' || h === 'phone_number' || h === 'phone_1' || h.includes('phone')) return 'phone_number'
       if (h === 'email_1' || h === 'email') return 'email'
+      if (h === 'address' || h === 'street' || h === 'street address' || (h.includes('address') && !h.includes('email'))) return 'address'
       if (h.includes('city')) return 'city'
       if (h.includes('state')) return 'state'
       if (h.includes('country')) return 'country'
@@ -188,6 +189,7 @@ export async function POST(request) {
           business_name,
           phone_number: formattedPhone,
           email: standard.email || null,
+          address: standard.address || null,
           city: standard.city || null,
           state: standard.state || null,
           country: standard.country || null,

@@ -719,7 +719,7 @@ function DeleteContactConfirmModal({ contact, selectedCount, onConfirm, onCancel
 function AddContactModal({ onClose, contactListId, onContactAdded, onError }) {
   const [formData, setFormData] = useState({
     first_name: '', last_name: '', business_name: '', phone_number: '', email: '',
-    city: '', state: '', country: '', contact_list_id: contactListId
+    address: '', city: '', state: '', country: '', contact_list_id: contactListId
   })
   const [loading, setLoading] = useState(false)
 
@@ -769,6 +769,10 @@ function AddContactModal({ onClose, contactListId, onContactAdded, onError }) {
             <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Email</label>
             <input type="email" value={formData.email} onChange={(e) => set('email', e.target.value)} className={inputClass} placeholder="jane@example.com" />
           </div>
+          <div>
+            <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Address</label>
+            <input type="text" value={formData.address} onChange={(e) => set('address', e.target.value)} className={inputClass} placeholder="123 Main St" />
+          </div>
           <div className="grid grid-cols-3 gap-2">
             {[['city', 'City', 'New York'], ['state', 'State', 'NY'], ['country', 'Country', 'US']].map(([key, label, ph]) => (
               <div key={key}>
@@ -796,6 +800,7 @@ const STANDARD_FIELD_OPTIONS = [
   { value: 'business_name', label: 'Company Name' },
   { value: 'phone_number', label: 'Phone Number *' },
   { value: 'email', label: 'Email' },
+  { value: 'address', label: 'Address' },
   { value: 'city', label: 'City' },
   { value: 'state', label: 'State' },
   { value: 'country', label: 'Country' },
@@ -824,6 +829,7 @@ function autoDetectField(header) {
   if ((h.includes('business') && h.includes('name')) || h === 'company' || h === 'company name') return 'business_name'
   if (h === 'phone_number_1' || h === 'phone_number' || h === 'phone_1' || h.includes('phone')) return 'phone_number'
   if (h === 'email_1' || h === 'email') return 'email'
+  if (h === 'address' || h === 'street' || h === 'street address' || (h.includes('address') && !h.includes('email'))) return 'address'
   if (h.includes('city')) return 'city'
   if (h.includes('state')) return 'state'
   if (h.includes('country')) return 'country'
