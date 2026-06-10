@@ -33,6 +33,10 @@ async function provisionWorkspace(workspace, voiceProfileId) {
     simultaneous_ringing_enabled: true,
     user_name: sipUsername,
     password: sipPassword,
+    // Record every call automatically (dual-channel MP3) — no per-call action needed
+    record_type: 'all',
+    record_format: 'mp3',
+    record_channels: 'dual',
     ...(voiceProfileId && { outbound: { outbound_voice_profile_id: voiceProfileId } }),
     ...(process.env.NEXT_PUBLIC_APP_URL && {
       webhook_event_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/telnyx/call`,
@@ -106,6 +110,10 @@ export async function POST(request) {
       const patchBody = {
         active: true,
         outbound: { outbound_voice_profile_id: voiceProfileId },
+        // Enable automatic call recording on existing connections too
+        record_type: 'all',
+        record_format: 'mp3',
+        record_channels: 'dual',
         ...(process.env.NEXT_PUBLIC_APP_URL && {
           webhook_event_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/telnyx/call`,
           webhook_api_version: '2'
@@ -121,6 +129,7 @@ export async function POST(request) {
         workspace: ws.name,
         connectionId: ws.telnyx_connection_id,
         status: res.ok ? 'fixed' : 'failed',
+        recordType: data.data?.record_type,
         outbound_voice_profile_id: data.data?.outbound_voice_profile_id,
         error: res.ok ? undefined : data.errors?.[0]?.detail
       })

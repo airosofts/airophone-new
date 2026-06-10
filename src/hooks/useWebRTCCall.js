@@ -491,13 +491,8 @@ const handleCallUpdate = (call) => {
           setCallStatus('active')
           callStatusRef.current = 'active'
         }
-        console.log('[WebRTC] call ACTIVE — call.id:', call.id, '| telnyxIDs:', JSON.stringify(call.telnyxIDs))
-        // Start recording for outbound calls (inbound recording starts in acceptCall)
-        if (!incomingCallRef.current && callLogRef.current?.direction === 'outbound') {
-          const ccId = call.telnyxIDs?.telnyxCallControlId || call.telnyxIDs?.telnyxLegId || call.id
-          console.log('[WebRTC] outbound call active → starting recording with ccId:', ccId)
-          startRecording(ccId).catch(() => {})
-        }
+        // Recording is enabled at the Telnyx connection level (record_type: 'all'),
+        // so calls record automatically — no per-call record_start needed.
 
         // Capture answered inbound call details BEFORE clearing incomingCallRef
         if (incomingCallRef.current && !callLogRef.current) {
@@ -850,33 +845,6 @@ const setupAudioRouting = (call, isParticipant = false) => {
     }, delayMs)
   }
 
-  const startRecording = async (callControlId) => {
-    console.log('[WebRTC] startRecording called with callControlId:', callControlId)
-    if (!callControlId) {
-      console.warn('[WebRTC] startRecording — no callControlId, aborting')
-      return
-    }
-    try {
-      const userSession = typeof window !== 'undefined' ? localStorage.getItem('user_session') : null
-      const user = userSession ? JSON.parse(userSession) : null
-      const headers = { 'Content-Type': 'application/json' }
-      if (user) {
-        headers['x-user-id'] = user.userId || ''
-        headers['x-workspace-id'] = user.workspaceId || ''
-      }
-      const res = await fetch('/api/calls/record-start', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ callControlId }),
-      })
-      const data = await res.json()
-      if (res.ok) console.log('[WebRTC] ✅ Recording started for', callControlId)
-      else console.warn('[WebRTC] ❌ record-start failed:', res.status, JSON.stringify(data))
-    } catch (e) {
-      console.warn('[WebRTC] ❌ record-start error:', e.message)
-    }
-  }
-
   const logCallToDb = async ({ direction, fromNumber, toNumber, conversationId, callControlId, answeredAt }) => {
     try {
       const userSession = typeof window !== 'undefined' ? localStorage.getItem('user_session') : null
@@ -997,16 +965,7 @@ const setupAudioRouting = (call, isParticipant = false) => {
 
       await currentCall.answer()
 
-      // The Call Control ID lives on telnyxIDs, NOT call.id (which is a local SDK UUID).
-      // Give the SDK a moment to populate telnyxIDs after answer, then start recording.
-      const getCcId = () => currentCall.telnyxIDs?.telnyxCallControlId || currentCall.telnyxIDs?.telnyxLegId || currentCall.id
-      console.log('[WebRTC] acceptCall — answered. telnyxIDs:', JSON.stringify(currentCall.telnyxIDs))
-      setTimeout(() => {
-        const ccId = getCcId()
-        console.log('[WebRTC] acceptCall → starting recording with ccId:', ccId)
-        startRecording(ccId).catch(() => {})
-      }, 1500)
-
+      // Recording is enabled at the connection level — no per-call action needed.
       // Set callLogRef here — more reliable than waiting for SDK 'active' event
       if (incomingCallRef.current && !callLogRef.current) {
         callLogRef.current = {
@@ -1014,7 +973,7 @@ const setupAudioRouting = (call, isParticipant = false) => {
           fromNumber: incomingCallRef.current.from,
           toNumber: incomingCallRef.current.ourNumber || incomingCallRef.current.to,
           conversationId: null,
-          callControlId: getCcId(),
+          callControlId: currentCall.telnyxIDs?.telnyxCallControlId || currentCall.id,
           answeredAt: new Date().toISOString(),
         }
         console.log('[WebRTC] acceptCall — callLogRef set for answered inbound')
