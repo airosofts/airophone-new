@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { fetchWithWorkspace } from '@/lib/api-client'
 import SearchableDropdown from '@/components/SearchableDropdown'
 
@@ -71,6 +72,7 @@ function ConfirmDialog({ open, title, message, confirmLabel = 'Confirm', destruc
 }
 
 export default function AutomationsPage() {
+  const router = useRouter()
   const [automations, setAutomations] = useState([])
   const [loading, setLoading] = useState(true)
   const [mondayConnected, setMondayConnected] = useState(null)
@@ -147,7 +149,7 @@ export default function AutomationsPage() {
         <div className="flex items-center justify-between gap-4 mb-1">
           <h1 className="text-xl font-semibold text-[#131210]">Automations</h1>
           <button
-            onClick={() => setShowCreate(true)}
+            onClick={() => router.push('/automations/new')}
             disabled={!mondayConnected}
             title={mondayConnected ? '' : 'Connect Monday.com first'}
             className="px-4 py-2 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -203,7 +205,7 @@ export default function AutomationsPage() {
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <button
-                      onClick={() => setEditing(a)}
+                      onClick={() => router.push(`/automations/new?id=${a.id}`)}
                       disabled={busyId === a.id}
                       className="px-2.5 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3] disabled:opacity-50 transition-colors"
                     >
@@ -244,25 +246,6 @@ export default function AutomationsPage() {
         )}
       </div>
 
-      {showCreate && (
-        <CreateAutomationModal
-          phoneNumbers={phoneNumbers}
-          onClose={() => setShowCreate(false)}
-          onCreated={(a) => { setAutomations(prev => [a, ...prev]); setShowCreate(false) }}
-        />
-      )}
-
-      {editing && (
-        <CreateAutomationModal
-          phoneNumbers={phoneNumbers}
-          automation={editing}
-          onClose={() => setEditing(null)}
-          onCreated={(updated) => {
-            setAutomations(prev => prev.map(x => x.id === updated.id ? { ...x, ...updated } : x))
-            setEditing(null)
-          }}
-        />
-      )}
 
       <ConfirmDialog
         open={!!pendingDelete}
@@ -548,6 +531,40 @@ function secondsToAmountUnit(s) {
   return { amount: Math.floor(n / UNIT_SECONDS.minutes), unit: 'minutes' }
 }
 
+// ── Guided flow-canvas pieces ──────────────────────────────────────────────
+// The automation is a FIXED linear flow (Trigger → Send SMS → Timing). We render
+// it as pre-placed, pre-connected cards on a canvas so the user only fills in
+// values — no dragging, no wiring, no confusion.
+function FlowCard({ badge, badgeBg, title, subtitle, accent = '#D63B1F', children }) {
+  return (
+    <div className="bg-white rounded-xl border border-[#E3E1DB] shadow-sm">
+      <div className="flex items-center gap-2.5 px-4 py-3 rounded-t-xl border-b border-[#EFEDE8]" style={{ background: `${accent}0D` }}>
+        <span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border"
+          style={{ background: badgeBg || accent, borderColor: badgeBg ? '#E3E1DB' : 'transparent' }}>
+          {badge}
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-[#131210] leading-tight truncate">{title}</p>
+          {subtitle && <p className="text-[11px] text-[#9B9890] leading-tight truncate">{subtitle}</p>}
+        </div>
+      </div>
+      <div className="p-4 space-y-3">{children}</div>
+    </div>
+  )
+}
+
+// Pre-drawn connector between two cards — the "wire" of the flow.
+function FlowArrow() {
+  return (
+    <div className="flex justify-center py-0.5" aria-hidden>
+      <svg width="18" height="28" viewBox="0 0 18 28" className="text-[#CFCDC6]">
+        <line x1="9" y1="0" x2="9" y2="20" stroke="currentColor" strokeWidth="2" />
+        <path d="M9 27l-5-7h10z" fill="currentColor" />
+      </svg>
+    </div>
+  )
+}
+
 function CreateAutomationModal({ phoneNumbers, automation, onClose, onCreated }) {
   const isEdit = !!automation
 
@@ -677,15 +694,21 @@ function CreateAutomationModal({ phoneNumbers, automation, onClose, onCreated })
           </button>
         </div>
 
-        <div className="px-6 py-5 overflow-y-auto space-y-4">
-          <div>
-            <label className={labelCls}>Automation name *</label>
-            <input className={inputCls} value={form.name} placeholder="e.g., Honest Offer weekend leads"
+        <div className="px-6 py-6 overflow-y-auto" style={{ background: '#FAF9F6', backgroundImage: 'radial-gradient(#E0DED7 1px, transparent 1px)', backgroundSize: '18px 18px' }}>
+          <div className="max-w-md mx-auto">
+
+          {/* Start — automation name */}
+          <div className="bg-white rounded-xl border border-[#E3E1DB] shadow-sm px-4 py-3">
+            <label className="block text-[11px] font-medium text-[#9B9890] uppercase tracking-wide mb-1">Automation name</label>
+            <input className="w-full text-sm font-medium text-[#131210] placeholder-[#B5B2AA] focus:outline-none bg-transparent" value={form.name} placeholder="e.g., Honest Offer weekend leads"
               onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
           </div>
 
-          {/* Board + Trigger ────────────────────────────────── */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FlowArrow />
+
+          {/* 1 ── Trigger (Monday) */}
+          <FlowCard accent="#6161FF" badgeBg="#FFFFFF" badge={<MondayLogo size={16} />} title="When this happens" subtitle="Trigger — Monday board">
+          <div className="grid grid-cols-1 gap-3">
             <div>
               <label className={labelCls}>Monday board *</label>
               {isEdit ? (
@@ -723,13 +746,13 @@ function CreateAutomationModal({ phoneNumbers, automation, onClose, onCreated })
             </div>
           </div>
           {isEdit && (
-            <p className="text-[11px] text-[#9B9890] -mt-2">
+            <p className="text-[11px] text-[#9B9890]">
               Board and trigger are locked because the Monday webhook is bound to them. To change either, delete this automation and create a new one.
             </p>
           )}
 
-          {/* Phone column + Sender number ───────────────────── */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Phone column — stays inside the Trigger card */}
+          <div>
             <div>
               <label className={labelCls}>Phone number column *</label>
               {form.boardId ? (
@@ -753,7 +776,13 @@ function CreateAutomationModal({ phoneNumbers, automation, onClose, onCreated })
                 </div>
               )}
             </div>
+          </div>
+          </FlowCard>
 
+          <FlowArrow />
+
+          {/* 2 ── Send SMS */}
+          <FlowCard accent="#D63B1F" badge={<i className="fas fa-comment-dots text-white text-xs" />} title="Send a text" subtitle="SMS to the new lead">
             <div>
               <label className={labelCls}>Sender number *</label>
               <SearchableDropdown
@@ -776,9 +805,8 @@ function CreateAutomationModal({ phoneNumbers, automation, onClose, onCreated })
                 Replies are handled by whichever AI scenario is assigned to this number.
               </p>
             </div>
-          </div>
 
-          <div>
+            <div>
             <label className={labelCls}>Message</label>
             <div className="flex gap-2 mb-2">
               {[['template', 'Template'], ['ai', 'AI-written']].map(([v, l]) => (
@@ -818,10 +846,12 @@ function CreateAutomationModal({ phoneNumbers, automation, onClose, onCreated })
             )}
           </div>
 
-          {/* ── Timing ─────────────────────────────────────────────── */}
-          <div className="pt-2">
-            <p className="text-xs font-semibold text-[#131210] uppercase tracking-wider mb-2">Timing</p>
+          </FlowCard>
 
+          <FlowArrow />
+
+          {/* 3 ── Timing */}
+          <FlowCard accent="#2563EB" badge={<i className="fas fa-clock text-white text-xs" />} title="When to send" subtitle="Delay & business hours">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className={labelCls}>Send delay</label>
@@ -870,13 +900,14 @@ function CreateAutomationModal({ phoneNumbers, automation, onClose, onCreated })
                 </p>
               </div>
             </div>
-          </div>
+          </FlowCard>
 
           {error && (
-            <div className="px-3 py-2 rounded-md text-xs bg-[rgba(214,59,31,0.07)] border border-[rgba(214,59,31,0.16)] text-[#D63B1F]">
+            <div className="mt-3 px-3 py-2 rounded-md text-xs bg-[rgba(214,59,31,0.07)] border border-[rgba(214,59,31,0.16)] text-[#D63B1F]">
               {error}
             </div>
           )}
+          </div>
         </div>
 
         <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-[#E3E1DB]">

@@ -275,6 +275,28 @@ export default function DashboardLayout({ children }) {
     } catch { /* non-critical */ }
   }
 
+  // Full-bleed routes (the automation builder canvas) render edge-to-edge with
+  // NO sidebar/header chrome — but still behind auth + the subscription guard.
+  const FULLSCREEN_ROUTES = ['/automations/new']
+  if (FULLSCREEN_ROUTES.includes(pathname)) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', background: '#F7F6F3' }}>
+        {isBlocked && (
+          <SubscriptionBlockedBanner
+            planStatus={planStatus}
+            numbersQuarantined={numbersQuarantined}
+            trialExpired={trialExpired}
+            trialExpiredDaysAgo={trialExpiredDaysAgo}
+            onGoToBilling={() => router.push('/billing')}
+          />
+        )}
+        <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <CallProvider>{children}</CallProvider>
+        </main>
+      </div>
+    )
+  }
+
   return (
     <div style={{
       display: 'flex', height: '100vh', overflow: 'hidden',
