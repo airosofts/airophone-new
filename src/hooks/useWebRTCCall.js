@@ -544,6 +544,10 @@ const handleCallUpdate = (call) => {
             callLogRef.current = null
             console.log('[WebRTC] logging call to DB:', logData.direction, logData.fromNumber, '->', logData.toNumber)
             logCallToDb(logData).catch(e => console.error('[WebRTC] logCallToDb failed:', e))
+            // If the call was answered, poll Telnyx for the recording after 90s
+            if (logData.answeredAt) {
+              fetchRecordingLater(logData.callControlId)
+            }
           } else if (callStatusRef.current === 'incoming' && incomingCallRef.current) {
             const { from, ourNumber, to } = incomingCallRef.current
             const logData = { direction: 'inbound', fromNumber: from, toNumber: ourNumber || to, conversationId: null, callControlId: call.id, answeredAt: null }
@@ -817,6 +821,32 @@ const setupAudioRouting = (call, isParticipant = false) => {
   // This keeps the ref populated before any calls can arrive.
 
   // Log outbound call to DB (uses workspace headers)
+  // Poll Telnyx for the recording URL after a delay (fallback when webhook doesn't fire)
+  const fetchRecordingLater = (callControlId, delayMs = 90000) => {
+    if (!callControlId || callControlId.startsWith('webrtc_')) return
+    setTimeout(async () => {
+      try {
+        const userSession = typeof window !== 'undefined' ? localStorage.getItem('user_session') : null
+        const user = userSession ? JSON.parse(userSession) : null
+        const headers = { 'Content-Type': 'application/json' }
+        if (user) {
+          headers['x-user-id'] = user.userId || ''
+          headers['x-workspace-id'] = user.workspaceId || ''
+        }
+        const res = await fetch('/api/calls/fetch-recording', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ callControlId }),
+        })
+        const data = await res.json()
+        if (data.found) console.log('[WebRTC] Recording fetched from Telnyx:', data.recordingUrl?.slice(0, 40))
+        else console.log('[WebRTC] Recording not ready yet after', delayMs / 1000, 's')
+      } catch (e) {
+        console.warn('[WebRTC] fetchRecordingLater error:', e.message)
+      }
+    }, delayMs)
+  }
+
   const startRecording = async (callControlId) => {
     if (!callControlId) return
     try {

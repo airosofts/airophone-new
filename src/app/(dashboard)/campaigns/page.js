@@ -2792,6 +2792,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
           {/* ─── Step 3: Chunks & Preview (full audience editor) ─── */}
           {step === 3 && (() => {
             // Filter + paginate the visible chunk recipients (memoized above).
+            const q = searchQuery.trim().toLowerCase()
             const filtered = searchFiltered
             const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
             const page = Math.min(currentPage, totalPages)
