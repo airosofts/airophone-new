@@ -91,22 +91,29 @@ function EventEditor({ title, hint, columns, colId, setColId, valueLabel, setVal
     <div>
       <p className="text-xs font-semibold text-[#131210] uppercase tracking-wider">{title}</p>
       <p className="text-[11px] text-[#9B9890] mt-0.5 mb-2">{hint}</p>
-      <div className="space-y-2">
-        <select value={colId} onChange={(e) => { setColId(e.target.value); setValueLabel(''); setValueText('') }} className={inputCls}>
-          <option value="">— No update —</option>
-          {columns.map(c => <option key={c.id} value={c.id}>{c.title} ({c.type})</option>)}
-        </select>
-        {colObj?.type === 'status' && (
-          <select value={valueLabel} onChange={(e) => setValueLabel(e.target.value)} className={inputCls}>
-            <option value="">— Choose a label —</option>
-            {statusLabels.map(l => <option key={l} value={l}>{l}</option>)}
+      {/* Reads as a sentence: "Change [column] to [value]". */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-2 text-sm text-[#5C5A55]">
+        <span className="font-medium text-[#131210]">Change</span>
+        <div className="flex-1 min-w-[150px]">
+          <select value={colId} onChange={(e) => { setColId(e.target.value); setValueLabel(''); setValueText('') }} className={inputCls}>
+            <option value="">— No column (do nothing) —</option>
+            {columns.map(c => <option key={c.id} value={c.id}>{c.title} ({c.type})</option>)}
           </select>
+        </div>
+        {colObj && <span className="font-medium text-[#131210]">to</span>}
+        {colObj?.type === 'status' && (
+          <div className="flex-1 min-w-[150px]">
+            <select value={valueLabel} onChange={(e) => setValueLabel(e.target.value)} className={inputCls}>
+              <option value="">— Choose a label —</option>
+              {statusLabels.map(l => <option key={l} value={l}>{l}</option>)}
+            </select>
+          </div>
         )}
         {colObj?.type === 'date' && (
-          <div className="flex items-center px-3 py-2.5 border border-[#E3E1DB] rounded-lg bg-[#F7F6F3] text-xs text-[#5C5A55]">Always set to today</div>
+          <span className="flex-1 min-w-[120px] inline-flex items-center px-3 py-2.5 border border-[#E3E1DB] rounded-lg bg-[#F7F6F3] text-xs text-[#5C5A55]">today’s date</span>
         )}
         {colObj?.type === 'text' && (
-          <input type="text" value={valueText} onChange={(e) => setValueText(e.target.value)} placeholder="Text to write" className={inputCls} />
+          <input type="text" value={valueText} onChange={(e) => setValueText(e.target.value)} placeholder="text to write" className={`${inputCls} flex-1 min-w-[150px]`} />
         )}
       </div>
     </div>
