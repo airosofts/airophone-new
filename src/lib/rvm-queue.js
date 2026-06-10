@@ -300,10 +300,10 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
         type: 'voicemail',
         recording_url: campaign.recording_url,
         status: 'sent',
-        // VoiceDrop's send response carries no job id, so leave this null
-        // (multiple nulls are allowed by the unique index). Do NOT reuse the
-        // descriptive `message` text — it isn't an id.
-        telnyx_message_id: null,
+        // Capture VoiceDrop's job id (if the send response returns one) so the
+        // delivery webhook can correlate this exact send → accurate Delivered/
+        // Not-delivered. Falls back to null when VoiceDrop returns no id.
+        telnyx_message_id: result?.data?.voice_drop_id || result?.data?.data?.voice_drop_id || result?.data?.message?.voice_drop_id || result?.data?.id || null,
         sent_by: campaign.created_by,
       }).select('id').single()
 
@@ -421,17 +421,29 @@ export async function sendMonitorHeartbeats() {
     // Once per local day.
     if (c.monitor_last_sent_at && localDayKey(new Date(c.monitor_last_sent_at).getTime(), tz) === localDayKey(now.getTime(), tz)) continue
 
+    // ATOMICALLY claim today's heartbeat BEFORE sending: stamp monitor_last_sent_at
+    // only if it hasn't fired since local midnight. If 0 rows update, another tick
+    // already claimed today → skip. This guarantees ONCE PER DAY even if the sends
+    // below fail/crash (otherwise it re-fires every single minute).
+    const todayStartIso = new Date(startOfLocalDayUTC(now.getTime(), tz)).toISOString()
+    const { data: claimed } = await supabaseAdmin
+      .from('voicemail_campaigns')
+      .update({ monitor_last_sent_at: now.toISOString() })
+      .eq('id', c.id)
+      .or(`monitor_last_sent_at.is.null,monitor_last_sent_at.lt.${todayStartIso}`)
+      .select('id')
+    if (!claimed || claimed.length === 0) continue   // already fired today
+
     const recordingUrl = await resolveRecordingUrl(c)
     if (!recordingUrl) continue
 
-    let any = false
     for (const phone of nums) {
       try {
         const conversation = await getOrCreateConversation(phone, c.sender_number, c.workspace_id, c.created_by)
         if (!conversation?.id) continue
         const result = await sendStaticVoicemail({ recordingUrl, from: c.sender_number, to: phone, statusWebhookUrl: WEBHOOK_URL })
         if (!result.ok) { console.warn('[rvm:monitor] send failed', { campaignId: c.id, phone, msg: result.data?.message }); continue }
-        const { data: msg } = await supabaseAdmin.from('messages').insert({
+        await supabaseAdmin.from('messages').insert({
           conversation_id: conversation.id,
           direction: 'outbound',
           from_number: c.sender_number,
@@ -440,18 +452,14 @@ export async function sendMonitorHeartbeats() {
           type: 'voicemail',
           recording_url: c.recording_url,
           status: 'sent',
-          telnyx_message_id: null,
+          telnyx_message_id: result?.data?.voice_drop_id || null,
           sent_by: c.created_by,
-        }).select('id').single()
+        })
         await supabaseAdmin.rpc('deduct_wallet_credits', { p_workspace_id: c.workspace_id, p_amount: CREDITS_PER_RVM }).catch(() => {})
-        any = true
         console.log('[rvm:monitor] heartbeat sent', { campaignId: c.id, phone })
       } catch (e) {
         console.error('[rvm:monitor] error', { campaignId: c.id, phone, error: e.message })
       }
-    }
-    if (any) {
-      await supabaseAdmin.from('voicemail_campaigns').update({ monitor_last_sent_at: now.toISOString() }).eq('id', c.id)
     }
   }
 }

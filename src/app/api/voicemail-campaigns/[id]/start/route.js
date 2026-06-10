@@ -10,7 +10,7 @@ import { getWorkspaceMessageRate } from '@/lib/pricing'
 import { sendStaticVoicemail } from '@/lib/voicedrop'
 import { buildRecipients } from '@/lib/phone-columns'
 import { fetchAllContacts } from '@/lib/contacts-fetch'
-import { drainCampaignInline } from '@/lib/rvm-queue'
+import { drainCampaignInline, sendMonitorHeartbeats } from '@/lib/rvm-queue'
 
 // 2 credits per RVM send (matches AI-reply cost).
 const CREDITS_PER_RVM = 2
@@ -57,6 +57,12 @@ export async function POST(request, { params }) {
   if (!claimed) {
     return NextResponse.json({ error: 'Campaign is already running or completed' }, { status: 409 })
   }
+
+  // Fire the daily monitor/canary immediately at launch so even a fast
+  // "send now / no throttle" campaign (which completes before the next cron
+  // tick) still hits the monitor numbers. The once-per-day atomic claim inside
+  // means this never double-sends with the cron.
+  after(() => sendMonitorHeartbeats().catch(e => console.error('[rvm:monitor] launch trigger error:', e.message)))
 
   // Pull contacts from the selected lists, deduped by normalized phone.
   // Pages past PostgREST's 1000-row cap (a 15k list was only enqueuing 1,000).
