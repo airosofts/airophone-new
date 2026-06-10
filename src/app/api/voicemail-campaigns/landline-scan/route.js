@@ -9,7 +9,7 @@ import { getUserFromRequest, getWorkspaceFromRequest } from '@/lib/session-helpe
 import { lookupManyLineTypes } from '@/lib/number-lookup'
 
 const CREDITS_PER_LOOKUP = 0.5
-const MAX_SCAN = 3000   // synchronous cap; narrow the selection for larger lists
+const MAX_SCAN = 1000   // per-REQUEST cap; the UI scans bigger lists in batches
 
 export async function POST(request) {
   const user = getUserFromRequest(request)
@@ -19,12 +19,12 @@ export async function POST(request) {
   }
 
   const body = await request.json().catch(() => ({}))
-  const phones = [...new Set((Array.isArray(body.phones) ? body.phones : []).filter(p => typeof p === 'string' && p.length >= 8))]
+  let phones = [...new Set((Array.isArray(body.phones) ? body.phones : []).filter(p => typeof p === 'string' && p.length >= 8))]
 
   if (phones.length === 0) return NextResponse.json({ error: 'No numbers to scan' }, { status: 400 })
-  if (phones.length > MAX_SCAN) {
-    return NextResponse.json({ error: `Too many numbers to scan at once (max ${MAX_SCAN.toLocaleString()}). Narrow your selection and scan again.` }, { status: 400 })
-  }
+  // Per-REQUEST cap only — the UI feeds this endpoint in batches, so the full
+  // list is scannable. (A batch over MAX_SCAN is a client bug; just trim it.)
+  phones = phones.slice(0, MAX_SCAN)
 
   // 1) Pull any cached line types so we don't pay to re-check.
   const cache = new Map()   // phone -> line_type
@@ -39,22 +39,21 @@ export async function POST(request) {
   }
   const uncached = phones.filter(p => !cache.has(p))
 
-  // 2) Credit check for the NEW lookups only.
+  // 2) Cost for the NEW lookups only. We DON'T block on balance — landline
+  //    scrubbing is allowed to run the wallet negative (the user can top up
+  //    later); it's a cheap, high-value hygiene step we never want to stop.
   const cost = uncached.length * CREDITS_PER_LOOKUP
   const { data: wallet } = await supabaseAdmin
     .from('wallets').select('id, credits').eq('workspace_id', workspace.workspaceId).single()
   const available = Number(wallet?.credits || 0)
-  if (uncached.length > 0 && available < cost) {
-    return NextResponse.json({ error: 'Insufficient credits', required: cost, available }, { status: 402 })
-  }
 
   // 3) Look up the uncached numbers via Telnyx.
   const fresh = uncached.length > 0 ? await lookupManyLineTypes(uncached, { concurrency: 12 }) : new Map()
 
-  // 4) Charge for the new lookups + log a transaction.
+  // 4) Charge for the new lookups (balance may go negative) + log a transaction.
   if (uncached.length > 0 && wallet?.id) {
     await supabaseAdmin.from('wallets')
-      .update({ credits: Math.max(0, available - cost), updated_at: new Date().toISOString() })
+      .update({ credits: available - cost, updated_at: new Date().toISOString() })
       .eq('id', wallet.id)
     await supabaseAdmin.from('transactions').insert({
       workspace_id: workspace.workspaceId,

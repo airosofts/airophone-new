@@ -96,14 +96,14 @@ export async function POST(request) {
           .update({ status: 'answered', answered_at: new Date().toISOString(), updated_at: new Date().toISOString() })
           .eq('telnyx_call_id', callId)
         console.log('[call-webhook] Marked answered:', callId?.slice(0, 20))
+        // Start recording as soon as the call is answered
+        await startCallRecording(callId)
         break
       case 'call.hangup':
         await handleCallHangup(supabase, payload)
         break
       case 'call.recording.saved':
-        await supabase.from('calls')
-          .update({ recording_url: payload.recording_urls?.mp3 || payload.recording_urls?.wav, has_recording: true, updated_at: new Date().toISOString() })
-          .eq('telnyx_call_id', callId)
+        await handleRecordingSaved(supabase, callId, payload)
         break
     }
   } catch (err) {
@@ -354,6 +354,55 @@ async function deductCallCredits(callId, durationSeconds, payload) {
   } catch (err) {
     console.error('[call-billing] Error:', err.message)
   }
+}
+
+async function startCallRecording(callControlId) {
+  if (!process.env.TELNYX_API_KEY) {
+    console.warn('[call-recording] TELNYX_API_KEY not set — skipping recording')
+    return
+  }
+  try {
+    const res = await fetch(
+      `https://api.telnyx.com/v2/calls/${callControlId}/actions/record_start`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.TELNYX_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          format: 'mp3',
+          channels: 'dual',   // separate track per leg so you can hear both sides
+          play_beep: false,
+        }),
+      }
+    )
+    if (res.ok) {
+      console.log('[call-recording] Recording started for:', callControlId?.slice(0, 20))
+    } else {
+      const err = await res.json().catch(() => ({}))
+      console.error('[call-recording] Failed to start recording:', res.status, JSON.stringify(err))
+    }
+  } catch (e) {
+    console.error('[call-recording] Error starting recording:', e.message)
+  }
+}
+
+async function handleRecordingSaved(supabase, callControlId, payload) {
+  const recordingUrl = payload.recording_urls?.mp3 || payload.recording_urls?.wav || null
+  if (!recordingUrl) {
+    console.warn('[call-recording] recording.saved but no URL in payload')
+    return
+  }
+
+  const { data: call } = await supabase
+    .from('calls')
+    .update({ recording_url: recordingUrl, has_recording: true, updated_at: new Date().toISOString() })
+    .eq('telnyx_call_id', callControlId)
+    .select('id, conversation_id')
+    .maybeSingle()
+
+  console.log('[call-recording] Saved recording for call:', call?.id?.slice(0, 8), 'conv:', call?.conversation_id?.slice(0, 8))
 }
 
 export async function GET() {

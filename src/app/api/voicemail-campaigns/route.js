@@ -47,6 +47,9 @@ export async function POST(request) {
     // Optional contact statuses to skip (e.g. do_not_call). Stored so the
     // start-route rebuild path also honors the exclusion.
     excludeStatuses,
+    // Optional monitor/canary numbers — receive the voicemail once per day while
+    // running so you can confirm the drip fired. E.164, separate from the lists.
+    monitorNumbers,
     // Optional per-day cap: at most this many voicemails per local day; the rest
     // roll to the next day. Omitted / 0 → no daily limit.
     dailyCap,
@@ -117,6 +120,21 @@ export async function POST(request) {
       })()
     : null
 
+  // Monitor numbers → E.164, deduped, capped at 10. Drops anything unparseable.
+  const toE164 = (raw) => {
+    const d = String(raw || '').replace(/\D/g, '')
+    if (d.length === 10) return `+1${d}`
+    if (d.length === 11 && d.startsWith('1')) return `+${d}`
+    if (d.length >= 11) return `+${d}`
+    return null
+  }
+  const normalizedMonitorNumbers = Array.isArray(monitorNumbers)
+    ? (() => {
+        const set = [...new Set(monitorNumbers.map(toE164).filter(Boolean))].slice(0, 10)
+        return set.length > 0 ? set : null
+      })()
+    : null
+
   // Scheduled start: accept a valid future ISO; past/invalid → null (send now).
   let normalizedStartsAt = null
   if (startsAt) {
@@ -159,6 +177,7 @@ export async function POST(request) {
       send_timezone: normalizedTimezone,
       send_days: normalizedSendDays,
       exclude_statuses: normalizedExcludeStatuses,
+      monitor_numbers: normalizedMonitorNumbers,
       daily_cap: normalizedDailyCap,
       starts_at: normalizedStartsAt,
       status: 'draft',

@@ -15,7 +15,7 @@ export async function POST(request, { params }) {
 
   const { data: updated, error } = await supabaseAdmin
     .from('voicemail_campaigns')
-    .update({ status: 'running', paused_at: null, paused_reason: null })
+    .update({ status: 'running', paused_at: null })
     .eq('id', campaignId)
     .eq('workspace_id', workspace.workspaceId)
     .eq('status', 'paused')

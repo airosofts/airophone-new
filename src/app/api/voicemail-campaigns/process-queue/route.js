@@ -8,7 +8,7 @@
 // pausing a campaign makes the sweeper skip it; resuming picks up where it left.
 
 import { NextResponse } from 'next/server'
-import { sweepRvmQueue, finalizeRunningCampaigns } from '@/lib/rvm-queue'
+import { sweepRvmQueue, finalizeRunningCampaigns, sendMonitorHeartbeats } from '@/lib/rvm-queue'
 
 const BATCH_SIZE = 50
 
@@ -25,6 +25,8 @@ export async function POST(request) {
   // confirmed (or aged past the delivery timeout). This runs every tick so a
   // campaign awaiting delivery webhooks still transitions to 'completed'.
   await finalizeRunningCampaigns()
+  // Fire the daily monitor/canary heartbeat (once per local day per campaign).
+  await sendMonitorHeartbeats().catch(e => console.error('[rvm:monitor] heartbeat error:', e.message))
   if (result.picked > 0) {
     console.log('[rvm:process-queue] tick', result)
   }

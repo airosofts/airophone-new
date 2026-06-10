@@ -1888,6 +1888,11 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
   const [excludedByStatus, setExcludedByStatus] = useState(0)
   const toggleExcludeStatus = (id) =>
     setExcludeStatuses(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id])
+
+  // Monitor / canary numbers — get the voicemail once per day so you can confirm
+  // the drip fired. Raw textarea (one per line / comma); parsed for the payload.
+  const [monitorInput, setMonitorInput] = useState('')
+  const monitorNumbers = monitorInput.split(/[\n,]+/).map(s => s.trim()).filter(Boolean)
   // Full recipient list for the currently selected chunk (capped at 50k server-side).
   // Step 3 paginates this client-side and lets the user search + per-row toggle.
   const [chunkRecipients, setChunkRecipients] = useState([])
@@ -1901,12 +1906,13 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
   const [excludedPhones, setExcludedPhones] = useState(() => new Set())
   // Landline scrub (Telnyx number lookup). scan: null | 'scanning' | {breakdown,byPhone,...}
   const [scan, setScan] = useState(null)
+  const [scanProgress, setScanProgress] = useState(null)   // { done, total } while batching
   const [scanError, setScanError] = useState('')
   const [landlinesRemoved, setLandlinesRemoved] = useState(false)
   const [purgeState, setPurgeState] = useState(null)   // null | 'purging' | 'done'
   const [searchQuery, setSearchQuery] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
-  const PAGE_SIZE = 500
+  const PAGE_SIZE = 100   // render 100 rows/page so 28k+ lists stay snappy
 
   // Reset selection + page whenever the chunk slice changes.
   useEffect(() => {
@@ -2135,17 +2141,27 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
     const phones = [...new Set(selectedRecipients.map(r => r.phone))]
     if (phones.length === 0) return
     setScanError(''); setScan('scanning'); setLandlinesRemoved(false); setPurgeState(null)
+    setScanProgress({ done: 0, total: phones.length })
+    // Scan the whole list in batches — bounded requests, live progress, and the
+    // server allows the wallet to go negative so a big scrub never gets blocked.
+    const BATCH = 800
+    const agg = { breakdown: { mobile: 0, voip: 0, landline: 0, unknown: 0, total: 0 }, byPhone: {}, newLookups: 0, cached: 0, creditsCharged: 0, balance: 0 }
     try {
-      const res = await apiPost('/api/voicemail-campaigns/landline-scan', { phones })
-      const data = await res.json()
-      if (!data.success) {
-        setScanError(data.error === 'Insufficient credits'
-          ? `Not enough credits — this scan needs ${data.required} (you have ${data.available}).`
-          : (data.error || 'Scan failed'))
-        setScan(null); return
+      for (let i = 0; i < phones.length; i += BATCH) {
+        const res = await apiPost('/api/voicemail-campaigns/landline-scan', { phones: phones.slice(i, i + BATCH) })
+        const data = await res.json()
+        if (!data.success) { setScanError(data.error || 'Scan failed'); setScan(null); setScanProgress(null); return }
+        for (const k of ['mobile', 'voip', 'landline', 'unknown', 'total']) agg.breakdown[k] += (data.breakdown[k] || 0)
+        Object.assign(agg.byPhone, data.byPhone)
+        agg.newLookups += data.newLookups || 0
+        agg.cached += data.cached || 0
+        agg.creditsCharged += data.creditsCharged || 0
+        agg.balance = data.balance
+        setScanProgress({ done: Math.min(i + BATCH, phones.length), total: phones.length })
       }
-      setScan(data)
+      setScan({ success: true, ...agg })
     } catch { setScanError('Scan failed — please try again.'); setScan(null) }
+    finally { setScanProgress(null) }
   }
   const landlinePhones = (scan && scan.byPhone) ? Object.keys(scan.byPhone).filter(p => scan.byPhone[p] === 'landline') : []
   const removeLandlinesFromCampaign = () => {
@@ -2188,6 +2204,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
         sendDays: resolvedSendDays,
         dailyCap: resolvedDailyCap,
         excludeStatuses,
+        monitorNumbers,
         startsAt: resolvedStartsAt,
         explicitRecipients: selectedRecipients.map(r => ({
           phone: r.phone,
@@ -2680,6 +2697,26 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
                   )}
                 </div>
               )}
+
+              {/* Monitor / canary numbers — daily heartbeat */}
+              <div>
+                <label className="block text-xs font-medium text-[#5C5A55] mb-2">Monitor numbers <span className="text-[#9B9890] font-normal">(optional)</span></label>
+                <p className="text-[11px] text-[#9B9890] mb-2">
+                  Your own numbers get this voicemail <strong>once per day</strong> while the campaign runs — separate from the lists — so you can confirm each day’s drip fired. One per line.
+                </p>
+                <textarea
+                  value={monitorInput}
+                  onChange={(e) => setMonitorInput(e.target.value)}
+                  rows={4}
+                  placeholder={'+12223334444\n+13334445555'}
+                  className="w-full px-3 py-2 border border-[#D4D1C9] rounded-lg text-sm font-mono focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
+                />
+                {monitorNumbers.length > 0 && (
+                  <p className="text-[11px] text-[#9B9890] mt-1.5">
+                    {monitorNumbers.length} monitor number{monitorNumbers.length === 1 ? '' : 's'} · {(monitorNumbers.length * 2).toLocaleString()} credits/day while running.
+                  </p>
+                )}
+              </div>
             </div>
             </section>
           )}
@@ -2812,12 +2849,15 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
                           </button>
                         )}
                         {scan === 'scanning' && (
-                          <span className="flex-shrink-0 text-sm text-[#5C5A55] flex items-center gap-2"><i className="fas fa-spinner fa-spin" /> Checking carriers…</span>
+                          <span className="flex-shrink-0 text-sm text-[#5C5A55] flex items-center gap-2">
+                            <i className="fas fa-spinner fa-spin" />
+                            {scanProgress ? `Checking carriers… ${scanProgress.done.toLocaleString()} / ${scanProgress.total.toLocaleString()}` : 'Checking carriers…'}
+                          </span>
                         )}
                       </div>
 
                       {!scan && (
-                        <p className="text-[11px] text-[#9B9890] mt-2">Up to <strong>{(uniqueCount * 0.5).toLocaleString()} credits</strong> (0.5 each). Numbers checked before are free.</p>
+                        <p className="text-[11px] text-[#9B9890] mt-2">Up to <strong>{(uniqueCount * 0.5).toLocaleString()} credits</strong> (0.5 each). Scanned in batches; numbers checked before are free.</p>
                       )}
                       {scanError && <p className="text-xs text-red-600 mt-2">{scanError}</p>}
 
@@ -3020,6 +3060,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
               ['Recipients', vmCount.toLocaleString()],
               ['Sending speed', speedText],
               ['When to send', scheduleText],
+              ...(monitorNumbers.length > 0 ? [['Monitor', `${monitorNumbers.length} number${monitorNumbers.length === 1 ? '' : 's'} · daily`]] : []),
             ]
             return (
               <section className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-xl p-5 sm:p-6 space-y-4">

@@ -103,30 +103,10 @@ export async function POST(request, { params }) {
     sourceColumn: r.sourceColumn,
   }))
 
-  // Credit gate. We DON'T require the whole campaign up front — that would block
-  // a 15k launch on a 15k balance. Instead, require enough for at least one send
-  // and let it run; the sweeper deducts per send and auto-pauses (resumable
-  // after top-up) the moment credits run out.
+  // No up-front credit block — a campaign always starts. The sweeper deducts 2
+  // credits per send and is allowed to run the wallet NEGATIVE, so a big launch
+  // never stalls on a low balance; the user tops up whenever.
   const totalCreditsNeeded = contacts.length * CREDITS_PER_RVM
-  const { data: wallet } = await supabaseAdmin
-    .from('wallets')
-    .select('id, credits')
-    .eq('workspace_id', workspace.workspaceId)
-    .single()
-
-  const available = Number(wallet?.credits || 0)
-  if (available < CREDITS_PER_RVM) {
-    await supabaseAdmin
-      .from('voicemail_campaigns')
-      .update({ status: 'draft', started_at: null })
-      .eq('id', campaignId)
-    return NextResponse.json({
-      error: 'Insufficient credits',
-      required: CREDITS_PER_RVM,
-      available,
-      message: `You need at least ${CREDITS_PER_RVM} credits to start. Top up and launch again.`,
-    }, { status: 402 })
-  }
 
   // Resolve the recording URL VoiceDrop will use to fetch the audio.
   // Priority: VoiceDrop's own S3 URL (permanent, no auth needed) → fresh Supabase

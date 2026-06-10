@@ -12,7 +12,7 @@
 
 import { supabaseAdmin } from '@/lib/supabase-server'
 import { sendStaticVoicemail } from '@/lib/voicedrop'
-import { isWithinSendWindows, startOfLocalDayUTC } from '@/lib/scheduling'
+import { isWithinSendWindows, startOfLocalDayUTC, localDayKey } from '@/lib/scheduling'
 
 const WEBHOOK_URL = `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.airophone.com'}/api/webhooks/voicedrop`
 
@@ -160,16 +160,6 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
     dailyAllowanceByCampaign.set(c.id, Math.max(0, c.daily_cap - (sentToday || 0)))
   }
 
-  // Wallet balance per campaign — read once, tracked locally as we spend, so a
-  // campaign auto-pauses the moment it can't afford the next send.
-  const walletByCampaign = new Map()
-  const spentByCampaign = new Map()
-  for (const c of (campaigns || [])) {
-    const { data: w } = await supabaseAdmin
-      .from('wallets').select('credits').eq('workspace_id', c.workspace_id).maybeSingle()
-    walletByCampaign.set(c.id, Number(w?.credits || 0))
-  }
-
   // Resolve the recording URL per running campaign once.
   const urlByCampaign = new Map()
   for (const c of (campaigns || [])) {
@@ -219,22 +209,6 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
       skipped++
       continue
     }
-
-    // Credit gate — if the wallet can't afford the next send, PAUSE the campaign
-    // (resumable after top-up) and leave the remaining rows queued. Don't burn
-    // recipients on an empty balance.
-    const walletCredits = walletByCampaign.get(row.campaign_id) ?? 0
-    const spent = spentByCampaign.get(row.campaign_id) || 0
-    if (walletCredits - spent < CREDITS_PER_RVM) {
-      await supabaseAdmin.from('voicemail_campaigns')
-        .update({ status: 'paused', paused_at: new Date().toISOString(), paused_reason: 'insufficient_credits' })
-        .eq('id', row.campaign_id).eq('status', 'running')
-      campaign.status = 'paused'   // in-memory → skip this campaign's remaining rows this sweep
-      console.warn('[rvm:sweep] out of credits — paused campaign', { campaignId: row.campaign_id })
-      skipped++
-      continue
-    }
-
     processedByCampaign.set(row.campaign_id, usedSoFar + 1)
 
     // Atomic claim — only send if still 'queued' (prevents double-dispatch when
@@ -355,20 +329,10 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
         .eq('id', row.id)
       sent++
 
-      // Charge 2 credits for the successful send (atomic; logs a transaction).
-      // Tracked locally too so the credit gate above pauses on empty.
-      spentByCampaign.set(row.campaign_id, (spentByCampaign.get(row.campaign_id) || 0) + CREDITS_PER_RVM)
+      // Charge 2 credits for the successful send. Atomic + allowed to go
+      // NEGATIVE — a big campaign never stops on a low balance; the user tops up.
       try {
-        await supabaseAdmin.rpc('deduct_message_cost', {
-          p_user_id: campaign.created_by,
-          p_workspace_id: row.workspace_id,
-          p_message_count: CREDITS_PER_RVM,   // RPC deducts p_message_count credits (SMS uses 1)
-          p_cost_per_message: 0,              // dollar ledger only; RVM is priced in credits
-          p_description: `Voicemail to ${row.phone}`,
-          p_campaign_id: row.campaign_id,
-          p_message_id: msg?.id || null,
-          p_recipient_phone: row.phone,
-        })
+        await supabaseAdmin.rpc('deduct_wallet_credits', { p_workspace_id: row.workspace_id, p_amount: CREDITS_PER_RVM })
       } catch (e) {
         console.error('[rvm:sweep] credit deduction failed (send already placed)', { to: row.phone, error: e.message })
       }
@@ -419,6 +383,76 @@ export async function finalizeRunningCampaigns() {
     .limit(200)
   for (const c of (running || [])) {
     await finalizeRvmCampaign(c.id)
+  }
+}
+
+// Resolve the recording URL VoiceDrop fetches for a campaign (S3 → signed → stored).
+async function resolveRecordingUrl(c) {
+  let url = c.voicedrop_recording_url || c.recording_url
+  if (!c.voicedrop_recording_url && c.recording_path) {
+    const { data: signed } = await supabaseAdmin.storage
+      .from('voicemails').createSignedUrl(c.recording_path, 604800)
+    if (signed?.signedUrl) url = signed.signedUrl
+  }
+  return url
+}
+
+// Monitor / canary heartbeat: for every running campaign with monitor_numbers,
+// send the voicemail to those numbers ONCE PER LOCAL DAY (respecting start time,
+// calling windows + days) — so you can confirm each day's drip actually fired.
+// Called by the cron every tick; the once-per-day guard makes repeated calls safe.
+export async function sendMonitorHeartbeats() {
+  const { data: campaigns } = await supabaseAdmin
+    .from('voicemail_campaigns')
+    .select('id, status, sender_number, recording_url, recording_path, voicedrop_recording_url, created_by, workspace_id, monitor_numbers, monitor_last_sent_at, send_windows, send_timezone, send_days, starts_at')
+    .eq('status', 'running')
+    .not('monitor_numbers', 'is', null)
+    .limit(200)
+
+  const now = new Date()
+  for (const c of (campaigns || [])) {
+    const nums = Array.isArray(c.monitor_numbers) ? c.monitor_numbers.filter(Boolean) : []
+    if (nums.length === 0) continue
+
+    const tz = c.send_timezone || 'America/New_York'
+    // Same gates as real sends: scheduled start reached + inside window/day.
+    if (c.starts_at && new Date(c.starts_at).getTime() > now.getTime()) continue
+    if (!isWithinSendWindows(now, c.send_windows, tz, c.send_days)) continue
+    // Once per local day.
+    if (c.monitor_last_sent_at && localDayKey(new Date(c.monitor_last_sent_at).getTime(), tz) === localDayKey(now.getTime(), tz)) continue
+
+    const recordingUrl = await resolveRecordingUrl(c)
+    if (!recordingUrl) continue
+
+    let any = false
+    for (const phone of nums) {
+      try {
+        const conversation = await getOrCreateConversation(phone, c.sender_number, c.workspace_id, c.created_by)
+        if (!conversation?.id) continue
+        const result = await sendStaticVoicemail({ recordingUrl, from: c.sender_number, to: phone, statusWebhookUrl: WEBHOOK_URL })
+        if (!result.ok) { console.warn('[rvm:monitor] send failed', { campaignId: c.id, phone, msg: result.data?.message }); continue }
+        const { data: msg } = await supabaseAdmin.from('messages').insert({
+          conversation_id: conversation.id,
+          direction: 'outbound',
+          from_number: c.sender_number,
+          to_number: phone,
+          body: '[Voicemail · daily monitor]',
+          type: 'voicemail',
+          recording_url: c.recording_url,
+          status: 'sent',
+          telnyx_message_id: null,
+          sent_by: c.created_by,
+        }).select('id').single()
+        await supabaseAdmin.rpc('deduct_wallet_credits', { p_workspace_id: c.workspace_id, p_amount: CREDITS_PER_RVM }).catch(() => {})
+        any = true
+        console.log('[rvm:monitor] heartbeat sent', { campaignId: c.id, phone })
+      } catch (e) {
+        console.error('[rvm:monitor] error', { campaignId: c.id, phone, error: e.message })
+      }
+    }
+    if (any) {
+      await supabaseAdmin.from('voicemail_campaigns').update({ monitor_last_sent_at: now.toISOString() }).eq('id', c.id)
+    }
   }
 }
 

@@ -142,7 +142,7 @@ export function startOfLocalDayUTC(ms, tz = 'America/New_York') {
 
 // 'YYYY-MM-DD' for `ms` in `tz` — a stable key to tell which local day a send
 // falls on (so the estimator can reset its per-day counter at midnight).
-function localDayKey(ms, tz) {
+export function localDayKey(ms, tz) {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(new Date(ms))
