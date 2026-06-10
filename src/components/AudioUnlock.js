@@ -53,13 +53,24 @@ export default function AudioUnlock() {
           window.dispatchEvent(new Event('airo:audio-unlocked'))
         }
 
-        // Fetch + decode buffer (works regardless of ctx state)
+        // Fetch + decode ringtone buffer (works regardless of ctx state)
         if (!window.__airoRingBuffer) {
           const res = await fetch('/call.mp3')
           if (!res.ok) return
           const arrayBuf = await res.arrayBuffer()
           window.__airoRingBuffer = await ctx.decodeAudioData(arrayBuf)
           console.log('[AudioUnlock] Buffer pre-decoded on mount, ctx state:', ctx.state)
+        }
+
+        // Pre-decode the message notification tone too so it plays INSTANTLY
+        // (a bare new Audio() has to fetch+decode on first play → late beep)
+        if (!window.__airoMsgBuffer) {
+          const res = await fetch('/message.mp3')
+          if (res.ok) {
+            const arrayBuf = await res.arrayBuffer()
+            window.__airoMsgBuffer = await ctx.decodeAudioData(arrayBuf)
+            console.log('[AudioUnlock] Message tone pre-decoded on mount')
+          }
         }
 
         // HTMLAudio preload — load() needs no gesture, play() does

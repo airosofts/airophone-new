@@ -79,6 +79,35 @@ export default function InboxPage() {
     setAudioUnlocked(true)
   }
 
+  // Play the message notification tone with the lowest possible latency.
+  // Prefer the pre-decoded Web Audio buffer (instant, no fetch/decode lag);
+  // fall back to the HTMLAudio element if the buffer isn't ready.
+  const playMessageTone = () => {
+    try {
+      const ctx = window.__airoCtx
+      const buffer = window.__airoMsgBuffer
+      if (ctx && buffer) {
+        if (ctx.state === 'suspended') ctx.resume().catch(() => {})
+        const src = ctx.createBufferSource()
+        const gain = ctx.createGain()
+        gain.gain.value = 0.35
+        src.buffer = buffer
+        src.connect(gain)
+        gain.connect(ctx.destination)
+        src.start(0)
+        return
+      }
+    } catch (e) {
+      console.warn('[msg-tone] buffer play failed, falling back:', e.message)
+    }
+    // Fallback: HTMLAudio element
+    if (audioRef.current) {
+      audioRef.current.volume = 0.35
+      audioRef.current.currentTime = 0
+      audioRef.current.play().catch(err => console.warn('Sound play failed:', err.message))
+    }
+  }
+
   // Dialer: search contacts as user types
   useEffect(() => {
     if (!dialerQuery.trim()) { setDialerContacts([]); return }
@@ -331,11 +360,7 @@ export default function InboxPage() {
     // Play sound and show toast if there's a newer inbound message
     if (newestInbound > lastConvTimestampRef.current) {
       lastConvTimestampRef.current = newestInbound
-      if (audioRef.current) {
-        audioRef.current.volume = 0.10
-        audioRef.current.currentTime = 0
-        audioRef.current.play().catch(err => console.warn('Sound play failed:', err.message))
-      }
+      playMessageTone()
     }
   }, [conversations])
 
