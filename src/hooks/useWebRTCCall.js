@@ -491,6 +491,11 @@ const handleCallUpdate = (call) => {
           setCallStatus('active')
           callStatusRef.current = 'active'
         }
+        // Start recording for outbound calls (inbound recording starts in acceptCall)
+        if (!incomingCallRef.current && callLogRef.current?.direction === 'outbound') {
+          startRecording(call.id).catch(() => {})
+        }
+
         // Capture answered inbound call details BEFORE clearing incomingCallRef
         if (incomingCallRef.current && !callLogRef.current) {
           callLogRef.current = {
@@ -812,6 +817,29 @@ const setupAudioRouting = (call, isParticipant = false) => {
   // This keeps the ref populated before any calls can arrive.
 
   // Log outbound call to DB (uses workspace headers)
+  const startRecording = async (callControlId) => {
+    if (!callControlId) return
+    try {
+      const userSession = typeof window !== 'undefined' ? localStorage.getItem('user_session') : null
+      const user = userSession ? JSON.parse(userSession) : null
+      const headers = { 'Content-Type': 'application/json' }
+      if (user) {
+        headers['x-user-id'] = user.userId || ''
+        headers['x-workspace-id'] = user.workspaceId || ''
+      }
+      const res = await fetch('/api/calls/record-start', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ callControlId }),
+      })
+      const data = await res.json()
+      if (res.ok) console.log('[WebRTC] Recording started')
+      else console.warn('[WebRTC] record-start failed:', data.error)
+    } catch (e) {
+      console.warn('[WebRTC] record-start error:', e.message)
+    }
+  }
+
   const logCallToDb = async ({ direction, fromNumber, toNumber, conversationId, callControlId, answeredAt }) => {
     try {
       const userSession = typeof window !== 'undefined' ? localStorage.getItem('user_session') : null
@@ -931,6 +959,9 @@ const setupAudioRouting = (call, isParticipant = false) => {
       }
 
       await currentCall.answer()
+
+      // Start recording immediately on answer
+      startRecording(currentCall.id).catch(() => {})
 
       // Set callLogRef here — more reliable than waiting for SDK 'active' event
       if (incomingCallRef.current && !callLogRef.current) {

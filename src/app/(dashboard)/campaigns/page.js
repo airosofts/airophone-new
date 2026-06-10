@@ -2134,7 +2134,45 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
   // ── Launch ─────────────────────────────────────────────────────────────
   // The exact recipients the user has chosen for THIS launch (after chunk
   // pick + manual unticks + search). The backend will enqueue exactly this set.
-  const selectedRecipients = chunkRecipients.filter(r => !excludedPhones.has(r.phone))
+  // Memoized — a 28k filter must NOT re-run on every keystroke/render.
+  const selectedRecipients = useMemo(
+    () => chunkRecipients.filter(r => !excludedPhones.has(r.phone)),
+    [chunkRecipients, excludedPhones]
+  )
+  const uniqueSelectedCount = useMemo(
+    () => new Set(selectedRecipients.map(r => r.phone)).size,
+    [selectedRecipients]
+  )
+  // Projected first/last send — simulating 28k+ sends is expensive, so memoize
+  // it on a STABLE string key (resolvedSendDays/Windows are fresh arrays each
+  // render and would defeat a normal dep array).
+  const projStartMs = resolvedStartsAt ? Math.max(Date.now(), new Date(resolvedStartsAt).getTime()) : Date.now()
+  const projSchedKey = [
+    selectedRecipients.length, resolvedThrottleCount, resolvedThrottleWindowSeconds,
+    resolvedDailyCap, resolvedTimezone, (resolvedSendDays || []).join(','),
+    (resolvedSendWindows || []).map(w => `${w.start}-${w.end}`).join(','), resolvedStartsAt || '',
+  ].join('|')
+  const { projFirstMs, projLastMs } = useMemo(() => {
+    const n = selectedRecipients.length
+    if (n === 0) return { projFirstMs: projStartMs, projLastMs: projStartMs }
+    const sched = estimateSendSchedule(n, projStartMs, resolvedThrottleCount, resolvedThrottleWindowSeconds, resolvedSendWindows, resolvedTimezone, resolvedDailyCap || 0, resolvedSendDays)
+    return {
+      projFirstMs: sched.length ? new Date(sched[0]).getTime() : projStartMs,
+      projLastMs: sched.length ? new Date(sched[sched.length - 1]).getTime() : projStartMs,
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projSchedKey])
+  // Search results + selected-in-filter count — memoized so a 28k scan doesn't
+  // run on every unrelated render.
+  const searchFiltered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return chunkRecipients
+    return chunkRecipients.filter(r => (r.name || '').toLowerCase().includes(q) || (r.phone || '').toLowerCase().includes(q))
+  }, [chunkRecipients, searchQuery])
+  const filteredSelectedCount = useMemo(
+    () => searchFiltered.reduce((n, r) => n + (excludedPhones.has(r.phone) ? 0 : 1), 0),
+    [searchFiltered, excludedPhones]
+  )
 
   // ── Landline scrub ────────────────────────────────────────────────────────
   const scanLandlines = async () => {
@@ -2142,23 +2180,53 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
     if (phones.length === 0) return
     setScanError(''); setScan('scanning'); setLandlinesRemoved(false); setPurgeState(null)
     setScanProgress({ done: 0, total: phones.length })
-    // Scan the whole list in batches — bounded requests, live progress, and the
-    // server allows the wallet to go negative so a big scrub never gets blocked.
-    const BATCH = 800
+
+    // Scan the WHOLE list: split into batches and run a few in parallel with
+    // retry, so a slow/failed batch can't stall the run and progress is real.
+    const BATCH = 500
+    const CONCURRENCY = 3
+    const batches = []
+    for (let i = 0; i < phones.length; i += BATCH) batches.push(phones.slice(i, i + BATCH))
     const agg = { breakdown: { mobile: 0, voip: 0, landline: 0, unknown: 0, total: 0 }, byPhone: {}, newLookups: 0, cached: 0, creditsCharged: 0, balance: 0 }
-    try {
-      for (let i = 0; i < phones.length; i += BATCH) {
-        const res = await apiPost('/api/voicemail-campaigns/landline-scan', { phones: phones.slice(i, i + BATCH) })
-        const data = await res.json()
-        if (!data.success) { setScanError(data.error || 'Scan failed'); setScan(null); setScanProgress(null); return }
-        for (const k of ['mobile', 'voip', 'landline', 'unknown', 'total']) agg.breakdown[k] += (data.breakdown[k] || 0)
-        Object.assign(agg.byPhone, data.byPhone)
-        agg.newLookups += data.newLookups || 0
-        agg.cached += data.cached || 0
-        agg.creditsCharged += data.creditsCharged || 0
-        agg.balance = data.balance
-        setScanProgress({ done: Math.min(i + BATCH, phones.length), total: phones.length })
+    let done = 0
+
+    const runBatch = async (chunk) => {
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          const res = await apiPost('/api/voicemail-campaigns/landline-scan', { phones: chunk })
+          const data = await res.json()
+          if (data.success) return data
+        } catch { /* retry */ }
+        await new Promise(r => setTimeout(r, 500 * attempt))
       }
+      return null   // failed after retries
+    }
+
+    let idx = 0
+    const worker = async () => {
+      while (idx < batches.length) {
+        const chunk = batches[idx++]
+        const data = await runBatch(chunk)
+        if (data) {
+          for (const k of ['mobile', 'voip', 'landline', 'unknown', 'total']) agg.breakdown[k] += (data.breakdown[k] || 0)
+          Object.assign(agg.byPhone, data.byPhone)
+          agg.newLookups += data.newLookups || 0
+          agg.cached += data.cached || 0
+          agg.creditsCharged += data.creditsCharged || 0
+          agg.balance = data.balance
+        } else {
+          // Batch failed after retries — don't abort the whole scan; mark unknown.
+          for (const p of chunk) agg.byPhone[p] = 'unknown'
+          agg.breakdown.unknown += chunk.length
+          agg.breakdown.total += chunk.length
+        }
+        done += chunk.length
+        setScanProgress({ done: Math.min(done, phones.length), total: phones.length })
+      }
+    }
+
+    try {
+      await Promise.all(Array.from({ length: Math.min(CONCURRENCY, batches.length) }, worker))
       setScan({ success: true, ...agg })
     } catch { setScanError('Scan failed — please try again.'); setScan(null) }
     finally { setScanProgress(null) }
@@ -2723,19 +2791,14 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
 
           {/* ─── Step 3: Chunks & Preview (full audience editor) ─── */}
           {step === 3 && (() => {
-            // Filter + paginate the visible chunk recipients.
-            const q = searchQuery.trim().toLowerCase()
-            const filtered = q
-              ? chunkRecipients.filter(r =>
-                  (r.name || '').toLowerCase().includes(q) ||
-                  (r.phone || '').toLowerCase().includes(q))
-              : chunkRecipients
+            // Filter + paginate the visible chunk recipients (memoized above).
+            const filtered = searchFiltered
             const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
             const page = Math.min(currentPage, totalPages)
             const pageStart = (page - 1) * PAGE_SIZE
             const pageRows = filtered.slice(pageStart, pageStart + PAGE_SIZE)
             const selectedCount = chunkRecipients.length - excludedPhones.size
-            const filteredSelected = filtered.filter(r => !excludedPhones.has(r.phone)).length
+            const filteredSelected = filteredSelectedCount
             const pageAllSelected = pageRows.length > 0 && pageRows.every(r => !excludedPhones.has(r.phone))
 
             const togglePhone = (phone) => {
@@ -2762,12 +2825,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
             const projRatePerHour = resolvedThrottleCount
               ? resolvedThrottleCount / (resolvedThrottleWindowSeconds / 3600)
               : null   // no throttle → carrier speed
-            const projStartMs = resolvedStartsAt ? Math.max(Date.now(), new Date(resolvedStartsAt).getTime()) : Date.now()
-            const projSchedule = projAudience > 0
-              ? estimateSendSchedule(projAudience, projStartMs, resolvedThrottleCount, resolvedThrottleWindowSeconds, resolvedSendWindows, resolvedTimezone, resolvedDailyCap || 0, resolvedSendDays)
-              : []
-            const projFirstMs = projSchedule.length ? new Date(projSchedule[0]).getTime() : projStartMs
-            const projLastMs = projSchedule.length ? new Date(projSchedule[projSchedule.length - 1]).getTime() : projStartMs
+            // projFirstMs / projLastMs come from the memoized simulation above.
             const projSpanMs = projLastMs - projFirstMs
             const tzAbbr = (TIMEZONES.find(t => t.id === resolvedTimezone)?.label.match(/\(([^)]+)\)/)?.[1]) || ''
             const fmtTz = (ms, pat) => { try { return formatInTimeZone(new Date(ms), resolvedTimezone, pat) } catch { return '' } }
@@ -2829,7 +2887,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
 
                 {/* ─── Landline scrub (Telnyx carrier lookup) ─── */}
                 {selectedRecipients.length > 0 && (() => {
-                  const uniqueCount = new Set(selectedRecipients.map(r => r.phone)).size
+                  const uniqueCount = uniqueSelectedCount
                   const chip = (n, label, color, bg) => (
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium" style={{ color, background: bg }}>
                       <strong>{n.toLocaleString()}</strong> {label}

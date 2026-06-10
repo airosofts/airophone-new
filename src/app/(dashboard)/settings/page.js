@@ -8,6 +8,7 @@ import ApiKeys from '@/components/settings/ApiKeys'
 import Blocklist from '@/components/settings/Blocklist'
 import AiSettings from '@/components/settings/AiSettings'
 import CallForwarding from '@/components/settings/CallForwarding'
+import CallRecording from '@/components/settings/CallRecording'
 import WorkspaceMembers from '@/components/settings/WorkspaceMembers'
 import Referrals from '@/components/settings/Referrals'
 import Integrations from '@/components/settings/Integrations'
@@ -26,6 +27,7 @@ const sections = [
       { id: 'ai',         name: 'AI Settings',        icon: 'fa-robot',       desc: 'Reply delay and behavior' },
       { id: 'business-hours', name: 'Business Hours', icon: 'fa-business-time', desc: 'When sends are allowed' },
       { id: 'forwarding', name: 'Call Forwarding',    icon: 'fa-phone-alt',   desc: 'Forward incoming calls' },
+      { id: 'recording',  name: 'Call Recording',    icon: 'fa-circle-dot',  desc: 'Record inbound & outbound calls' },
       { id: 'referrals',  name: 'Referrals',          icon: 'fa-gift',        desc: 'Earn cash for referrals' },
     ],
   },
@@ -186,6 +188,7 @@ export default function SettingsPage() {
           {activeTab === 'ai'         && <AiSettings />}
           {activeTab === 'business-hours' && <BusinessHours />}
           {activeTab === 'forwarding' && <CallForwarding />}
+          {activeTab === 'recording'  && <CallRecording />}
           {activeTab === 'referrals'  && <Referrals />}
 
           {['profile', 'notifications', 'security'].includes(activeTab) && (
