@@ -5,6 +5,7 @@ import telnyx from '@/lib/telnyx'
 import { supabaseAdmin } from '@/lib/supabase-server'
 import { findMatchingScenario, executeScenario } from '@/lib/scenario-service'
 import { containsStopKeyword, stopFollowups, updateFollowupState } from '@/lib/followup-service'
+import { sendPushToWorkspace } from '@/lib/expo-push'
 
 function normalizePhoneNumber(phone) {
   if (!phone) return null
@@ -227,6 +228,15 @@ async function handleIncomingMessage(event) {
       .eq('id', conversation.id)
 
     console.log('Inbound message saved successfully:', messageRecord.id)
+
+    // Mobile push — notify the workspace's devices of the new inbound message.
+    if (conversation.workspace_id) {
+      sendPushToWorkspace(conversation.workspace_id, {
+        title: conversation.name || normalizePhoneNumber(fromNumber),
+        body: messageBody || 'New message',
+        data: { type: 'message', conversationId: conversation.id },
+      })
+    }
 
     // Two-way Monday sync: if this conversation originated from a Monday
     // automation, update the configured column on the source item (e.g.

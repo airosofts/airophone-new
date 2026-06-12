@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { supabaseAdmin } from '@/lib/supabase-server'
 import { CALL_CREDITS_PER_MINUTE } from '@/lib/pricing'
+import { sendPushToWorkspace } from '@/lib/expo-push'
 import webpush from 'web-push'
 
 // Send Web Push to all subscriptions for a workspace (non-blocking)
@@ -227,7 +228,14 @@ async function handleCallInitiated(supabase, payload) {
   } else {
     console.log('[call-webhook] Created call record:', callControlId?.slice(0, 20), 'conv:', conversationId?.slice(0, 8), 'workspace:', workspaceId?.slice(0, 8))
     if (isIncoming && workspaceId) {
-      sendCallPush(workspaceId, fromNumber)
+      sendCallPush(workspaceId, fromNumber)       // web push (browser)
+      // Mobile push (Expo) — wakes the app to show the incoming call.
+      sendPushToWorkspace(workspaceId, {
+        title: 'Incoming call',
+        body: fromNumber,
+        channelId: 'calls',
+        data: { type: 'incoming_call', from: fromNumber, conversationId },
+      })
     }
   }
 }

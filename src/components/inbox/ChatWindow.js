@@ -5,6 +5,7 @@ import { useState, useRef, useEffect } from 'react'
 import MessageBubble from '../ui/message-bubble'
 import CallBubble from '../ui/call-bubble'
 import CallInterface from '../calling/CallInterface'
+import ScheduleModal from './ScheduleModal'
 import { apiPost, fetchWithWorkspace } from '@/lib/api-client'
 import { getAvatarColor, getInitials } from '@/lib/avatar-color'
 
@@ -41,6 +42,7 @@ export default function ChatWindow({
   // MMS attachments staged for the next send: [{ file, previewUrl, type }]
   const [attachments, setAttachments] = useState([])
   const [showEmoji, setShowEmoji] = useState(false)
+  const [showSchedule, setShowSchedule] = useState(false)
   const messagesEndRef = useRef(null)
   const textareaRef = useRef(null)
   const moreMenuRef = useRef(null)
@@ -213,6 +215,46 @@ export default function ChatWindow({
   const insertEmoji = (emoji) => {
     setNewMessage(prev => prev + emoji)
     textareaRef.current?.focus()
+  }
+
+  // Schedule the current composer contents for later instead of sending now.
+  const handleSchedule = async (scheduledAt, timezone, condition) => {
+    const messageText = newMessage.trim()
+    const staged = attachments
+    if ((!messageText && staged.length === 0) || !phoneNumber) return
+    setSending(true)
+    try {
+      let media = []
+      if (staged.length) {
+        media = await Promise.all(staged.map(async (a) => {
+          const fd = new FormData()
+          fd.append('file', a.file)
+          const res = await fetchWithWorkspace('/api/messages/upload-media', { method: 'POST', body: fd })
+          const data = await res.json()
+          if (!res.ok || !data.success) throw new Error(data.error || 'Upload failed')
+          return { url: data.url, type: data.type }
+        }))
+      }
+      const res = await apiPost('/api/sms/schedule', {
+        from: phoneNumber.phoneNumber,
+        to: conversation.phone_number,
+        message: messageText,
+        mediaUrls: media,
+        conversationId: conversation.id,
+        scheduledAt, timezone, condition,
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to schedule')
+      setNewMessage('')
+      setAttachments([])
+      setShowSchedule(false)
+      onRefreshConversations?.()
+    } catch (e) {
+      console.error('Schedule failed:', e)
+      alert(e.message || 'Failed to schedule message')
+    } finally {
+      setSending(false)
+    }
   }
 
   const handleKeyDown = (e) => {
@@ -548,6 +590,20 @@ export default function ChatWindow({
                 }}
               />
 
+              {/* Schedule (send later) */}
+              <button
+                type="button"
+                onClick={() => setShowSchedule(true)}
+                disabled={(!newMessage.trim() && attachments.length === 0) || sending || !phoneNumber}
+                title="Schedule for later"
+                className="shrink-0 w-10 h-10 flex items-center justify-center rounded-full md:rounded-lg text-[#5C5A55] hover:text-[#131210] hover:bg-[#F7F6F3] disabled:opacity-40 transition-colors"
+                aria-label="Schedule message"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}>
+                  <circle cx="12" cy="12" r="9" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3 2" />
+                </svg>
+              </button>
+
               <button
                 type="submit"
                 disabled={(!newMessage.trim() && attachments.length === 0) || sending || !phoneNumber}
@@ -565,6 +621,12 @@ export default function ChatWindow({
             </form>
           </div>
         </div>
+
+        <ScheduleModal
+          open={showSchedule}
+          onClose={() => setShowSchedule(false)}
+          onSchedule={handleSchedule}
+        />
       </div>
 
       {/* Call Interface - Floating overlay */}
