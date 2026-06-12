@@ -135,10 +135,10 @@ export default function MessageBubble({ message, user }) {
     return (
       <div className="space-y-1.5">
         {mediaItems.map((item, i) => isVideoItem(item) ? (
-          <video key={i} src={item.url} controls preload="metadata" className="rounded-xl w-full border-[3px] border-[#D63B1F]" style={{ maxHeight: 280 }} />
+          <video key={i} src={item.url} controls preload="metadata" className="rounded-lg w-full" style={{ maxHeight: 280 }} />
         ) : (
           <a key={i} href={item.url} target="_blank" rel="noopener noreferrer" className="block">
-            <img src={item.url} alt="attachment" className="rounded-xl w-full object-cover border-[3px] border-[#D63B1F]" style={{ maxHeight: 280 }} />
+            <img src={item.url} alt="attachment" className="rounded-lg w-full object-cover" style={{ maxHeight: 280 }} />
           </a>
         ))}
       </div>
@@ -253,14 +253,18 @@ export default function MessageBubble({ message, user }) {
         {/* Message Bubble */}
         <div className="relative">
           <div
-            className={`${isVoicemail ? 'px-3 py-2.5' : 'px-3 py-2 sm:px-3.5 sm:py-2.5'} rounded-2xl relative ${
-              isOutbound
-                ? isFailed
-                  ? 'bg-[rgba(214,59,31,0.06)] text-[#131210] border border-[rgba(214,59,31,0.22)]'
-                  : isVoicemail
-                    ? `bg-[#F7F6F3] text-[#131210] border border-[#E3E1DB] ${isOptimistic ? 'opacity-60' : ''}`
-                    : `bg-[#D63B1F] text-white ${isOptimistic ? 'opacity-60' : ''}`
-                : 'bg-[#EFEDE8] text-[#131210]'
+            className={`rounded-2xl relative ${isOptimistic ? 'opacity-60' : ''} ${
+              mediaItems.length > 0 && !isVoicemail
+                ? ''   // photos/videos render clean — no bubble frame, padding or background
+                : `${isVoicemail ? 'px-3 py-2.5' : 'px-3 py-2 sm:px-3.5 sm:py-2.5'} ${
+                    isOutbound
+                      ? isFailed
+                        ? 'bg-[rgba(214,59,31,0.06)] text-[#131210] border border-[rgba(214,59,31,0.22)]'
+                        : isVoicemail
+                          ? 'bg-[#F7F6F3] text-[#131210] border border-[#E3E1DB]'
+                          : 'bg-[#D63B1F] text-white'
+                      : 'bg-[#EFEDE8] text-[#131210]'
+                  }`
             }`}
           >
             {isVoicemail ? (

@@ -82,7 +82,7 @@ export default function CreateTaskModal({ conversation, onClose, onCreated }) {
             onChange={e => setDescription(e.target.value)}
             placeholder="Task description..."
             rows={3}
-            className="w-full text-sm text-[#131210] placeholder:text-[#9B9890] outline-none resize-none border border-[#E3E1DB] rounded-xl p-3 mb-4"
+            className="w-full text-sm text-[#131210] placeholder:text-[#9B9890] outline-none resize-none bg-transparent mb-4"
           />
 
           {/* Assignee + Due date */}
