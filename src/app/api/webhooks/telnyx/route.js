@@ -193,6 +193,10 @@ async function handleIncomingMessage(event) {
         to_number: normalizePhoneNumber(toNumber),
         body: messageBody,
         status: 'received',
+        // Normalize inbound MMS media so the chat bubble can render it.
+        media_urls: Array.isArray(payload.media) && payload.media.length
+          ? payload.media.map(m => ({ url: m.url, type: m.content_type || null })).filter(m => m.url)
+          : null,
         delivery_details: JSON.stringify({
           received_at: event.occurredAt,
           webhook_id: event.messageId,

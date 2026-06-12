@@ -13,6 +13,42 @@ import {
 // autocomplete (9999), etc. all use lower values.
 const POPUP_Z = 2147483647
 
+// Reach the underlying RTCPeerConnection on a Telnyx call object (varies by SDK
+// version) so we can read live getStats() for call-quality.
+function getPeerConnection(call) {
+  if (!call) return null
+  return (
+    call.peer?.instance ||
+    call.rtcPeer?.instance ||
+    call.peer?.peer ||
+    call.options?.peer?.instance ||
+    null
+  )
+}
+
+// 4-bar signal meter driven by the measured call quality.
+function SignalBars({ quality }) {
+  const level = quality?.level
+  const bars = { excellent: 4, good: 3, fair: 2, poor: 1, reconnecting: 1 }[level] ?? 0
+  const color =
+    level === 'poor' || level === 'reconnecting' ? '#FCA5A5' :
+    level === 'fair' ? '#FDE68A' : '#86EFAC'
+  const label =
+    level === 'reconnecting' ? 'Reconnecting…' :
+    level ? `Signal: ${level}` : 'Measuring signal…'
+  return (
+    <span className="flex items-end gap-[2px]" title={label} aria-label={label}>
+      {[1, 2, 3, 4].map((i) => (
+        <span key={i} style={{
+          width: 3, height: 4 + i * 2.5, borderRadius: 1,
+          background: i <= bars ? color : 'rgba(255,255,255,0.3)',
+          animation: level === 'reconnecting' ? 'pulse 1s infinite' : undefined,
+        }} />
+      ))}
+    </span>
+  )
+}
+
 export default function CallInterface({
   callStatus,
   currentCall,
@@ -39,8 +75,11 @@ export default function CallInterface({
   const [showTransfer, setShowTransfer] = useState(false)
   const [dialpadInput, setDialpadInput] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
-  // Reused AudioContext for the keypad press tones (one per component).
+  // Reused AudioContext for the keypad / call-end tones (one per component).
   const audioCtxRef = useRef(null)
+  // Live call-quality (signal) from WebRTC stats, and last status for end-tone.
+  const [callQuality, setCallQuality] = useState(null)
+  const prevStatusRef = useRef(callStatus)
   const [contacts, setContacts] = useState([])
   const [loadingContacts, setLoadingContacts] = useState(false)
 
@@ -60,6 +99,58 @@ export default function CallInterface({
       setDialpadInput('')   // clear leftover digits typed during the previous call
     }
   }, [callStatus])
+
+  // Play a disconnect tone when a CONNECTED call ends (active/held → not-connected).
+  useEffect(() => {
+    const wasConnected = ['active', 'held', 'conference'].includes(prevStatusRef.current)
+    const nowConnected = ['active', 'held', 'conference'].includes(callStatus)
+    if (wasConnected && !nowConnected) playEndTone()
+    prevStatusRef.current = callStatus
+  }, [callStatus])
+
+  // Live call-quality meter — poll WebRTC getStats() while connected.
+  useEffect(() => {
+    const connected = ['active', 'held', 'conference'].includes(callStatus)
+    if (!connected) { setCallQuality(null); return }
+    const pc = getPeerConnection(currentCall) || getPeerConnection(callHook?.currentCall)
+    if (!pc) { setCallQuality(null); return }
+
+    let cancelled = false
+    let prevLost = 0, prevTotal = 0
+    const sample = async () => {
+      if (cancelled) return
+      const ice = pc.iceConnectionState
+      if (ice === 'disconnected' || ice === 'checking') { setCallQuality({ level: 'reconnecting' }); return }
+      if (ice === 'failed' || ice === 'closed') { setCallQuality({ level: 'poor' }); return }
+      try {
+        const stats = await pc.getStats()
+        let jitter = 0, rtt = 0, lost = 0, recv = 0
+        stats.forEach((r) => {
+          if (r.type === 'inbound-rtp' && (r.kind === 'audio' || r.mediaType === 'audio')) {
+            jitter = r.jitter || 0
+            lost = r.packetsLost || 0
+            recv = r.packetsReceived || 0
+          }
+          if (r.type === 'candidate-pair' && r.nominated && r.currentRoundTripTime != null) {
+            rtt = r.currentRoundTripTime
+          }
+        })
+        const dLost = Math.max(0, lost - prevLost)
+        const dTotal = Math.max(0, (recv + lost) - prevTotal)
+        prevLost = lost; prevTotal = recv + lost
+        const loss = dTotal > 0 ? dLost / dTotal : 0
+        const jms = jitter * 1000, rms = rtt * 1000
+        let level = 'excellent'
+        if (loss > 0.08 || jms > 60 || rms > 500) level = 'poor'
+        else if (loss > 0.03 || jms > 30 || rms > 300) level = 'fair'
+        else if (loss > 0.01 || jms > 20 || rms > 200) level = 'good'
+        setCallQuality({ level, loss, jms, rms })
+      } catch { /* stats unavailable — leave last value */ }
+    }
+    sample()
+    const id = setInterval(sample, 2000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [callStatus, currentCall, callHook])
 
   const fetchContacts = async () => {
     try {
@@ -177,6 +268,31 @@ export default function CallInterface({
         osc.stop(now + 0.16)
       })
     } catch { /* audio is best-effort feedback — never break the call */ }
+  }
+
+  // Two short descending beeps — the familiar "call ended" sound.
+  const playEndTone = () => {
+    try {
+      if (!audioCtxRef.current) {
+        const Ctx = window.AudioContext || window.webkitAudioContext
+        if (!Ctx) return
+        audioCtxRef.current = new Ctx()
+      }
+      const ctx = audioCtxRef.current
+      if (ctx.state === 'suspended') ctx.resume()
+      const now = ctx.currentTime
+      const beep = (start, freq) => {
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.type = 'sine'; osc.frequency.value = freq
+        gain.gain.setValueAtTime(0.0001, start)
+        gain.gain.exponentialRampToValueAtTime(0.22, start + 0.01)
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.22)
+        osc.connect(gain); gain.connect(ctx.destination)
+        osc.start(start); osc.stop(start + 0.24)
+      }
+      beep(now, 480); beep(now + 0.26, 380)
+    } catch { /* best-effort feedback */ }
   }
 
   const handleDTMF = (digit) => {
@@ -441,7 +557,8 @@ export default function CallInterface({
                   <p className="text-white/80 text-xs leading-tight mt-0.5">{getCallStatusText()}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-2">
+                {isActive && <SignalBars quality={callQuality} />}
                 <span className={`w-2 h-2 rounded-full ${
                   isActive ? 'bg-[#22c55e]/60 animate-pulse' :
                   isConnecting ? 'bg-[#f59e0b]/60 animate-pulse' :

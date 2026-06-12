@@ -5,8 +5,11 @@ import { useState, useRef, useEffect } from 'react'
 import MessageBubble from '../ui/message-bubble'
 import CallBubble from '../ui/call-bubble'
 import CallInterface from '../calling/CallInterface'
-import { apiPost } from '@/lib/api-client'
+import { apiPost, fetchWithWorkspace } from '@/lib/api-client'
 import { getAvatarColor, getInitials } from '@/lib/avatar-color'
+
+// Small curated emoji set for the composer picker (no heavy dependency).
+const EMOJIS = ['😀','😁','😂','🤣','😊','😍','😘','😎','🤩','🥳','🙌','👍','👎','👏','🙏','💪','🔥','✨','🎉','✅','❌','⚠️','💯','❤️','🧡','💛','💚','💙','💜','🤝','📞','📱','💬','📩','⏰','📅','💰','🏠','🚗','👋','🤔','😅','😉','🙂','😇','🥹','😢','😡']
 
 export default function ChatWindow({
   conversation,
@@ -35,15 +38,23 @@ export default function ChatWindow({
   const [newMessage, setNewMessage] = useState('')
   const [sending, setSending] = useState(false)
   const [showMoreMenu, setShowMoreMenu] = useState(false)
+  // MMS attachments staged for the next send: [{ file, previewUrl, type }]
+  const [attachments, setAttachments] = useState([])
+  const [showEmoji, setShowEmoji] = useState(false)
   const messagesEndRef = useRef(null)
   const textareaRef = useRef(null)
   const moreMenuRef = useRef(null)
+  const fileInputRef = useRef(null)
+  const emojiRef = useRef(null)
 
   // Close more menu when clicking outside
   useEffect(() => {
     const handler = (e) => {
       if (moreMenuRef.current && !moreMenuRef.current.contains(e.target)) {
         setShowMoreMenu(false)
+      }
+      if (emojiRef.current && !emojiRef.current.contains(e.target)) {
+        setShowEmoji(false)
       }
     }
     document.addEventListener('mousedown', handler)
@@ -104,15 +115,36 @@ export default function ChatWindow({
   }
 
   const sendMessage = async (e) => {
-    e.preventDefault()
-    
-    if (!newMessage.trim() || sending || !phoneNumber) {
-      return
-    }
+    e?.preventDefault?.()
+
+    const messageText = newMessage.trim()
+    const hasMedia = attachments.length > 0
+    if ((!messageText && !hasMedia) || sending || !phoneNumber) return
 
     setSending(true)
-    const messageText = newMessage.trim()
+    setShowEmoji(false)
+    const staged = attachments
     setNewMessage('')
+    setAttachments([])
+
+    // Upload any staged attachments → public URLs (for Telnyx MMS + our bubble).
+    let media = []
+    try {
+      media = await Promise.all(staged.map(async (a) => {
+        const fd = new FormData()
+        fd.append('file', a.file)
+        const res = await fetchWithWorkspace('/api/messages/upload-media', { method: 'POST', body: fd })
+        const data = await res.json()
+        if (!res.ok || !data.success) throw new Error(data.error || 'Upload failed')
+        return { url: data.url, type: data.type }
+      }))
+    } catch (err) {
+      console.error('Attachment upload failed:', err)
+      setSending(false)
+      setNewMessage(messageText)
+      setAttachments(staged)
+      return
+    }
 
     const optimisticId = addOptimisticMessage({
       conversation_id: conversation.id,
@@ -120,6 +152,7 @@ export default function ChatWindow({
       from_number: phoneNumber.phoneNumber,
       to_number: conversation.phone_number,
       body: messageText,
+      media_urls: media.length ? media : null,
       status: 'sending',
       sent_by: user.userId
     })
@@ -129,6 +162,7 @@ export default function ChatWindow({
         from: phoneNumber.phoneNumber,
         to: conversation.phone_number,
         message: messageText,
+        mediaUrls: media,
         conversationId: conversation.id,
         userId: user.userId,
         agentReply: true,   // a human is replying → auto-pause the AI for this chat
@@ -152,9 +186,33 @@ export default function ChatWindow({
       console.error('Error sending message:', error)
       removeOptimisticMessage(optimisticId)
       setNewMessage(messageText)
+      setAttachments(staged)
     } finally {
       setSending(false)
     }
+  }
+
+  // Stage image/video files chosen via the paperclip button.
+  const handleFilesSelected = (e) => {
+    const files = Array.from(e.target.files || [])
+    e.target.value = ''   // let the same file be re-selected later
+    const next = files
+      .filter(f => /^(image|video)\//.test(f.type))
+      .map(f => ({ file: f, type: f.type, previewUrl: URL.createObjectURL(f) }))
+    if (next.length) setAttachments(prev => [...prev, ...next].slice(0, 10))
+  }
+
+  const removeAttachment = (idx) => {
+    setAttachments(prev => {
+      const a = prev[idx]
+      if (a?.previewUrl) URL.revokeObjectURL(a.previewUrl)
+      return prev.filter((_, i) => i !== idx)
+    })
+  }
+
+  const insertEmoji = (emoji) => {
+    setNewMessage(prev => prev + emoji)
+    textareaRef.current?.focus()
   }
 
   const handleKeyDown = (e) => {
@@ -396,7 +454,82 @@ export default function ChatWindow({
         {/* Input Area */}
         <div className="bg-[#FFFFFF] border-t border-[#E3E1DB] sticky bottom-0 z-10">
           <div className="px-3 py-3 md:px-4 md:py-4">
+            {/* Staged attachment previews */}
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {attachments.map((a, i) => (
+                  <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border border-[#E3E1DB] bg-[#F7F6F3]">
+                    {a.type?.startsWith('video') ? (
+                      <video src={a.previewUrl} className="w-full h-full object-cover" />
+                    ) : (
+                      <img src={a.previewUrl} alt="" className="w-full h-full object-cover" />
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeAttachment(i)}
+                      className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80"
+                      aria-label="Remove attachment"
+                    >
+                      <svg className="w-2.5 h-2.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <form onSubmit={sendMessage} className="flex items-end gap-2">
+              {/* Hidden file input + attach (paperclip) button */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,video/*"
+                multiple
+                className="hidden"
+                onChange={handleFilesSelected}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={sending || !phoneNumber}
+                title="Attach photo or video"
+                className="shrink-0 w-10 h-10 flex items-center justify-center rounded-full md:rounded-lg text-[#5C5A55] hover:text-[#131210] hover:bg-[#F7F6F3] disabled:opacity-40 transition-colors"
+                aria-label="Attach media"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
+                </svg>
+              </button>
+
+              {/* Emoji button + popover */}
+              <div className="relative shrink-0" ref={emojiRef}>
+                <button
+                  type="button"
+                  onClick={() => setShowEmoji(s => !s)}
+                  disabled={sending || !phoneNumber}
+                  title="Emoji"
+                  className="w-10 h-10 flex items-center justify-center rounded-full md:rounded-lg text-[#5C5A55] hover:text-[#131210] hover:bg-[#F7F6F3] disabled:opacity-40 transition-colors"
+                  aria-label="Insert emoji"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}>
+                    <circle cx="12" cy="12" r="9" /><path strokeLinecap="round" d="M9 10h.01M15 10h.01M8.5 14.5a4 4 0 007 0" />
+                  </svg>
+                </button>
+                {showEmoji && (
+                  <div className="absolute bottom-12 left-0 w-64 max-h-52 overflow-y-auto bg-white border border-[#E3E1DB] rounded-xl shadow-xl p-2 grid grid-cols-8 gap-1 z-20">
+                    {EMOJIS.map((emo) => (
+                      <button
+                        key={emo}
+                        type="button"
+                        onClick={() => insertEmoji(emo)}
+                        className="text-lg leading-none p-1 rounded hover:bg-[#F7F6F3]"
+                      >
+                        {emo}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <textarea
                 ref={textareaRef}
                 rows={1}
@@ -417,7 +550,7 @@ export default function ChatWindow({
 
               <button
                 type="submit"
-                disabled={!newMessage.trim() || sending || !phoneNumber}
+                disabled={(!newMessage.trim() && attachments.length === 0) || sending || !phoneNumber}
                 className="shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-[#D63B1F] text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors hover:bg-[#c23119] md:w-auto md:h-auto md:rounded-lg md:p-2 md:bg-transparent md:text-[#5C5A55] md:hover:text-[#131210] md:hover:bg-[#F7F6F3]"
                 aria-label="Send message"
               >

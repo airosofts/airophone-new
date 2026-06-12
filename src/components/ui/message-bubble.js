@@ -120,6 +120,31 @@ export default function MessageBubble({ message, user }) {
       : null
 
 
+  // MMS attachments — stored as a JSON array of { url, type } (or bare url strings).
+  const mediaItems = (() => {
+    let m = message.media_urls
+    if (!m) return []
+    if (typeof m === 'string') { try { m = JSON.parse(m) } catch { return [] } }
+    if (!Array.isArray(m)) return []
+    return m.map(x => (typeof x === 'string' ? { url: x, type: null } : x)).filter(x => x && x.url)
+  })()
+  const isVideoItem = (item) =>
+    (item.type && item.type.startsWith('video')) || /\.(mp4|mov|webm|m4v)(\?|$)/i.test(item.url)
+  const renderMedia = () => {
+    if (!mediaItems.length) return null
+    return (
+      <div className="space-y-1.5">
+        {mediaItems.map((item, i) => isVideoItem(item) ? (
+          <video key={i} src={item.url} controls preload="metadata" className="rounded-lg w-full" style={{ maxHeight: 280 }} />
+        ) : (
+          <a key={i} href={item.url} target="_blank" rel="noopener noreferrer" className="block">
+            <img src={item.url} alt="attachment" className="rounded-lg w-full object-cover" style={{ maxHeight: 280 }} />
+          </a>
+        ))}
+      </div>
+    )
+  }
+
   const formatTimestamp = (timestamp) => {
     if (!timestamp) return ''
 
@@ -257,9 +282,14 @@ export default function MessageBubble({ message, user }) {
                 </div>
               </div>
             ) : (
-              <p className="text-sm leading-relaxed whitespace-pre-wrap wrap-break-word">
-                {renderMessageText(message.body)}
-              </p>
+              <div className="space-y-1.5">
+                {renderMedia()}
+                {message.body && (
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap wrap-break-word">
+                    {renderMessageText(message.body)}
+                  </p>
+                )}
+              </div>
             )}
           </div>
         </div>

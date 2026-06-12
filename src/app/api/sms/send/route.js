@@ -35,12 +35,18 @@ export async function POST(request) {
     // `agentReply` is set by the inbox when a HUMAN agent sends a reply — it
     // auto-pauses the AI for that conversation so the agent can take over.
     // Automated senders (follow-ups, AI replies) omit it, so they never pause.
-    const { from, to, message, conversationId, agentReply } = body
+    const { from, to, message, conversationId, agentReply, mediaUrls } = body
 
-    // Validate required fields
-    if (!from || !to || !message) {
+    // Normalize media into [{ url, type }] and a plain url list for Telnyx.
+    const media = (Array.isArray(mediaUrls) ? mediaUrls : [])
+      .map(m => (typeof m === 'string' ? { url: m, type: null } : m))
+      .filter(m => m && m.url)
+    const mediaUrlList = media.map(m => m.url)
+
+    // Validate required fields — a message is optional when media is attached (MMS).
+    if (!from || !to || (!message && media.length === 0)) {
       return NextResponse.json(
-        { error: 'Missing required fields: from, to, message' },
+        { error: 'Missing required fields: from, to, and a message or attachment' },
         { status: 400 }
       )
     }
@@ -226,8 +232,10 @@ export async function POST(request) {
       )
     }
 
-    // Send SMS via Telnyx — no profile in payload; Telnyx auto-resolves from the number's assigned profile
-    const result = await telnyx.sendMessage(normalizedFrom, normalizedTo, message)
+    // Send via Telnyx — attach media_urls for MMS when present. No profile in
+    // payload; Telnyx auto-resolves from the number's assigned profile.
+    const sendOptions = mediaUrlList.length > 0 ? { media_urls: mediaUrlList } : {}
+    const result = await telnyx.sendMessage(normalizedFrom, normalizedTo, message || '', sendOptions)
 
     if (!result.success) {
       // Create failed message record
@@ -240,6 +248,7 @@ export async function POST(request) {
           from_number: normalizedFrom,
           to_number: normalizedTo,
           body: message,
+          media_urls: media.length > 0 ? media : null,
           status: 'failed',
           error_details: JSON.stringify(result.error)
         })
@@ -270,6 +279,7 @@ export async function POST(request) {
         from_number: normalizedFrom,
         to_number: normalizedTo,
         body: message,
+        media_urls: media.length > 0 ? media : null,
         status: 'sent',
         user_id: user.userId || null
       })
