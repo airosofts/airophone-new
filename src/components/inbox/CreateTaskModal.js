@@ -73,7 +73,7 @@ export default function CreateTaskModal({ conversation, onClose, onCreated }) {
             value={title}
             onChange={e => setTitle(e.target.value)}
             placeholder="Task name..."
-            className="w-full text-[15px] font-medium text-[#131210] placeholder:text-[#9B9890] outline-none mb-3"
+            className="w-full text-[15px] font-medium text-[#131210] placeholder:text-[#9B9890] outline-none bg-transparent mb-3"
           />
 
           {/* Description */}
