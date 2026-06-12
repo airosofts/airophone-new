@@ -6,7 +6,7 @@ import MessageBubble from '../ui/message-bubble'
 import CallBubble from '../ui/call-bubble'
 import CallInterface from '../calling/CallInterface'
 import ScheduleModal from './ScheduleModal'
-import { apiPost, fetchWithWorkspace } from '@/lib/api-client'
+import { apiPost, apiGet, apiDelete, fetchWithWorkspace } from '@/lib/api-client'
 import { getAvatarColor, getInitials } from '@/lib/avatar-color'
 
 // Small curated emoji set for the composer picker (no heavy dependency).
@@ -43,6 +43,7 @@ export default function ChatWindow({
   const [attachments, setAttachments] = useState([])
   const [showEmoji, setShowEmoji] = useState(false)
   const [showSchedule, setShowSchedule] = useState(false)
+  const [scheduled, setScheduled] = useState([])   // pending scheduled messages for this conversation
   const messagesEndRef = useRef(null)
   const textareaRef = useRef(null)
   const moreMenuRef = useRef(null)
@@ -67,6 +68,30 @@ export default function ChatWindow({
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  // Load pending scheduled messages for this conversation.
+  const loadScheduled = async () => {
+    if (!conversation?.id) { setScheduled([]); return }
+    try {
+      const res = await apiGet(`/api/sms/schedule?conversationId=${conversation.id}`)
+      const data = await res.json()
+      setScheduled(data?.scheduled || [])
+    } catch { setScheduled([]) }
+  }
+  useEffect(() => { loadScheduled() }, [conversation?.id])
+
+  const cancelScheduled = async (id) => {
+    try {
+      await apiDelete(`/api/sms/schedule?id=${id}`)
+      setScheduled(prev => prev.filter(s => s.id !== id))
+    } catch (e) { console.error('Cancel scheduled failed:', e) }
+  }
+
+  const formatScheduled = (iso, tz) => {
+    try {
+      return new Intl.DateTimeFormat('en-US', { timeZone: tz || undefined, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(iso))
+    } catch { return new Date(iso).toLocaleString() }
+  }
 
   // Focus input and reset textarea height when conversation changes
   useEffect(() => {
@@ -248,6 +273,7 @@ export default function ChatWindow({
       setNewMessage('')
       setAttachments([])
       setShowSchedule(false)
+      loadScheduled()
       onRefreshConversations?.()
     } catch (e) {
       console.error('Schedule failed:', e)
@@ -488,6 +514,30 @@ export default function ChatWindow({
               item._type === 'call'
                 ? <CallBubble key={`call-${item.id}`} call={item} />
                 : <MessageBubble key={item.id} message={item} user={user} />
+            ))}
+
+            {/* Pending scheduled messages — shown at the bottom (they're future). */}
+            {scheduled.map((s) => (
+              <div key={`sched-${s.id}`} className="flex justify-end group">
+                <div className="max-w-[85%] sm:max-w-md">
+                  <div className="px-3.5 py-2.5 rounded-2xl bg-white border-2 border-dashed border-[#D63B1F]/45 text-[#131210]">
+                    {Array.isArray(s.media_urls) && s.media_urls.length > 0 && (
+                      <div className="mb-1.5 space-y-1.5">
+                        {s.media_urls.map((m, i) => (m.type || '').startsWith('video')
+                          ? <video key={i} src={m.url} className="rounded-lg w-full" style={{ maxHeight: 200 }} />
+                          : <img key={i} src={m.url} alt="" className="rounded-lg w-full object-cover" style={{ maxHeight: 200 }} />)}
+                      </div>
+                    )}
+                    {s.body && <p className="text-sm leading-relaxed whitespace-pre-wrap">{s.body}</p>}
+                  </div>
+                  <div className="flex items-center justify-end gap-2 mt-1 px-1 text-[11px] text-[#9B9890]">
+                    <svg className="w-3 h-3 text-[#D63B1F]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                    <span className="font-medium text-[#D63B1F]">Scheduled for {formatScheduled(s.scheduled_at, s.timezone)}</span>
+                    {s.condition === 'unless_first' && <span className="text-[#9B9890]">· unless they reply</span>}
+                    <button onClick={() => cancelScheduled(s.id)} className="text-[#9B9890] hover:text-[#D63B1F] underline">Cancel</button>
+                  </div>
+                </div>
+              </div>
             ))}
             <div ref={messagesEndRef} />
           </div>

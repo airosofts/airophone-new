@@ -35,6 +35,8 @@ const PUBLIC_API_ROUTES = [
   '/api/automations/process-pending',
   // RVM queue sweeper — same pattern: Bearer CRON_SECRET, no user session.
   '/api/voicemail-campaigns/process-queue',
+  // Scheduled / send-later SMS sweeper — same pattern: Bearer CRON_SECRET.
+  '/api/sms/process-scheduled',
 ]
 
 export async function middleware(request) {

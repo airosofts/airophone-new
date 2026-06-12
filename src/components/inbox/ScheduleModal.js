@@ -75,17 +75,27 @@ export default function ScheduleModal({ open, onClose, onSchedule }) {
   const [ampm, setAmpm] = useState('AM')
   const [pickedDay, setPickedDay] = useState(null)   // {y,m,d}
 
-  // Quick presets (computed in the recipient/selected tz).
+  // Dynamic quick presets based on the CURRENT time: "In 1 hour" plus the next
+  // two natural daypart slots (morning 9 / afternoon 1 / evening 6) in the
+  // selected timezone — so the options always make sense relative to now.
   const presets = useMemo(() => {
+    const out = [{ key: 'h1', label: 'In 1 hour', date: new Date(Date.now() + 60 * 60 * 1000) }]
+    const ANCHORS = [[9, 'morning'], [13, 'afternoon'], [18, 'evening']]
     const t = todayInTz(tz)
-    const mk = (y, m, d, hh) => zonedWallToUtc(y, m, d, hh, 0, tz)
-    const out = []
-    const oneToday = mk(t.y, t.m, t.d, 13)
-    if (oneToday.getTime() > Date.now()) out.push({ key: 'today1', label: 'Later today, 1:00 PM', date: oneToday })
-    const sevenToday = mk(t.y, t.m, t.d, 19)
-    if (sevenToday.getTime() > Date.now()) out.push({ key: 'eve7', label: 'This evening, 7:00 PM', date: sevenToday })
-    const tmrw = new Date(Date.UTC(t.y, t.m, t.d + 1))
-    out.push({ key: 'tmrw9', label: 'Tomorrow morning, 9:00 AM', date: mk(tmrw.getUTCFullYear(), tmrw.getUTCMonth(), tmrw.getUTCDate(), 9) })
+    let added = 0
+    for (let off = 0; off < 14 && added < 2; off++) {
+      const base = new Date(Date.UTC(t.y, t.m, t.d + off))
+      const yy = base.getUTCFullYear(), mm = base.getUTCMonth(), dd = base.getUTCDate()
+      for (const [h, period] of ANCHORS) {
+        const inst = zonedWallToUtc(yy, mm, dd, h, 0, tz)
+        if (inst.getTime() < Date.now() + 30 * 60 * 1000) continue   // at least 30 min out
+        const label = off === 0 ? `This ${period}`
+          : off === 1 ? `Tomorrow ${period}`
+          : `${new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long' }).format(inst)} ${period}`
+        out.push({ key: `${off}-${h}`, label, date: inst })
+        if (++added >= 2) break
+      }
+    }
     return out
   }, [tz, open])
 
@@ -134,7 +144,7 @@ export default function ScheduleModal({ open, onClose, onSchedule }) {
                   <svg className="w-4 h-4 text-[#9B9890]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
                   {p.label}
                 </span>
-                <span className="text-xs text-[#9B9890]">{fmtPreview(p.date, BROWSER_TZ)} your time</span>
+                <span className="text-xs text-[#9B9890]">{new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(p.date)}</span>
               </button>
             ))}
           </div>
