@@ -226,7 +226,7 @@ export default function NotificationsPage() {
                       {/* Note content */}
                       <td className="px-5 py-3 max-w-xs">
                         <p className="text-sm text-[#5C5A55] truncate">
-                          {notification.content || 'Mentioned you in a note'}
+                          {notification.content || (notification.type === 'task_assigned' ? 'Assigned you a task' : 'Mentioned you in a note')}
                         </p>
                       </td>
 

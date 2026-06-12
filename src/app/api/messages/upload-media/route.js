@@ -19,7 +19,7 @@ export async function POST(request) {
   if (!file || typeof file === 'string') {
     return NextResponse.json({ error: 'No file provided' }, { status: 400 })
   }
-  const type = file.type || 'application/octet-stream'
+  let type = file.type || 'application/octet-stream'
   if (!ALLOWED.test(type)) {
     return NextResponse.json({ error: 'Only image and video files are supported' }, { status: 400 })
   }
@@ -27,10 +27,27 @@ export async function POST(request) {
     return NextResponse.json({ error: 'File too large (max 20MB)' }, { status: 400 })
   }
 
-  const ext = ((file.name?.split('.').pop()) || type.split('/')[1] || 'bin')
-    .toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8)
+  let buffer = Buffer.from(await file.arrayBuffer())
+
+  // Carriers (and apps like OpenPhone) don't reliably render WebP/BMP over MMS,
+  // even though Telnyx accepts them. Transcode those to JPEG and cap dimensions
+  // so we stay well under the ~1 MB MMS image limit. JPEG/PNG/GIF pass through.
+  if (type === 'image/webp' || type === 'image/bmp') {
+    try {
+      const sharp = (await import('sharp')).default
+      buffer = await sharp(buffer)
+        .resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true })
+        .flatten({ background: '#ffffff' })
+        .jpeg({ quality: 82 })
+        .toBuffer()
+      type = 'image/jpeg'
+    } catch (e) {
+      console.error('[upload-media] webp/bmp transcode failed, keeping original:', e.message)
+    }
+  }
+
+  const ext = (type.split('/')[1] || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8)
   const path = `mms/${workspace.workspaceId}/${Date.now()}_${Math.random().toString(36).slice(2, 9)}.${ext}`
-  const buffer = Buffer.from(await file.arrayBuffer())
 
   const { error } = await supabaseAdmin.storage
     .from(BUCKET)

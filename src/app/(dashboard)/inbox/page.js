@@ -3,13 +3,16 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
-import { apiPost, fetchWithWorkspace } from '@/lib/api-client'
+import { apiPost, apiPut, fetchWithWorkspace } from '@/lib/api-client'
 import { validateAndUpgradeSession } from '@/lib/session-validator'
 import ConversationList from '@/components/inbox/ConversationList'
 import ChatWindow from '@/components/inbox/ChatWindow'
 import ContactPanel from '@/components/inbox/ContactPanel'
 import NewConversationView from '@/components/inbox/NewConversationView'
 import FilterTabs from '@/components/inbox/FilterTabs'
+import TasksView from '@/components/inbox/TasksView'
+import TaskDetailPanel from '@/components/inbox/TaskDetailPanel'
+import CreateTaskModal from '@/components/inbox/CreateTaskModal'
 import { useRealtimeConversations, useRealtimeMessages, usePhoneNumbers } from '@/hooks/useRealtime'
 import { useCallContext } from '@/contexts/CallContext'
 import SkeletonLoader from '@/components/ui/skeleton-loader'
@@ -17,7 +20,10 @@ import SkeletonLoader from '@/components/ui/skeleton-loader'
 export default function InboxPage() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [inboxTab, setInboxTab] = useState('chats') // 'chats' | 'calls'
+  const [inboxTab, setInboxTab] = useState('chats') // 'chats' | 'calls' | 'tasks'
+  const [createTaskConversation, setCreateTaskConversation] = useState(null) // conversation to create a task for
+  const [openedTask, setOpenedTask] = useState(null) // task open in the detail drawer
+  const [tasksRefreshKey, setTasksRefreshKey] = useState(0)
   const [calls, setCalls] = useState([])
   const [callsLoading, setCallsLoading] = useState(false)
   const [callFilter, setCallFilter] = useState('all') // 'all' | 'missed' | 'voicemail'
@@ -581,6 +587,43 @@ export default function InboxPage() {
     ? conversations.find(c => c.id === selectedConversation.id) || selectedConversation
     : null
 
+  // ── Tasks ──
+  const handleCreateTask = (conversation) => {
+    setCreateTaskConversation(conversation)
+  }
+
+  // Open a task in the detail drawer. Set selectedConversation to the task's
+  // conversation so the live message hook loads its thread; we pass the
+  // unfiltered allMessages to the drawer's ChatWindow so it works regardless
+  // of which phone line is currently selected.
+  const handleOpenTask = (task) => {
+    const conv = conversations.find(c => c.id === task.conversation_id) || task.conversation || null
+    setSelectedConversation(conv)
+    setOpenedTask(task)
+  }
+
+  const handleCloseTask = () => setOpenedTask(null)
+
+  const handleToggleTaskComplete = async (task) => {
+    const newStatus = task.status === 'completed' ? 'todo' : 'completed'
+    // Optimistic update for the open drawer
+    setOpenedTask(prev => (prev && prev.id === task.id ? { ...prev, status: newStatus } : prev))
+    try {
+      const res = await apiPut(`/api/tasks?id=${task.id}`, { status: newStatus })
+      if (!res.ok) throw new Error('toggle failed')
+    } catch (e) {
+      console.error('Failed to toggle task:', e)
+      setOpenedTask(prev => (prev && prev.id === task.id ? { ...prev, status: task.status } : prev))
+    } finally {
+      setTasksRefreshKey(k => k + 1)
+    }
+  }
+
+  // The phone line a task's conversation belongs to (so SMS sends from the right number)
+  const taskPhoneNumber = openedTask
+    ? (phoneNumbers.find(p => p.phoneNumber === selectedConversation?.from_number) || selectedPhoneNumber)
+    : selectedPhoneNumber
+
   const formatPhoneNumber = (phone) => {
     if (!phone) return phone
     const digits = phone.replace(/\D/g, '')
@@ -785,6 +828,48 @@ export default function InboxPage() {
         </div>
       )}
 
+      {inboxTab === 'tasks' ? (
+      <div className="flex flex-1 overflow-hidden min-h-0">
+        <TasksView
+          inboxTab={inboxTab}
+          setInboxTab={setInboxTab}
+          onTaskSelect={handleOpenTask}
+          selectedTaskId={openedTask?.id}
+          refreshKey={tasksRefreshKey}
+          onToggleComplete={handleToggleTaskComplete}
+          formatPhoneNumber={formatPhoneNumber}
+        />
+        {openedTask && selectedConversation && (
+          <div className="hidden md:flex flex-col" style={{ width: 640, flexShrink: 0, borderLeft: '1px solid #E3E1DB', background: '#FFFFFF' }}>
+            <TaskDetailPanel task={openedTask} onClose={handleCloseTask} onToggleComplete={handleToggleTaskComplete}>
+              <ChatWindow
+                conversation={selectedConversation}
+                messages={allMessages}
+                loading={messagesLoading}
+                phoneNumber={taskPhoneNumber}
+                formatPhoneNumber={formatPhoneNumber}
+                addOptimisticMessage={addOptimisticMessage}
+                replaceOptimisticMessage={replaceOptimisticMessage}
+                removeOptimisticMessage={removeOptimisticMessage}
+                onRefreshConversations={refetch}
+                user={user}
+                onClose={handleCloseTask}
+                callHook={callHook}
+                mobileView={mobileView}
+                onMarkAsRead={handleMarkAsRead}
+                onMarkAsUnread={handleMarkAsUnread}
+                onMarkAsDone={handleMarkAsDone}
+                onMarkAsOpen={handleMarkAsOpen}
+                onPinConversation={handlePinConversation}
+                onBlockContact={handleBlockContact}
+                onDeleteConversation={handleDeleteConversation}
+                onAssignScenario={handleAssignScenario}
+              />
+            </TaskDetailPanel>
+          </div>
+        )}
+      </div>
+      ) : (
       <div className="flex flex-1 overflow-hidden min-h-0">
       {/* Conversation List - Hidden on mobile when chat is open */}
       <div data-tour="left-panel" className={`${mobileView === 'chat' ? 'hidden' : 'flex'} md:flex w-full md:w-96 flex-col`} style={{ borderRight: '1px solid #E3E1DB' }}>
@@ -813,6 +898,17 @@ export default function InboxPage() {
                   fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
                 }}>
                 Calls
+              </button>
+              <button
+                onClick={() => setInboxTab('tasks')}
+                style={{
+                  fontSize: 14, fontWeight: 600, letterSpacing: '-0.02em',
+                  color: inboxTab === 'tasks' ? '#131210' : '#9B9890',
+                  background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px',
+                  borderBottom: inboxTab === 'tasks' ? '2px solid #D63B1F' : '2px solid transparent',
+                  fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+                }}>
+                Tasks
               </button>
             </div>
             <div data-tour="inbox-actions" style={{ display: 'flex', alignItems: 'center', gap: 6, position: 'relative' }}>
@@ -1068,6 +1164,7 @@ export default function InboxPage() {
                   onPinConversation={handlePinConversation}
                   onBlockContact={handleBlockContact}
                   onAssignScenario={handleAssignScenario}
+                  onCreateTask={handleCreateTask}
                   callHook={callHook}
                   isCreatingNew={isCreatingNewConversation}
                 />
@@ -1291,8 +1388,17 @@ export default function InboxPage() {
           </div>
         )}
       </div>
-      </div>{/* end flex-1 overflow-hidden */}
+      </div>
+      )}{/* end flex-1 overflow-hidden */}
 
+
+      {createTaskConversation && (
+        <CreateTaskModal
+          conversation={createTaskConversation}
+          onClose={() => setCreateTaskConversation(null)}
+          onCreated={() => setTasksRefreshKey(k => k + 1)}
+        />
+      )}
 
       {assignScenarioModal && (
         <AssignScenarioModal

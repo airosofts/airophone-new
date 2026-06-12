@@ -135,10 +135,10 @@ export default function MessageBubble({ message, user }) {
     return (
       <div className="space-y-1.5">
         {mediaItems.map((item, i) => isVideoItem(item) ? (
-          <video key={i} src={item.url} controls preload="metadata" className="rounded-lg w-full" style={{ maxHeight: 280 }} />
+          <video key={i} src={item.url} controls preload="metadata" className="rounded-xl w-full border-[3px] border-[#D63B1F]" style={{ maxHeight: 280 }} />
         ) : (
           <a key={i} href={item.url} target="_blank" rel="noopener noreferrer" className="block">
-            <img src={item.url} alt="attachment" className="rounded-lg w-full object-cover" style={{ maxHeight: 280 }} />
+            <img src={item.url} alt="attachment" className="rounded-xl w-full object-cover border-[3px] border-[#D63B1F]" style={{ maxHeight: 280 }} />
           </a>
         ))}
       </div>

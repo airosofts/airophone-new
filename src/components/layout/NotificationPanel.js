@@ -233,7 +233,7 @@ export default function NotificationPanel({ onNavigateToConversation }) {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <p style={{ fontSize: 12.5, color: '#131210', lineHeight: 1.4 }}>
                           <span style={{ fontWeight: 600 }}>{notification.actor?.name || 'Someone'}</span>
-                          {' mentioned you in a note'}
+                          {notification.type === 'task_assigned' ? ' assigned you a task' : ' mentioned you in a note'}
                         </p>
                         {notification.content && (
                           <p style={{ fontSize: 11.5, color: '#9B9890', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

@@ -18,6 +18,7 @@ export default function ConversationList({
   onPinConversation,
   onBlockContact,
   onAssignScenario,
+  onCreateTask,
   callHook = null,
   isCreatingNew = false
 }) {
@@ -98,6 +99,10 @@ export default function ConversationList({
   }
   const handleAssignScenario = () => {
     if (contextMenu?.conversation && onAssignScenario) onAssignScenario(contextMenu.conversation.id, contextMenu.conversation.phone_number)
+    closeContextMenu()
+  }
+  const handleCreateTask = () => {
+    if (contextMenu?.conversation && onCreateTask) onCreateTask(contextMenu.conversation)
     closeContextMenu()
   }
 
@@ -466,6 +471,14 @@ export default function ConversationList({
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>
               {contextMenu.conversation.pinned ? 'Unpin conversation' : 'Pin conversation'}
             </button>
+            {onCreateTask && (
+              <button onClick={handleCreateTask} style={menuItemStyle}
+                onMouseEnter={(e) => { e.currentTarget.style.background = '#F7F6F3' }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                Create new task
+              </button>
+            )}
             {onAssignScenario && (
               <button onClick={handleAssignScenario} style={menuItemStyle}
                 onMouseEnter={(e) => { e.currentTarget.style.background = '#F7F6F3' }}
