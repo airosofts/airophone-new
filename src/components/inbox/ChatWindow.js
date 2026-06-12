@@ -50,6 +50,17 @@ export default function ChatWindow({
   const fileInputRef = useRef(null)
   const emojiRef = useRef(null)
 
+  // ── Voice message recording (WhatsApp-style) ──
+  const [isRecording, setIsRecording] = useState(false)
+  const [recordElapsed, setRecordElapsed] = useState(0)   // seconds
+  const [recordError, setRecordError] = useState('')
+  const mediaRecorderRef = useRef(null)
+  const recordChunksRef = useRef([])
+  const recordStreamRef = useRef(null)
+  const recordTimerRef = useRef(null)
+  const recordIntentRef = useRef('cancel')   // 'send' | 'cancel' — read in onstop
+  const recordMimeRef = useRef('audio/webm')
+
   // Close more menu when clicking outside
   useEffect(() => {
     const handler = (e) => {
@@ -78,7 +89,15 @@ export default function ChatWindow({
       setScheduled(data?.scheduled || [])
     } catch { setScheduled([]) }
   }
-  useEffect(() => { loadScheduled() }, [conversation?.id])
+  // Reload on conversation switch AND whenever the message list changes — when a
+  // scheduled message is sent, a new message appears, so this drops its card in
+  // sync. A slow poll is the backstop if the thread isn't actively refreshing.
+  useEffect(() => { loadScheduled() }, [conversation?.id, messages?.length])
+  useEffect(() => {
+    if (!conversation?.id) return
+    const id = setInterval(() => loadScheduled(), 30000)
+    return () => clearInterval(id)
+  }, [conversation?.id])
 
   const cancelScheduled = async (id) => {
     try {
@@ -241,6 +260,129 @@ export default function ChatWindow({
     setNewMessage(prev => prev + emoji)
     textareaRef.current?.focus()
   }
+
+  // ── Voice messages ──
+  const fmtElapsed = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+
+  // Pick the best MediaRecorder mime the browser supports.
+  const pickAudioMime = () => {
+    const cands = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus', 'audio/ogg']
+    if (typeof MediaRecorder === 'undefined') return ''
+    for (const c of cands) { if (MediaRecorder.isTypeSupported(c)) return c }
+    return ''
+  }
+
+  const startRecording = async () => {
+    if (isRecording || sending || !phoneNumber) return
+    setRecordError('')
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setRecordError('Voice recording isn’t supported in this browser.')
+      return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      recordStreamRef.current = stream
+      const mime = pickAudioMime()
+      const mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream)
+      recordMimeRef.current = (mr.mimeType || mime || 'audio/webm').split(';')[0]
+      recordChunksRef.current = []
+      recordIntentRef.current = 'cancel'
+
+      mr.ondataavailable = (e) => { if (e.data && e.data.size) recordChunksRef.current.push(e.data) }
+      mr.onstop = () => {
+        (recordStreamRef.current?.getTracks() || []).forEach(t => t.stop())
+        recordStreamRef.current = null
+        clearInterval(recordTimerRef.current)
+        const chunks = recordChunksRef.current
+        recordChunksRef.current = []
+        setIsRecording(false)
+        setRecordElapsed(0)
+        if (recordIntentRef.current === 'send' && chunks.length) {
+          const type = recordMimeRef.current || 'audio/webm'
+          const blob = new Blob(chunks, { type })
+          if (blob.size > 0) sendVoiceNote(blob, type)
+        }
+      }
+
+      mediaRecorderRef.current = mr
+      mr.start()
+      setIsRecording(true)
+      setRecordElapsed(0)
+      recordTimerRef.current = setInterval(() => setRecordElapsed(s => s + 1), 1000)
+    } catch (err) {
+      console.error('Mic access failed:', err)
+      setRecordError('Microphone access was blocked. Allow mic access and try again.')
+    }
+  }
+
+  // intent: 'send' to upload+send the clip, 'cancel' to discard it.
+  const stopRecording = (intent) => {
+    recordIntentRef.current = intent
+    try { mediaRecorderRef.current?.stop() } catch { /* already stopped */ }
+  }
+
+  // Upload the recorded clip and send it as an MMS voice message.
+  const sendVoiceNote = async (blob, type) => {
+    if (!phoneNumber || !conversation) return
+    setSending(true)
+    const ext = type.includes('mp4') ? 'm4a' : type.includes('ogg') ? 'ogg' : 'webm'
+    const file = new File([blob], `voice-note-${Date.now()}.${ext}`, { type })
+
+    let media
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetchWithWorkspace('/api/messages/upload-media', { method: 'POST', body: fd })
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.error || 'Upload failed')
+      media = [{ url: data.url, type: data.type }]
+    } catch (err) {
+      console.error('Voice note upload failed:', err)
+      setRecordError('Could not upload the voice message.')
+      setSending(false)
+      return
+    }
+
+    const optimisticId = addOptimisticMessage({
+      conversation_id: conversation.id,
+      direction: 'outbound',
+      from_number: phoneNumber.phoneNumber,
+      to_number: conversation.phone_number,
+      body: '',
+      media_urls: media,
+      status: 'sending',
+      sent_by: user.userId,
+    })
+
+    try {
+      const response = await apiPost('/api/sms/send', {
+        from: phoneNumber.phoneNumber,
+        to: conversation.phone_number,
+        message: '',
+        mediaUrls: media,
+        conversationId: conversation.id,
+        userId: user.userId,
+        agentReply: true,
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || result.message || 'Failed to send voice message')
+      if (result.message) replaceOptimisticMessage(optimisticId, result.message)
+      if (result.aiPaused) onRefreshConversations?.()
+      onRefreshConversations()
+    } catch (error) {
+      console.error('Error sending voice note:', error)
+      removeOptimisticMessage(optimisticId)
+      setRecordError('Could not send the voice message.')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  // Release mic + timer if the component unmounts mid-recording.
+  useEffect(() => () => {
+    clearInterval(recordTimerRef.current)
+    ;(recordStreamRef.current?.getTracks?.() || []).forEach(t => t.stop())
+  }, [])
 
   // Schedule the current composer contents for later instead of sending now.
   const handleSchedule = async (scheduledAt, timezone, condition) => {
@@ -569,6 +711,10 @@ export default function ChatWindow({
               </div>
             )}
 
+            {recordError && (
+              <p className="mb-2 text-xs text-[#D63B1F]">{recordError}</p>
+            )}
+
             <form onSubmit={sendMessage} className="flex items-end gap-2">
               {/* Hidden file input + attach (paperclip) button */}
               <input
@@ -579,6 +725,35 @@ export default function ChatWindow({
                 className="hidden"
                 onChange={handleFilesSelected}
               />
+
+              {isRecording ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => stopRecording('cancel')}
+                    title="Cancel recording"
+                    className="shrink-0 w-10 h-10 flex items-center justify-center rounded-full md:rounded-lg text-[#D63B1F] hover:bg-[rgba(214,59,31,0.08)] transition-colors"
+                    aria-label="Cancel voice message"
+                  >
+                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+                  </button>
+                  <div className="flex-1 flex items-center gap-2.5 h-11 px-3.5 rounded-2xl md:rounded-lg border border-[#D4D1C9] bg-[#F7F6F3]">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#D63B1F] animate-pulse shrink-0" />
+                    <span className="text-sm font-mono tabular-nums text-[#131210]">{fmtElapsed(recordElapsed)}</span>
+                    <span className="text-xs text-[#9B9890] truncate">Recording voice message…</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => stopRecording('send')}
+                    title="Send voice message"
+                    className="shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-[#D63B1F] text-white hover:bg-[#c23119] transition-colors"
+                    aria-label="Send voice message"
+                  >
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" /></svg>
+                  </button>
+                </>
+              ) : (
+                <>
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
@@ -654,20 +829,35 @@ export default function ChatWindow({
                 </svg>
               </button>
 
-              <button
-                type="submit"
-                disabled={(!newMessage.trim() && attachments.length === 0) || sending || !phoneNumber}
-                className="shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-[#D63B1F] text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors hover:bg-[#c23119] md:w-auto md:h-auto md:rounded-lg md:p-2 md:bg-transparent md:text-[#5C5A55] md:hover:text-[#131210] md:hover:bg-[#F7F6F3]"
-                aria-label="Send message"
-              >
-                {sending ? (
-                  <div className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin md:border-[#D4D1C9] md:border-t-[#5C5A55]"></div>
-                ) : (
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
-                  </svg>
-                )}
-              </button>
+              {(newMessage.trim() || attachments.length > 0) ? (
+                <button
+                  type="submit"
+                  disabled={sending || !phoneNumber}
+                  className="shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-[#D63B1F] text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors hover:bg-[#c23119] md:w-auto md:h-auto md:rounded-lg md:p-2 md:bg-transparent md:text-[#5C5A55] md:hover:text-[#131210] md:hover:bg-[#F7F6F3]"
+                  aria-label="Send message"
+                >
+                  {sending ? (
+                    <div className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin md:border-[#D4D1C9] md:border-t-[#5C5A55]"></div>
+                  ) : (
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+                    </svg>
+                  )}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={startRecording}
+                  disabled={sending || !phoneNumber}
+                  title="Record voice message"
+                  className="shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-[#D63B1F] text-white hover:bg-[#c23119] disabled:opacity-40 transition-colors md:w-auto md:h-auto md:rounded-lg md:p-2 md:bg-transparent md:text-[#5C5A55] md:hover:text-[#131210] md:hover:bg-[#F7F6F3]"
+                  aria-label="Record voice message"
+                >
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                </button>
+              )}
+                </>
+              )}
             </form>
           </div>
         </div>

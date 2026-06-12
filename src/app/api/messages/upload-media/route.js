@@ -1,12 +1,13 @@
-// Upload an MMS attachment (image/video) to public Supabase storage and return
-// a public URL that Telnyx can fetch when sending the MMS.
+// Upload an MMS attachment (image/video/audio) to public Supabase storage and
+// return a public URL that Telnyx can fetch when sending the MMS. Audio is used
+// for voice messages recorded in the composer.
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
 import { getWorkspaceFromRequest } from '@/lib/session-helper'
 
 const BUCKET = 'assets'                 // public bucket — Telnyx must reach the URL
 const MAX_BYTES = 20 * 1024 * 1024      // 20 MB ceiling (carriers cap lower, but allow)
-const ALLOWED = /^(image|video)\//
+const ALLOWED = /^(image|video|audio)\//
 
 export async function POST(request) {
   const workspace = getWorkspaceFromRequest(request)
@@ -21,7 +22,7 @@ export async function POST(request) {
   }
   let type = file.type || 'application/octet-stream'
   if (!ALLOWED.test(type)) {
-    return NextResponse.json({ error: 'Only image and video files are supported' }, { status: 400 })
+    return NextResponse.json({ error: 'Only image, video, and audio files are supported' }, { status: 400 })
   }
   if (file.size > MAX_BYTES) {
     return NextResponse.json({ error: 'File too large (max 20MB)' }, { status: 400 })

@@ -128,13 +128,20 @@ export default function MessageBubble({ message, user }) {
     if (!Array.isArray(m)) return []
     return m.map(x => (typeof x === 'string' ? { url: x, type: null } : x)).filter(x => x && x.url)
   })()
+  const isAudioItem = (item) =>
+    (item.type && item.type.startsWith('audio')) || /\.(mp3|m4a|aac|oga|wav|amr)(\?|$)/i.test(item.url)
   const isVideoItem = (item) =>
     (item.type && item.type.startsWith('video')) || /\.(mp4|mov|webm|m4v)(\?|$)/i.test(item.url)
+  // Voice messages are audio attachments — rendered with a dedicated player.
+  const audioItems = mediaItems.filter(isAudioItem)
+  const hasAudio = audioItems.length > 0
   const renderMedia = () => {
     if (!mediaItems.length) return null
     return (
       <div className="space-y-1.5">
-        {mediaItems.map((item, i) => isVideoItem(item) ? (
+        {mediaItems.map((item, i) => isAudioItem(item) ? (
+          <audio key={i} src={item.url} controls preload="metadata" className="w-full h-9" style={{ maxWidth: 280 }} />
+        ) : isVideoItem(item) ? (
           <video key={i} src={item.url} controls preload="metadata" className="rounded-lg w-full" style={{ maxHeight: 280 }} />
         ) : (
           <a key={i} href={item.url} target="_blank" rel="noopener noreferrer" className="block">
@@ -254,13 +261,13 @@ export default function MessageBubble({ message, user }) {
         <div className="relative">
           <div
             className={`rounded-2xl relative ${isOptimistic ? 'opacity-60' : ''} ${
-              mediaItems.length > 0 && !isVoicemail
+              mediaItems.length > 0 && !isVoicemail && !hasAudio
                 ? ''   // photos/videos render clean — no bubble frame, padding or background
-                : `${isVoicemail ? 'px-3 py-2.5' : 'px-3 py-2 sm:px-3.5 sm:py-2.5'} ${
+                : `${(isVoicemail || hasAudio) ? 'px-3 py-2.5' : 'px-3 py-2 sm:px-3.5 sm:py-2.5'} ${
                     isOutbound
                       ? isFailed
                         ? 'bg-[rgba(214,59,31,0.06)] text-[#131210] border border-[rgba(214,59,31,0.22)]'
-                        : isVoicemail
+                        : (isVoicemail || hasAudio)
                           ? 'bg-[#F7F6F3] text-[#131210] border border-[#E3E1DB]'
                           : 'bg-[#D63B1F] text-white'
                       : 'bg-[#EFEDE8] text-[#131210]'
@@ -283,6 +290,20 @@ export default function MessageBubble({ message, user }) {
                     className="w-full h-8"
                     style={{ maxWidth: 260 }}
                   />
+                </div>
+              </div>
+            ) : hasAudio ? (
+              <div className="flex items-center gap-3 min-w-60">
+                <div className="shrink-0 w-9 h-9 rounded-full bg-[rgba(214,59,31,0.08)] border border-[rgba(214,59,31,0.18)] flex items-center justify-center">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D63B1F" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider mb-1">Voice message</p>
+                  {audioItems.map((item, i) => (
+                    <audio key={i} src={item.url} controls preload="metadata" className="w-full h-8" style={{ maxWidth: 260 }} />
+                  ))}
                 </div>
               </div>
             ) : (
