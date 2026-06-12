@@ -1,7 +1,7 @@
 // components/calling/CallInterface.js
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import {
   Phone, PhoneOff, Mic, MicOff, Pause, Play, Grid3X3,
@@ -39,6 +39,8 @@ export default function CallInterface({
   const [showTransfer, setShowTransfer] = useState(false)
   const [dialpadInput, setDialpadInput] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
+  // Reused AudioContext for the keypad press tones (one per component).
+  const audioCtxRef = useRef(null)
   const [contacts, setContacts] = useState([])
   const [loadingContacts, setLoadingContacts] = useState(false)
 
@@ -55,6 +57,7 @@ export default function CallInterface({
       setShowDialpad(false)
       setShowAddParticipant(false)
       setShowTransfer(false)
+      setDialpadInput('')   // clear leftover digits typed during the previous call
     }
   }, [callStatus])
 
@@ -137,8 +140,48 @@ export default function CallInterface({
     }
   }
 
+  // Real DTMF (touch-tone) frequency pairs — played locally so the user HEARS
+  // the keypress, like a real phone. This is feedback only; the actual tone the
+  // IVR hears is sent over the call via currentCall.dtmf() / onSendDTMF().
+  const DTMF_FREQS = {
+    '1': [697, 1209], '2': [697, 1336], '3': [697, 1477],
+    '4': [770, 1209], '5': [770, 1336], '6': [770, 1477],
+    '7': [852, 1209], '8': [852, 1336], '9': [852, 1477],
+    '*': [941, 1209], '0': [941, 1336], '#': [941, 1477],
+  }
+
+  const playDtmfTone = (digit) => {
+    const pair = DTMF_FREQS[digit]
+    if (!pair) return
+    try {
+      if (!audioCtxRef.current) {
+        const Ctx = window.AudioContext || window.webkitAudioContext
+        if (!Ctx) return
+        audioCtxRef.current = new Ctx()
+      }
+      const ctx = audioCtxRef.current
+      if (ctx.state === 'suspended') ctx.resume()
+      const now = ctx.currentTime
+      const gain = ctx.createGain()
+      // Quick attack + fade so it sounds like a crisp keypress, not a drone.
+      gain.gain.setValueAtTime(0.0001, now)
+      gain.gain.exponentialRampToValueAtTime(0.2, now + 0.01)
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.16)
+      gain.connect(ctx.destination)
+      pair.forEach((freq) => {
+        const osc = ctx.createOscillator()
+        osc.type = 'sine'
+        osc.frequency.value = freq
+        osc.connect(gain)
+        osc.start(now)
+        osc.stop(now + 0.16)
+      })
+    } catch { /* audio is best-effort feedback — never break the call */ }
+  }
+
   const handleDTMF = (digit) => {
     try {
+      playDtmfTone(digit)   // audible keypress feedback
       if (callHook?.currentCall?.dtmf) callHook.currentCall.dtmf(digit)
       else if (onSendDTMF) onSendDTMF(digit)
       setDialpadInput(prev => prev + digit)
