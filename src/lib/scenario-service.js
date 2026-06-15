@@ -166,6 +166,30 @@ export async function findMatchingScenario(recipientNumber, senderNumber) {
   }
 }
 
+// ── Business-hours prompt helpers ───────────────────────────────────────────
+const DAY_NAMES = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+
+// [1,2,3,4,5] → "Monday–Friday"; non-contiguous → "Monday, Wednesday, Friday".
+function summarizeDays(days) {
+  const d = [...new Set(days)].filter(n => n >= 1 && n <= 7).sort((a, b) => a - b)
+  if (!d.length) return 'Monday–Friday'
+  const contiguous = d.every((v, i) => i === 0 || v === d[i - 1] + 1)
+  return contiguous && d.length > 1 ? `${DAY_NAMES[d[0]]}–${DAY_NAMES[d[d.length - 1]]}` : d.map(n => DAY_NAMES[n]).join(', ')
+}
+// "09:00:00" → "9:00 AM" (the stored time is wall-clock in the business tz).
+function fmtBizTime(t) {
+  const [h, m] = String(t || '09:00:00').split(':').map(Number)
+  return new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', hour: 'numeric', minute: '2-digit' })
+    .format(new Date(Date.UTC(2000, 0, 1, h || 0, m || 0)))
+}
+// Short tz label (EDT/EST/PST…) for a timezone, DST-correct for "now".
+function tzShort(tz) {
+  try {
+    return new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'short' })
+      .formatToParts(new Date()).find(p => p.type === 'timeZoneName')?.value || tz
+  } catch { return tz }
+}
+
 export async function executeScenario(scenario, message, conversation) {
   const startTime = Date.now()
   const executionLog = {
@@ -315,10 +339,29 @@ export async function executeScenario(scenario, message, conversation) {
       console.warn(`[scenario] Unresolved tokens for ${message.from_number}: ${[...unresolvedTokens].join(', ')} — message will read awkwardly. Check that this contact's custom_fields contains those keys.`)
     }
 
-    // Current date/time in US Eastern — the AI has no built-in clock, so without
-    // this it can't reason about "today", "tomorrow", "this afternoon", or schedule.
-    const nowEastern = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/New_York',
+    // Pull the workspace's configured business hours (Settings → Business Hours)
+    // so the AI's clock AND its scheduling window come from one place — no need
+    // to hard-code times in the prompt.
+    let bizTz = 'America/New_York'
+    let businessHoursLine = ''
+    try {
+      const { data: ws } = await supabaseAdmin
+        .from('workspaces')
+        .select('business_hours_start, business_hours_end, business_hours_tz, business_days')
+        .eq('id', conversation.workspace_id)
+        .maybeSingle()
+      if (ws) {
+        bizTz = ws.business_hours_tz || bizTz
+        const days = summarizeDays(ws.business_days && ws.business_days.length ? ws.business_days : [1, 2, 3, 4, 5])
+        businessHoursLine = `\n\nBUSINESS HOURS: ${days}, ${fmtBizTime(ws.business_hours_start)}–${fmtBizTime(ws.business_hours_end)} (${tzShort(bizTz)}). Only confirm a callback INSIDE these hours. If the lead asks for a time outside them — after close, before open, or on a non-business day — guide them to the next business day at the opening time. Never confirm a time outside business hours.`
+      }
+    } catch (e) { console.warn('[scenario] business hours load failed:', e.message) }
+
+    // Current date/time in the business timezone — the AI has no built-in clock,
+    // so without this it can't reason about "today/tomorrow/this afternoon" or
+    // whether a requested time falls inside business hours.
+    const nowLocal = new Intl.DateTimeFormat('en-US', {
+      timeZone: bizTz,
       weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
       hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
     }).format(new Date())
@@ -326,8 +369,8 @@ export async function executeScenario(scenario, message, conversation) {
     // Build AI prompt
     const aiPrompt = `${instructions}
 
-CURRENT DATE & TIME: ${nowEastern} (US Eastern Time).
-Use this to interpret relative times the customer mentions (e.g. "today", "tomorrow", "this afternoon", "next week") and when confirming or proposing times.
+CURRENT DATE & TIME: ${nowLocal}.
+Use this to interpret relative times the customer mentions (e.g. "today", "tomorrow", "this afternoon", "next week") and when confirming or proposing times.${businessHoursLine}
 
 IMPORTANT RULES:
 1. Follow the scenario instructions strictly
