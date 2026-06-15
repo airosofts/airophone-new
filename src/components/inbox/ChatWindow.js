@@ -739,8 +739,12 @@ export default function ChatWindow({
                   </button>
                   <div className="flex-1 flex items-center gap-2.5 h-11 px-3.5 rounded-2xl md:rounded-lg border border-[#D4D1C9] bg-[#F7F6F3]">
                     <span className="w-2.5 h-2.5 rounded-full bg-[#D63B1F] animate-pulse shrink-0" />
-                    <span className="text-sm font-mono tabular-nums text-[#131210]">{fmtElapsed(recordElapsed)}</span>
-                    <span className="text-xs text-[#9B9890] truncate">Recording voice message…</span>
+                    <span className="text-sm font-mono tabular-nums text-[#131210] shrink-0">{fmtElapsed(recordElapsed)}</span>
+                    <div className="flex items-center gap-[3px] flex-1 h-5 overflow-hidden">
+                      {Array.from({ length: 28 }).map((_, i) => (
+                        <span key={i} className="voice-rec-bar" style={{ animationDelay: `${(i % 14) * 0.07}s` }} />
+                      ))}
+                    </div>
                   </div>
                   <button
                     type="button"
@@ -890,6 +894,19 @@ export default function ChatWindow({
 
       {/* Custom Animations */}
       <style jsx>{`
+        .voice-rec-bar {
+          width: 2px;
+          height: 25%;
+          flex-shrink: 0;
+          border-radius: 2px;
+          background: #D63B1F;
+          opacity: 0.5;
+          animation: voiceRec 0.9s ease-in-out infinite;
+        }
+        @keyframes voiceRec {
+          0%, 100% { height: 20%; opacity: 0.4; }
+          50% { height: 95%; opacity: 0.85; }
+        }
         @keyframes fadeIn {
           from {
             opacity: 0;

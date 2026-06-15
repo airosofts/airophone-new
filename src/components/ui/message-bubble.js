@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { formatInTimeZone } from 'date-fns-tz'
 import { format, differenceInHours, isToday, isYesterday, parseISO } from 'date-fns'
+import VoiceNotePlayer from './VoiceNotePlayer'
 
 // Official delivery error codes → human-readable reasons.
 // Kept in sync with upstream messaging error code reference. Language is
@@ -140,7 +141,7 @@ export default function MessageBubble({ message, user }) {
     return (
       <div className="space-y-1.5">
         {mediaItems.map((item, i) => isAudioItem(item) ? (
-          <audio key={i} src={item.url} controls preload="metadata" className="w-full h-9" style={{ maxWidth: 280 }} />
+          <VoiceNotePlayer key={i} src={item.url} />
         ) : isVideoItem(item) ? (
           <video key={i} src={item.url} controls preload="metadata" className="rounded-lg w-full" style={{ maxHeight: 280 }} />
         ) : (
@@ -275,36 +276,16 @@ export default function MessageBubble({ message, user }) {
             }`}
           >
             {isVoicemail ? (
-              <div className="flex items-center gap-3 min-w-60">
-                <div className="shrink-0 w-9 h-9 rounded-full bg-[rgba(214,59,31,0.08)] border border-[rgba(214,59,31,0.18)] flex items-center justify-center">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D63B1F" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="6" cy="14" r="4"/><circle cx="18" cy="14" r="4"/><line x1="6" y1="18" x2="18" y2="18"/>
-                  </svg>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider mb-1">Voicemail</p>
-                  <audio
-                    src={message.recording_url}
-                    controls
-                    preload="none"
-                    className="w-full h-8"
-                    style={{ maxWidth: 260 }}
-                  />
-                </div>
+              <div className="min-w-[220px]">
+                <p className="text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider mb-1.5">Voicemail</p>
+                <VoiceNotePlayer src={message.recording_url} />
               </div>
             ) : hasAudio ? (
-              <div className="flex items-center gap-3 min-w-60">
-                <div className="shrink-0 w-9 h-9 rounded-full bg-[rgba(214,59,31,0.08)] border border-[rgba(214,59,31,0.18)] flex items-center justify-center">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D63B1F" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
-                  </svg>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider mb-1">Voice message</p>
-                  {audioItems.map((item, i) => (
-                    <audio key={i} src={item.url} controls preload="metadata" className="w-full h-8" style={{ maxWidth: 260 }} />
-                  ))}
-                </div>
+              <div className="min-w-[220px]">
+                <p className="text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider mb-1.5">Voice message</p>
+                {audioItems.map((item, i) => (
+                  <VoiceNotePlayer key={i} src={item.url} />
+                ))}
               </div>
             ) : (
               <div className="space-y-1.5">
