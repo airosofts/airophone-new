@@ -2,6 +2,24 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
 import { getUserFromRequest, getWorkspaceFromRequest } from '@/lib/session-helper'
 
+const PAGE_SIZE = 1000          // PostgREST hard-caps a single request at 1000 rows
+const MAX_ROWS = 200000         // safety ceiling so analytics can't fetch unbounded
+
+// Page through a query past PostgREST's 1000-row cap. `build` must return a fresh
+// query builder each call (builders are single-use). Order by a unique column
+// (id) so range windows are stable and rows aren't skipped/duplicated.
+async function fetchAll(build) {
+  const all = []
+  for (let from = 0; from < MAX_ROWS; from += PAGE_SIZE) {
+    const { data, error } = await build().range(from, from + PAGE_SIZE - 1)
+    if (error) { console.error('[analytics] fetchAll error:', error); break }
+    if (!data || data.length === 0) break
+    all.push(...data)
+    if (data.length < PAGE_SIZE) break
+  }
+  return all
+}
+
 export async function GET(request) {
   try {
     const user = getUserFromRequest(request)
@@ -44,39 +62,33 @@ export async function GET(request) {
     const pps = prevPeriodStart.toISOString()
     const ppe = prevPeriodEnd.toISOString()
 
-    // ── Parallel fetch ──
-    const [callsCur, callsPrev, msgsCur, msgsPrev, convCur, convPrev, members] = await Promise.all([
-      supabaseAdmin.from('calls').select('*').eq('workspace_id', wid).gte('created_at', ps),
-      supabaseAdmin.from('calls').select('*').eq('workspace_id', wid).gte('created_at', pps).lt('created_at', ppe),
+    // ── Parallel fetch (each paginated past the 1000-row PostgREST cap) ──
+    const msgOr = `from_number.in.(${wsPhones.join(',')}),to_number.in.(${wsPhones.join(',')})`
+    const [calls, callsPrevData, msgs, msgsPrevData, convs, convsPrevData, members] = await Promise.all([
+      fetchAll(() => supabaseAdmin.from('calls').select('*').eq('workspace_id', wid).gte('created_at', ps).order('id', { ascending: true })),
+      fetchAll(() => supabaseAdmin.from('calls').select('*').eq('workspace_id', wid).gte('created_at', pps).lt('created_at', ppe).order('id', { ascending: true })),
       wsPhones.length
-        ? supabaseAdmin.from('messages')
+        ? fetchAll(() => supabaseAdmin.from('messages')
             .select('id, direction, from_number, to_number, created_at, user_id')
-            .or(`from_number.in.(${wsPhones.join(',')}),to_number.in.(${wsPhones.join(',')})`)
-            .gte('created_at', ps)
-        : Promise.resolve({ data: [] }),
+            .or(msgOr)
+            .gte('created_at', ps).order('id', { ascending: true }))
+        : Promise.resolve([]),
       wsPhones.length
-        ? supabaseAdmin.from('messages')
+        ? fetchAll(() => supabaseAdmin.from('messages')
             .select('id, direction, from_number, to_number, created_at, user_id')
-            .or(`from_number.in.(${wsPhones.join(',')}),to_number.in.(${wsPhones.join(',')})`)
-            .gte('created_at', pps).lt('created_at', ppe)
-        : Promise.resolve({ data: [] }),
+            .or(msgOr)
+            .gte('created_at', pps).lt('created_at', ppe).order('id', { ascending: true }))
+        : Promise.resolve([]),
       wsPhones.length
-        ? supabaseAdmin.from('conversations').select('id, created_at').in('from_number', wsPhones).gte('created_at', ps)
-        : Promise.resolve({ data: [] }),
+        ? fetchAll(() => supabaseAdmin.from('conversations').select('id, created_at').in('from_number', wsPhones).gte('created_at', ps).order('id', { ascending: true }))
+        : Promise.resolve([]),
       wsPhones.length
-        ? supabaseAdmin.from('conversations').select('id').in('from_number', wsPhones).gte('created_at', pps).lt('created_at', ppe)
-        : Promise.resolve({ data: [] }),
+        ? fetchAll(() => supabaseAdmin.from('conversations').select('id, created_at').in('from_number', wsPhones).gte('created_at', pps).lt('created_at', ppe).order('id', { ascending: true }))
+        : Promise.resolve([]),
       supabaseAdmin.from('workspace_members')
         .select('user_id, users(id, name, profile_photo_url, email)')
         .eq('workspace_id', wid).eq('is_active', true),
     ])
-
-    const calls = callsCur.data || []
-    const callsPrevData = callsPrev.data || []
-    const msgs = msgsCur.data || []
-    const msgsPrevData = msgsPrev.data || []
-    const convs = convCur.data || []
-    const convsPrevData = convPrev.data || []
 
     // ── KPIs ──
     const totalCalls = calls.length

@@ -415,12 +415,12 @@ export default function AutomationBuilder({ phoneNumbers = [], automation = null
               {form.messageMode === 'template' ? (
                 <>
                   <textarea className={`${inputCls} resize-y min-h-[100px]`} value={form.messageTemplate}
-                    placeholder="Hi {{name}}, thanks for your interest! …"
+                    placeholder="Hi {{first_name}}, thanks for your interest! …"
                     onChange={e => setForm(f => ({ ...f, messageTemplate: e.target.value }))} />
                   {columns.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mt-2">
                       <span className="text-[11px] text-[#9B9890]">Placeholders:</span>
-                      {[...new Set(['name', ...columns.map(c => c.placeholder).filter(Boolean)])].map(p => (
+                      {[...new Set(['item_name', ...columns.map(c => c.placeholder).filter(Boolean)])].map(p => (
                         <button key={p} type="button"
                           onClick={() => setForm(f => ({ ...f, messageTemplate: f.messageTemplate + `{{${p}}}` }))}
                           className="px-2 py-0.5 text-[11px] font-mono bg-[#EFEDE8] text-[#5C5A55] rounded border border-[#E3E1DB] hover:text-[#D63B1F]">

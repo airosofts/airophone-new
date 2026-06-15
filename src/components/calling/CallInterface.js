@@ -271,7 +271,11 @@ export default function CallInterface({
   }
 
   // Two short descending beeps — the familiar "call ended" sound.
-  const playEndTone = () => {
+  // NOTE: declared as a hoisted `function` (not a const arrow) on purpose — the
+  // disconnect-tone useEffect above calls it, but this definition sits after the
+  // early `if (!isCallActive) return null`. A const would be in the temporal dead
+  // zone when a call ends, crashing the page ("Cannot access 'playEndTone'…").
+  function playEndTone() {
     try {
       if (!audioCtxRef.current) {
         const Ctx = window.AudioContext || window.webkitAudioContext

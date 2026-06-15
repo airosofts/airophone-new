@@ -315,8 +315,19 @@ export async function executeScenario(scenario, message, conversation) {
       console.warn(`[scenario] Unresolved tokens for ${message.from_number}: ${[...unresolvedTokens].join(', ')} — message will read awkwardly. Check that this contact's custom_fields contains those keys.`)
     }
 
+    // Current date/time in US Eastern — the AI has no built-in clock, so without
+    // this it can't reason about "today", "tomorrow", "this afternoon", or schedule.
+    const nowEastern = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+      hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+    }).format(new Date())
+
     // Build AI prompt
     const aiPrompt = `${instructions}
+
+CURRENT DATE & TIME: ${nowEastern} (US Eastern Time).
+Use this to interpret relative times the customer mentions (e.g. "today", "tomorrow", "this afternoon", "next week") and when confirming or proposing times.
 
 IMPORTANT RULES:
 1. Follow the scenario instructions strictly

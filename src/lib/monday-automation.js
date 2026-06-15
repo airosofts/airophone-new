@@ -29,12 +29,19 @@ async function buildMessage(automation, item, columns) {
     return ai.response.trim()
   }
 
-  // Template mode — substitute {{column_slug}} and {{name}}.
-  const slugToText = { name: item.name || '' }
+  // Template mode — every placeholder maps to a Monday field the user picked:
+  //   {{item_name}}        → the Monday item's name (its title)
+  //   {{<column_slug>}}    → that board column's value (e.g. {{first_name}})
+  // No hardcoding — the user chooses which column to insert via its chip.
   const byId = new Map((item.column_values || []).map(cv => [cv.id, cv]))
+  const slugToText = {}
   for (const col of columns) {
-    slugToText[columnTitleToPlaceholder(col.title)] = byId.get(col.id)?.text || ''
+    slugToText[columnTitleToPlaceholder(col.title)] = (byId.get(col.id)?.text || '').trim()
   }
+  slugToText.item_name = (item.name || '').trim()
+  // Backward-compat: legacy {{name}} → the item title when no column claimed "name".
+  if (!slugToText.name) slugToText.name = slugToText.item_name
+
   return (automation.message_template || '')
     .replace(/\{\{(\w+)\}\}/g, (_, k) => (slugToText[k] ?? ''))
     .replace(/\{(\w+)\}/g, (_, k) => (slugToText[k] ?? ''))
