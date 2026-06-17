@@ -25,6 +25,7 @@ export function useWebRTCCall() {
   
   // Refs
   const callTimer = useRef(null)
+  const callStartRef = useRef(null)   // wall-clock answer time; duration is derived from this
   const participantCallsRef = useRef([])
   const pendingParticipantRef = useRef(null)
   const cleanupTimeoutRef = useRef(null)
@@ -56,10 +57,13 @@ export function useWebRTCCall() {
   }
 
   const startCallTimer = () => {
-    setCallDuration(0)
-    if (callTimer.current) {
-      clearInterval(callTimer.current)
-    }
+    // Idempotent. A mid-call 'active' event — network-blip recovery, hold→resume,
+    // or a SIP session refresh (often ~30/50 min into a long call) — must NOT
+    // restart the clock. Duration is derived from the wall-clock answer time, so
+    // it can never reset and doesn't drift if setInterval is throttled.
+    if (!callStartRef.current) callStartRef.current = Date.now()
+    if (callTimer.current) return
+    setCallDuration(Math.floor((Date.now() - callStartRef.current) / 1000))
     callTimer.current = setInterval(() => {
       // Watchdog: check if the Telnyx call object is still alive.
       // If the remote party hung up but the SDK didn't fire hangup/destroy,
@@ -76,7 +80,7 @@ export function useWebRTCCall() {
         performCompleteCleanup()
         return
       }
-      setCallDuration(prev => prev + 1)
+      setCallDuration(Math.floor((Date.now() - callStartRef.current) / 1000))
     }, 1000)
   }
 
@@ -85,6 +89,7 @@ export function useWebRTCCall() {
       clearInterval(callTimer.current)
       callTimer.current = null
     }
+    callStartRef.current = null   // so the next call's timer starts fresh at 0
   }
 
   const originalTitleRef = useRef(null)

@@ -473,6 +473,27 @@ Current conversation:`
       console.log(`AI delay: no settings found for workspace ${scenario.workspace_id}, sending immediately`)
     }
 
+    // Supersede guard — the fix for "the bot replied 3 times / contradicted
+    // itself." If the lead sent a NEWER inbound while we were generating the
+    // reply and waiting out the humanizing delay, abort: a fresh execution
+    // triggered by that newer message will reply with the FULL context. Without
+    // this, a multi-text burst ("Tomorrow", "Or right now") spawns concurrent
+    // runs that each send their own reply, none aware of the others.
+    const { data: newerInbound } = await supabaseAdmin
+      .from('messages')
+      .select('id')
+      .eq('conversation_id', conversation.id)
+      .eq('direction', 'inbound')
+      .gt('created_at', message.created_at)
+      .limit(1)
+    if (newerInbound && newerInbound.length > 0) {
+      console.log(`[scenario] reply superseded by a newer inbound in ${conversation.id} — skipping to avoid a duplicate/contradictory message`)
+      executionLog.execution_status = 'skipped_superseded'
+      executionLog.processing_time_ms = Date.now() - startTime
+      await logScenarioExecution(executionLog)
+      return { success: true, skipped: true, reason: 'superseded' }
+    }
+
     // Send reply via Telnyx
     const sendResult = await telnyx.sendMessage(
       message.to_number, // from (our number)

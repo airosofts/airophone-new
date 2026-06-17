@@ -47,6 +47,44 @@ export function isWithinBusinessHours(scenario) {
   return currentTime >= startTime && currentTime <= endTime
 }
 
+// ── Workspace business hours (Settings → Business Hours) — the same source the
+// main scenario prompt uses, so follow-ups behave consistently. ──────────────
+async function loadWorkspaceHours(workspaceId) {
+  if (!workspaceId) return null
+  const { data } = await supabaseAdmin
+    .from('workspaces')
+    .select('business_hours_start, business_hours_end, business_hours_tz, business_days')
+    .eq('id', workspaceId).maybeSingle()
+  if (!data) return null
+  return {
+    start: data.business_hours_start || '09:00:00',
+    end: data.business_hours_end || '18:00:00',
+    tz: data.business_hours_tz || 'America/New_York',
+    days: (data.business_days && data.business_days.length) ? data.business_days : [1, 2, 3, 4, 5],
+  }
+}
+const _DOW = { Sun: 7, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }   // ISO Mon=1..Sun=7
+function isWithinWorkspaceHours(bh) {
+  if (!bh) return true
+  const p = new Intl.DateTimeFormat('en-US', { timeZone: bh.tz, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date())
+  const day = _DOW[p.find(x => x.type === 'weekday')?.value]
+  if (!bh.days.includes(day)) return false
+  const cur = Number(p.find(x => x.type === 'hour')?.value) * 60 + Number(p.find(x => x.type === 'minute')?.value)
+  const [sh, sm] = bh.start.split(':').map(Number)
+  const [eh, em] = bh.end.split(':').map(Number)
+  return cur >= (sh * 60 + sm) && cur <= (eh * 60 + em)
+}
+const _DAY = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+function hoursPromptBlock(bh) {
+  if (!bh) return ''
+  const now = new Intl.DateTimeFormat('en-US', { timeZone: bh.tz, weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(new Date())
+  const d = [...new Set(bh.days)].sort((a, b) => a - b)
+  const contiguous = d.every((v, i) => i === 0 || v === d[i - 1] + 1)
+  const daysStr = contiguous && d.length > 1 ? `${_DAY[d[0]]}–${_DAY[d[d.length - 1]]}` : d.map(n => _DAY[n]).join(', ')
+  const ft = (t) => { const [h, m] = String(t).split(':').map(Number); return new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', hour: 'numeric', minute: '2-digit' }).format(new Date(Date.UTC(2000, 0, 1, h, m))) }
+  return `\n\nCURRENT DATE & TIME: ${now}.\nBUSINESS HOURS: ${daysStr}, ${ft(bh.start)}–${ft(bh.end)}. Only propose or confirm callbacks INSIDE these hours; for anything outside, guide to the next business day at opening.`
+}
+
 /**
  * Initialize or update follow-up state for a conversation
  */
@@ -81,9 +119,16 @@ export async function updateFollowupState(conversationId, scenarioId, messageFro
         updated_at: now.toISOString()
       }
 
-      // If customer responded, reset next_followup_at (we'll calculate it after AI responds)
+      // Standard cadence behavior: a reply EXITS the follow-up sequence. Cancel
+      // any pending nudge, and stop the sequence — but only once it's actually
+      // active (a nudge is pending or already sent), NOT on the first inbound
+      // that merely starts the conversation (that one still needs to arm stage 1).
       if (messageFrom === 'customer') {
         updates.next_followup_at = null
+        if (existingState.next_followup_at || (existingState.current_stage || 0) >= 1) {
+          updates.stopped = true
+          updates.stopped_at = now.toISOString()
+        }
       }
 
       await supabaseAdmin
@@ -239,25 +284,51 @@ export async function processScheduledFollowups() {
     let skipped = 0
 
     for (const followupState of dueFollowups) {
-      // Skip if manual override is active
-      if (followupState.conversations?.manual_override) {
-        console.log(`Skipping conversation ${followupState.conversation_id} - manual override active`)
-        skipped++
-        continue
+      // While paused (human took over, or the line's AI is off) we RE-ANCHOR the
+      // nudge a short, natural gap into the future instead of letting it pile up
+      // overdue — so when AI/override is cleared it doesn't fire a stale message
+      // the instant it resumes; it goes out shortly after, not immediately.
+      const reAnchor = async () => {
+        const t = new Date(Date.now() + 10 * 60 * 1000)   // +10 min
+        await supabaseAdmin.from('conversation_followup_state')
+          .update({ next_followup_at: t.toISOString() }).eq('id', followupState.id)
       }
 
-      // Skip if the sending line has AI turned off.
+      if (followupState.conversations?.manual_override) {
+        console.log(`Re-anchoring follow-up for ${followupState.conversation_id} - manual override active`)
+        await reAnchor(); skipped++; continue
+      }
       const fromDigits = followupState.conversations?.from_number?.replace(/\D/g, '').slice(-10)
       if (fromDigits && aiOffLines.has(fromDigits)) {
-        console.log(`Skipping conversation ${followupState.conversation_id} - line AI disabled`)
+        console.log(`Re-anchoring follow-up for ${followupState.conversation_id} - line AI disabled`)
+        await reAnchor(); skipped++; continue
+      }
+
+      // RULE: follow up ONLY if the lead hasn't responded. If the last message
+      // in the thread is from the lead, they're engaged — cancel the nudge so we
+      // never talk over the live AI reply (and never send a stale next stage).
+      const { data: lastMsg } = await supabaseAdmin
+        .from('messages')
+        .select('direction')
+        .eq('conversation_id', followupState.conversation_id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (lastMsg?.direction === 'inbound') {
+        console.log(`Skipping follow-up for ${followupState.conversation_id} — lead has replied; cancelling pending nudge`)
+        await supabaseAdmin
+          .from('conversation_followup_state')
+          .update({ next_followup_at: null, last_message_from: 'customer', updated_at: now.toISOString() })
+          .eq('id', followupState.id)
         skipped++
         continue
       }
 
-      // Check business hours
-      if (!isWithinBusinessHours(followupState.scenarios)) {
+      // Business hours — use the WORKSPACE's configured hours (Settings →
+      // Business Hours), the same source the main scenario prompt uses.
+      const bh = await loadWorkspaceHours(followupState.scenarios?.workspace_id)
+      if (!isWithinWorkspaceHours(bh)) {
         console.log(`Skipping conversation ${followupState.conversation_id} - outside business hours`)
-        // Reschedule for next hour
         const nextHour = new Date()
         nextHour.setHours(nextHour.getHours() + 1)
         await supabaseAdmin
@@ -297,7 +368,8 @@ export async function processScheduledFollowups() {
         stage.instructions,
         followupState.scenarios?.instructions || '',
         followupState.scenarios?.workspace_id || null,
-        nextStage
+        nextStage,
+        bh
       )
 
       if (result.success) {
@@ -368,7 +440,7 @@ function isAutomatedFollowupMessage(body) {
  * is the parent scenario's persona — both are sent to the AI so it stays in
  * character instead of generating generic "you there?" messages.
  */
-async function sendFollowupMessage(conversationId, scenarioId, stageInstructions, scenarioInstructions, workspaceId, stage) {
+async function sendFollowupMessage(conversationId, scenarioId, stageInstructions, scenarioInstructions, workspaceId, stage, bh = null) {
   try {
     // Get conversation details and history
     const { data: conversation } = await supabaseAdmin
@@ -430,9 +502,10 @@ async function sendFollowupMessage(conversationId, scenarioId, stageInstructions
       }
     }
 
-    // Generate AI response using combined instructions
+    // Generate AI response — append the current date/time + business-hours block
+    // so a scheduling follow-up respects hours, exactly like the main scenario.
     const { getAIResponse } = await import('./openai')
-    const aiResult = await getAIResponse(messages, combinedInstructions)
+    const aiResult = await getAIResponse(messages, combinedInstructions + hoursPromptBlock(bh))
 
     if (!aiResult.success) {
       return { success: false, error: aiResult.error }
