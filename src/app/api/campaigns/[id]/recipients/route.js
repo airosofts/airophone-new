@@ -20,7 +20,7 @@ export async function GET(request, { params }) {
 
   const { data: c } = await supabaseAdmin
     .from('campaigns')
-    .select('id, scheduled_at, throttle_count, throttle_window_seconds, send_windows, send_timezone, send_days, daily_cap')
+    .select('id, status, scheduled_at, throttle_count, throttle_window_seconds, send_windows, send_timezone, send_days, daily_cap, sent_count, failed_count, total_recipients, cycle, recurring')
     .eq('id', id).eq('workspace_id', workspace.workspaceId).maybeSingle()
   if (!c) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
 
@@ -48,5 +48,11 @@ export async function GET(request, { params }) {
     recipients = recipients.map((r, i) => ({ ...r, eta: eta[from + i] || null }))
   }
 
-  return NextResponse.json({ recipients, total: total || 0, page, pageSize: PAGE })
+  return NextResponse.json({
+    recipients, total: total || 0, page, pageSize: PAGE,
+    campaign: {
+      status: c.status, sent_count: c.sent_count || 0, failed_count: c.failed_count || 0,
+      total_recipients: c.total_recipients || 0, cycle: c.cycle || 1, recurring: !!c.recurring,
+    },
+  })
 }

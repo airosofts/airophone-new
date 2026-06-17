@@ -1723,18 +1723,21 @@ function ViewCampaignModal({ campaign, contactLists, phoneNumbers, isTrial, onCl
   const [recipPage, setRecipPage] = useState(0)
   const [recipTotal, setRecipTotal] = useState(0)
   const [loadingRecip, setLoadingRecip] = useState(false)
+  const [liveStats, setLiveStats] = useState(null)   // live sent/failed/total/status, polled every 5s
   useEffect(() => { setRecipPage(0) }, [recipTab])
   useEffect(() => {
     let alive = true
-    ;(async () => {
-      setLoadingRecip(true)
+    const load = async (showLoading) => {
+      if (showLoading) setLoadingRecip(true)
       try {
         const res = await apiGet(`/api/campaigns/${campaign.id}/recipients?status=${recipTab}&page=${recipPage}`)
         const data = await res.json()
-        if (alive) { setRecipients(data.recipients || []); setRecipTotal(data.total || 0) }
-      } catch { if (alive) setRecipients([]) } finally { if (alive) setLoadingRecip(false) }
-    })()
-    return () => { alive = false }
+        if (alive) { setRecipients(data.recipients || []); setRecipTotal(data.total || 0); setLiveStats(data.campaign || null) }
+      } catch { if (alive) setRecipients([]) } finally { if (alive && showLoading) setLoadingRecip(false) }
+    }
+    load(true)
+    const iv = setInterval(() => load(false), 5000)   // live progress + ETA refresh
+    return () => { alive = false; clearInterval(iv) }
   }, [campaign.id, recipTab, recipPage])
   const fmtEta = (iso) => {
     try { return new Intl.DateTimeFormat('en-US', { timeZone: campaign.send_timezone || undefined, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(iso)) }
@@ -1825,6 +1828,25 @@ function ViewCampaignModal({ campaign, contactLists, phoneNumbers, isTrial, onCl
                 ))}
               </div>
               <div><p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1">Status</p><span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${statusClass}`}>{statusLabel}</span></div>
+
+              {/* Live progress bar (polls every 5s) */}
+              {(() => {
+                const s = liveStats || campaign
+                const total = s.total_recipients || campaign.total_recipients || 0
+                const done = (s.sent_count || 0) + (s.failed_count || 0)
+                const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0
+                return (
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-xs text-[#9B9890] uppercase tracking-wider">Progress{s.recurring ? ` · cycle ${s.cycle}` : ''}</p>
+                      <p className="text-xs text-[#5C5A55]">{(s.sent_count || 0).toLocaleString()} sent{s.failed_count ? ` · ${s.failed_count} failed` : ''} / {total.toLocaleString()} · {pct}%</p>
+                    </div>
+                    <div className="h-2 rounded-full bg-[#EFEDE8] overflow-hidden">
+                      <div className="h-full bg-[#D63B1F] transition-all duration-500" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
 
             <div className="border-t border-[#E3E1DB] px-5 py-4">
