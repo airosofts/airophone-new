@@ -126,7 +126,7 @@ export async function listAllItems(workspaceId, boardId, { groupIds = null, maxI
   const pumpFromCursor = async (cursor) => {
     while (cursor && items.length < maxItems) {
       const data = await mondayGraphQL(workspaceId, `
-        query ($cursor: String) {
+        query ($cursor: String!) {
           next_items_page(limit: 500, cursor: $cursor) { cursor items { ${ITEM_FIELDS} } }
         }
       `, { cursor })
