@@ -114,41 +114,57 @@ export async function listColumns(workspaceId, boardId) {
   return data?.boards?.[0]?.columns || []
 }
 
-// Page through items_page cursor until all items in a board are fetched.
-// `groupIds` is optional — if provided, items are filtered client-side after
-// fetching (Monday's items_page query_params group filter requires Items API
-// v2, which isn't enabled on every account; client filter is universally safe).
-export async function listAllItems(workspaceId, boardId, { groupIds = null, maxItems = 5000 } = {}) {
+// Fetch every item in a board (or in the selected groups), fully paginated.
+// When `groupIds` is given we page the SELECTED GROUPS directly (server-side
+// filter via boards.groups.items_page) instead of scanning the whole board and
+// filtering in JS — so large groups are never truncated. next_items_page
+// continues whichever items_page produced the cursor (board- or group-scoped).
+export async function listAllItems(workspaceId, boardId, { groupIds = null, maxItems = 100000 } = {}) {
   const items = []
-  let cursor = null
-  // Stop after maxItems to protect against runaway boards.
-  while (items.length < maxItems) {
-    const data = await mondayGraphQL(workspaceId, `
-      query ($boardId: [ID!], $cursor: String) {
-        boards(ids: $boardId) {
-          items_page(limit: 100, cursor: $cursor) {
-            cursor
-            items {
-              id
-              name
-              group { id title }
-              column_values { id type text value }
+  const ITEM_FIELDS = `id name group { id title } column_values { id type text value }`
+
+  const pumpFromCursor = async (cursor) => {
+    while (cursor && items.length < maxItems) {
+      const data = await mondayGraphQL(workspaceId, `
+        query ($cursor: String) {
+          next_items_page(limit: 500, cursor: $cursor) { cursor items { ${ITEM_FIELDS} } }
+        }
+      `, { cursor })
+      const page = data?.next_items_page
+      for (const it of (page?.items || [])) { items.push(it); if (items.length >= maxItems) break }
+      cursor = page?.cursor || null
+    }
+  }
+
+  if (groupIds && groupIds.length > 0) {
+    // Only the selected groups' items — each fully paged. No whole-board scan.
+    for (const gid of groupIds) {
+      const data = await mondayGraphQL(workspaceId, `
+        query ($boardId: [ID!], $gid: [String!]) {
+          boards(ids: $boardId) {
+            groups(ids: $gid) {
+              items_page(limit: 500) { cursor items { ${ITEM_FIELDS} } }
             }
           }
         }
-      }
-    `, { boardId: [String(boardId)], cursor })
-
-    const page = data?.boards?.[0]?.items_page
-    const batch = page?.items || []
-    for (const it of batch) {
-      if (groupIds && groupIds.length > 0 && !groupIds.includes(it.group?.id)) continue
-      items.push(it)
+      `, { boardId: [String(boardId)], gid: [String(gid)] })
+      const page = data?.boards?.[0]?.groups?.[0]?.items_page
+      for (const it of (page?.items || [])) { items.push(it); if (items.length >= maxItems) break }
+      await pumpFromCursor(page?.cursor || null)
       if (items.length >= maxItems) break
     }
-    cursor = page?.cursor || null
-    if (!cursor) break
+  } else {
+    // No group filter → page through the whole board.
+    const data = await mondayGraphQL(workspaceId, `
+      query ($boardId: [ID!]) {
+        boards(ids: $boardId) { items_page(limit: 500) { cursor items { ${ITEM_FIELDS} } } }
+      }
+    `, { boardId: [String(boardId)] })
+    const page = data?.boards?.[0]?.items_page
+    for (const it of (page?.items || [])) { items.push(it); if (items.length >= maxItems) break }
+    await pumpFromCursor(page?.cursor || null)
   }
+
   return items
 }
 

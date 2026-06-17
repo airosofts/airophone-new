@@ -60,6 +60,8 @@ export default function ChatWindow({
   const recordTimerRef = useRef(null)
   const recordIntentRef = useRef('cancel')   // 'send' | 'cancel' — read in onstop
   const recordMimeRef = useRef('audio/webm')
+  const recAudioCtxRef = useRef(null)        // Web Audio context for the live mic waveform
+  const [recAnalyser, setRecAnalyser] = useState(null)  // AnalyserNode driving the bars
 
   // Close more menu when clicking outside
   useEffect(() => {
@@ -282,6 +284,21 @@ export default function ChatWindow({
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       recordStreamRef.current = stream
+
+      // Live mic level → drives the recording waveform (real intensity, not a fake animation).
+      try {
+        const AC = window.AudioContext || window.webkitAudioContext
+        if (AC) {
+          const ctx = new AC()
+          const source = ctx.createMediaStreamSource(stream)
+          const analyser = ctx.createAnalyser()
+          analyser.fftSize = 1024
+          source.connect(analyser)   // NOT connected to destination — avoids echo/feedback
+          recAudioCtxRef.current = ctx
+          setRecAnalyser(analyser)
+        }
+      } catch (e) { console.warn('Live waveform unavailable:', e?.message) }
+
       const mime = pickAudioMime()
       const mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream)
       recordMimeRef.current = (mr.mimeType || mime || 'audio/webm').split(';')[0]
@@ -292,6 +309,9 @@ export default function ChatWindow({
       mr.onstop = () => {
         (recordStreamRef.current?.getTracks() || []).forEach(t => t.stop())
         recordStreamRef.current = null
+        try { recAudioCtxRef.current?.close() } catch { /* ignore */ }
+        recAudioCtxRef.current = null
+        setRecAnalyser(null)
         clearInterval(recordTimerRef.current)
         const chunks = recordChunksRef.current
         recordChunksRef.current = []
@@ -382,6 +402,7 @@ export default function ChatWindow({
   useEffect(() => () => {
     clearInterval(recordTimerRef.current)
     ;(recordStreamRef.current?.getTracks?.() || []).forEach(t => t.stop())
+    try { recAudioCtxRef.current?.close() } catch { /* ignore */ }
   }, [])
 
   // Schedule the current composer contents for later instead of sending now.
@@ -740,11 +761,7 @@ export default function ChatWindow({
                   <div className="flex-1 flex items-center gap-2.5 h-11 px-3.5 rounded-2xl md:rounded-lg border border-[#D4D1C9] bg-[#F7F6F3]">
                     <span className="w-2.5 h-2.5 rounded-full bg-[#D63B1F] animate-pulse shrink-0" />
                     <span className="text-sm font-mono tabular-nums text-[#131210] shrink-0">{fmtElapsed(recordElapsed)}</span>
-                    <div className="flex items-center gap-[3px] flex-1 h-5 overflow-hidden">
-                      {Array.from({ length: 28 }).map((_, i) => (
-                        <span key={i} className="voice-rec-bar" style={{ animationDelay: `${(i % 14) * 0.07}s` }} />
-                      ))}
-                    </div>
+                    <LiveRecordingWave analyser={recAnalyser} />
                   </div>
                   <button
                     type="button"
@@ -894,19 +911,6 @@ export default function ChatWindow({
 
       {/* Custom Animations */}
       <style jsx>{`
-        .voice-rec-bar {
-          width: 2px;
-          height: 25%;
-          flex-shrink: 0;
-          border-radius: 2px;
-          background: #D63B1F;
-          opacity: 0.5;
-          animation: voiceRec 0.9s ease-in-out infinite;
-        }
-        @keyframes voiceRec {
-          0%, 100% { height: 20%; opacity: 0.4; }
-          50% { height: 95%; opacity: 0.85; }
-        }
         @keyframes fadeIn {
           from {
             opacity: 0;
@@ -959,6 +963,57 @@ export default function ChatWindow({
           }
         }
       `}</style>
+    </div>
+  )
+}
+
+// Live mic waveform shown while recording a voice message. Reads real-time
+// amplitude from the AnalyserNode and scrolls bars right→left like WhatsApp,
+// so bar height reflects how loud you're actually speaking. Fills full width.
+const WAVE_BARS = 48
+function LiveRecordingWave({ analyser }) {
+  const [levels, setLevels] = useState(() => new Array(WAVE_BARS).fill(0.04))
+  const rafRef = useRef(null)
+  const lastRef = useRef(0)
+
+  useEffect(() => {
+    if (!analyser) { setLevels(new Array(WAVE_BARS).fill(0.04)); return }
+    const buf = new Uint8Array(analyser.fftSize)
+    let arr = new Array(WAVE_BARS).fill(0.04)
+
+    const tick = (t) => {
+      rafRef.current = requestAnimationFrame(tick)
+      // Sample ~every 55ms so the waveform scrolls at a natural, readable speed.
+      if (t - lastRef.current < 55) return
+      lastRef.current = t
+      analyser.getByteTimeDomainData(buf)
+      let sum = 0
+      for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v }
+      const rms = Math.sqrt(sum / buf.length)
+      const level = Math.min(1, Math.max(0.04, rms * 3.4))   // scale quiet speech up
+      arr = [...arr.slice(1), level]
+      setLevels(arr)
+    }
+    rafRef.current = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(rafRef.current)
+  }, [analyser])
+
+  return (
+    <div className="flex items-center gap-[2px] flex-1 h-6 min-w-0">
+      {levels.map((l, i) => (
+        <span
+          key={i}
+          style={{
+            flex: 1,
+            height: `${Math.round(l * 100)}%`,
+            minHeight: 2,
+            borderRadius: 2,
+            background: '#D63B1F',
+            opacity: 0.35 + l * 0.55,
+            transition: 'height 0.08s linear',
+          }}
+        />
+      ))}
     </div>
   )
 }

@@ -37,6 +37,8 @@ const PUBLIC_API_ROUTES = [
   '/api/voicemail-campaigns/process-queue',
   // Scheduled / send-later SMS sweeper — same pattern: Bearer CRON_SECRET.
   '/api/sms/process-scheduled',
+  // SMS campaign queue sweeper — same pattern: Bearer CRON_SECRET.
+  '/api/campaigns/process-queue',
 ]
 
 export async function middleware(request) {

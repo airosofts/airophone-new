@@ -203,19 +203,12 @@ export async function POST(request, { params }) {
       )
     }
 
-    // Atomically claim the campaign — only proceed if it's still in draft.
-    // This prevents a double-click / concurrent request from spawning two senders.
-    // Also stamp the real recipient count here. For contact campaigns it was
-    // set (pre-dedupe) at creation; for Monday campaigns it was 0 because the
-    // count isn't known until items are pulled. messageCount is the accurate,
-    // de-duplicated number for both paths.
+    // Atomically claim the campaign (draft → 'enqueuing') so a double-click can't
+    // spawn two enqueues. The cron ignores 'enqueuing', so it won't sweep this
+    // campaign until we flip it to its final status below.
     const { data: claimed, error: claimError } = await supabaseAdmin
       .from('campaigns')
-      .update({
-        status: 'running',
-        started_at: new Date().toISOString(),
-        total_recipients: messageCount,
-      })
+      .update({ status: 'enqueuing', total_recipients: messageCount })
       .eq('id', campaignId)
       .eq('status', 'draft')
       .select('id')
@@ -225,23 +218,46 @@ export async function POST(request, { params }) {
       console.error('Error claiming campaign:', claimError)
       return NextResponse.json({ error: 'Failed to start campaign' }, { status: 500 })
     }
-
     if (!claimed) {
-      // Another request already moved it out of draft — abort silently
-      return NextResponse.json(
-        { error: 'Campaign is already running or has finished' },
-        { status: 409 }
-      )
+      return NextResponse.json({ error: 'Campaign is already running or has finished' }, { status: 409 })
     }
 
-    // Start sending messages in background
-    processCampaignMessages(campaign, contacts, user.userId, workspace.workspaceId, messageRate)
+    // Enqueue every recipient as a queued campaign_messages row with the phone +
+    // pre-personalized body, so the cron sweeper sends without re-resolving
+    // contacts/Monday. UNIQUE(campaign_id, contact_id|monday_item_id) dedupes.
+    const queueRows = contacts.map(r => ({
+      campaign_id: campaign.id,
+      contact_id: r.key.contact_id || null,
+      monday_item_id: r.key.monday_item_id || null,
+      to_number: r.phone,
+      body: hydrateTemplate(campaign.message_template, r.vars),
+      status: 'queued',
+    }))
+    for (let i = 0; i < queueRows.length; i += 500) {
+      const { error: insErr } = await supabaseAdmin
+        .from('campaign_messages')
+        .insert(queueRows.slice(i, i + 500))
+      if (insErr && insErr.code !== '23505') {
+        console.error('[campaign/start] enqueue error:', insErr)
+      }
+    }
+
+    // Always 'running' — the sweeper holds sending until scheduled_at and inside
+    // the send windows / throttle / daily cap. So a future scheduled_at simply
+    // means nothing dispatches until its time (and within business hours).
+    const isFuture = campaign.scheduled_at && new Date(campaign.scheduled_at).getTime() > Date.now()
+    await supabaseAdmin
+      .from('campaigns')
+      .update({ status: 'running', started_at: new Date().toISOString() })
+      .eq('id', campaign.id)
 
     return NextResponse.json({
       success: true,
-      message: 'Campaign started successfully',
+      message: isFuture ? 'Campaign scheduled — sending begins at the chosen time' : 'Campaign queued — sending starts within a minute',
+      scheduled: !!isFuture,
+      scheduledAt: campaign.scheduled_at || null,
       estimatedCost: (messageCount * messageRate).toFixed(2),
-      messageRate: messageRate
+      messageRate,
     })
 
   } catch (error) {
@@ -260,225 +276,4 @@ function hydrateTemplate(template, vars) {
   return template
     .replace(/\{\{(\w+)\}\}/g, (_, k) => (vars[k] ?? ''))
     .replace(/\{(\w+)\}/g, (_, k) => (vars[k] ?? ''))
-}
-
-async function processCampaignMessages(campaign, contacts, userId, workspaceId, messageRate) {
-  let sentCount = 0
-  let failedCount = 0
-
-  for (const recipient of contacts) {
-    let claimedRowId = null
-    try {
-      const normalizedContactNumber = recipient.phone
-      const normalizedSenderNumber = normalizePhoneNumber(campaign.sender_number)
-
-      // ATOMIC PER-RECIPIENT CLAIM. Both UNIQUE(campaign_id, contact_id) (for
-      // the contacts path) and UNIQUE(campaign_id, monday_item_id) (for the
-      // Monday path) make this insert the single source of truth: a racing
-      // second sender (different instance, retry, manual restart) gets 23505
-      // and skips. Recipient can never receive duplicates.
-      const { data: claim, error: claimErr } = await supabaseAdmin
-        .from('campaign_messages')
-        .insert({
-          campaign_id: campaign.id,
-          contact_id: recipient.key.contact_id || null,
-          monday_item_id: recipient.key.monday_item_id || null,
-          status: 'sending',
-          sent_at: new Date().toISOString(),
-        })
-        .select('id')
-        .single()
-
-      if (claimErr) {
-        if (claimErr.code === '23505') {
-          console.log(`[campaign] Skipping ${normalizedContactNumber} — already claimed`)
-          continue
-        }
-        console.error('[campaign] Failed to claim recipient:', claimErr)
-        continue
-      }
-      claimedRowId = claim.id
-
-      const personalizedMessage = hydrateTemplate(campaign.message_template, recipient.vars)
-
-      // Get or create conversation — must match BOTH phone_number and from_number
-      // so messages always appear under the correct sending line in the inbox.
-      let conversation = null
-
-      const { data: existingConversation } = await supabaseAdmin
-        .from('conversations')
-        .select('*')
-        .eq('phone_number', normalizedContactNumber)
-        .eq('from_number', normalizedSenderNumber)
-        .maybeSingle()
-
-      if (existingConversation) {
-        // Backfill workspace_id if missing (old conversations created before this field was set)
-        if (!existingConversation.workspace_id) {
-          await supabaseAdmin
-            .from('conversations')
-            .update({ workspace_id: workspaceId })
-            .eq('id', existingConversation.id)
-          existingConversation.workspace_id = workspaceId
-        }
-        conversation = existingConversation
-      } else {
-        const { data: newConversation, error: conversationError } = await supabaseAdmin
-          .from('conversations')
-          .insert({
-            phone_number: normalizedContactNumber,
-            name: recipient.displayName || null,
-            from_number: normalizedSenderNumber,
-            workspace_id: workspaceId,
-            created_by: userId
-          })
-          .select()
-          .single()
-
-        // Race condition: another campaign message beat us to it
-        if (conversationError && conversationError.code === '23505') {
-          const { data: fallbackConversation } = await supabaseAdmin
-            .from('conversations')
-            .select('*')
-            .eq('phone_number', normalizedContactNumber)
-            .eq('from_number', normalizedSenderNumber)
-            .single()
-
-          conversation = fallbackConversation
-        } else if (conversationError) {
-          console.error('Error creating conversation:', conversationError)
-          throw conversationError
-        } else {
-          conversation = newConversation
-        }
-      }
-
-      // Send message via Telnyx
-      const result = await telnyx.sendMessage(
-        normalizedSenderNumber,
-        normalizedContactNumber,
-        personalizedMessage
-      )
-
-      if (result.success) {
-        // Create message record
-        const { data: messageRecord } = await supabaseAdmin
-          .from('messages')
-          .insert({
-            conversation_id: conversation.id,
-            telnyx_message_id: result.messageId,
-            direction: 'outbound',
-            from_number: normalizedSenderNumber,
-            to_number: normalizedContactNumber,
-            body: personalizedMessage,
-            status: 'sending',
-            sent_by: userId
-          })
-          .select()
-          .single()
-
-        // Deduct message cost from wallet immediately
-        const { data: deductionResult, error: deductionError } = await supabaseAdmin.rpc(
-          'deduct_message_cost',
-          {
-            p_user_id: userId,
-            p_workspace_id: workspaceId,
-            p_message_count: 1,
-            p_cost_per_message: messageRate,
-            p_description: `Campaign: ${campaign.name || campaign.id} - SMS to ${normalizedContactNumber}`,
-            p_campaign_id: campaign.id,
-            p_message_id: messageRecord?.id,
-            p_recipient_phone: normalizedContactNumber
-          }
-        )
-
-        if (deductionError || !deductionResult?.success) {
-          // Message is already sent — log the billing issue but do NOT throw.
-          // Throwing here causes the catch block to mark the message as "failed"
-          // even though Telnyx accepted and delivered it.
-          console.warn('[campaign] Wallet deduction issue (non-fatal — message was sent):', deductionError?.message || deductionResult?.message)
-        }
-
-        // Update conversation timestamp - IMPORTANT for inbox ordering
-        await supabaseAdmin
-          .from('conversations')
-          .update({
-            last_message_at: new Date().toISOString()
-          })
-          .eq('id', conversation.id)
-
-        // Mark the claim row as sent (already inserted at top of loop)
-        await supabaseAdmin
-          .from('campaign_messages')
-          .update({ status: 'sent', sent_at: new Date().toISOString() })
-          .eq('id', claimedRowId)
-
-        // Log message transaction for tracking (using tiered pricing rate)
-        await supabaseAdmin
-          .from('message_transactions')
-          .insert({
-            workspace_id: workspaceId,
-            user_id: userId,
-            campaign_id: campaign.id,
-            message_id: messageRecord?.id,
-            recipient_phone: normalizedContactNumber,
-            cost_per_message: messageRate,
-            total_cost: messageRate,
-            message_type: 'sms',
-            status: 'sent'
-          })
-
-        sentCount++
-      } else {
-        // Mark the claim row as failed
-        await supabaseAdmin
-          .from('campaign_messages')
-          .update({ status: 'failed', error_message: result.error })
-          .eq('id', claimedRowId)
-
-        // Don't charge for failed messages
-        console.log(`Message failed to ${normalizedContactNumber}: ${result.error}`)
-
-        failedCount++
-      }
-
-      // Update campaign progress
-      await supabaseAdmin
-        .from('campaigns')
-        .update({
-          sent_count: sentCount,
-          failed_count: failedCount
-        })
-        .eq('id', campaign.id)
-
-      // Delay between messages
-      if (campaign.delay_between_messages > 0) {
-        await new Promise(resolve => setTimeout(resolve, campaign.delay_between_messages))
-      }
-
-    } catch (error) {
-      console.error(`Error sending message to ${recipient?.phone}:`, error)
-
-      // Mark the claimed row as failed (if we got far enough to claim it)
-      if (claimedRowId) {
-        await supabaseAdmin
-          .from('campaign_messages')
-          .update({ status: 'failed', error_message: error.message })
-          .eq('id', claimedRowId)
-      }
-
-      failedCount++
-    }
-  }
-
-  // Mark campaign as completed
-  await supabaseAdmin
-    .from('campaigns')
-    .update({
-      status: 'completed',
-      completed_at: new Date().toISOString(),
-      sent_count: sentCount,
-      failed_count: failedCount
-    })
-    .eq('id', campaign.id)
 }

@@ -807,9 +807,17 @@ export default function CampaignsPage() {
 }
 
 function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditBalance = 0, onClose, onCampaignCreated }) {
+  const [bizHours, setBizHours] = useState(null)   // workspace Business Hours (Settings)
+  useEffect(() => {
+    fetchWithWorkspace('/api/workspace/business-hours').then(r => r.json()).then(setBizHours).catch(() => {})
+  }, [])
   const [formData, setFormData] = useState({
     name: '', message: '', contactListId: '', phoneNumberId: '',
     scheduleTime: '', scheduleType: 'immediate',
+    // Sending pace & limits
+    dailyLimitEnabled: false, dailyCap: 500,
+    businessHoursOnly: false,
+    recurring: false,
     // Phase 2 — Monday source
     source: 'contacts',          // 'contacts' | 'monday'
     mondayBoardId: '', mondayBoardName: '',
@@ -1037,6 +1045,18 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
         contact_list_ids: formData.source === 'contacts' ? [formData.contactListId] : [],
         sender_number: senderNumber,
         delay_between_messages: 1000,
+        // "Schedule for later" — store the chosen time; the queue cron sends then.
+        scheduled_at: formData.scheduleType === 'scheduled' && formData.scheduleTime
+          ? new Date(formData.scheduleTime).toISOString()
+          : null,
+        // Sending pace & limits → the cron sweeper gates on these.
+        daily_cap: formData.dailyLimitEnabled ? (Number(formData.dailyCap) || null) : null,
+        send_windows: formData.businessHoursOnly && bizHours
+          ? [{ start: (bizHours.start || '09:00:00').slice(0, 5), end: (bizHours.end || '18:00:00').slice(0, 5) }]
+          : null,
+        send_days: formData.businessHoursOnly && bizHours ? bizHours.days : null,
+        send_timezone: formData.businessHoursOnly && bizHours ? bizHours.tz : null,
+        recurring: !!(formData.recurring && formData.dailyLimitEnabled),
         // Tells the create endpoint to skip contact-list validation — a Monday
         // campaign's recipients come from the board, linked right after this.
         source: formData.source,
@@ -1606,6 +1626,46 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
                   {errors.scheduleTime && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.scheduleTime}</p>}
                 </div>
               )}
+
+              {/* ── Sending pace & limits ─────────────────────────────── */}
+              <label className="block text-sm font-medium text-[#5C5A55] mt-5 mb-2">Sending pace &amp; limits</label>
+              <div className="space-y-2.5">
+                {/* Daily cap */}
+                <div className="p-3 border border-[#E3E1DB] rounded-lg">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input type="checkbox" checked={formData.dailyLimitEnabled} onChange={(e) => setFormData({ ...formData, dailyLimitEnabled: e.target.checked })} className="accent-[#D63B1F]" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-[#131210]">Limit per day</p>
+                      <p className="text-xs text-[#9B9890]">Spread the campaign — send only this many each day, the rest queue for the next day.</p>
+                    </div>
+                  </label>
+                  {formData.dailyLimitEnabled && (
+                    <div className="flex items-center gap-2 mt-2.5 pl-7">
+                      <input type="number" min={1} value={formData.dailyCap} onChange={(e) => setFormData({ ...formData, dailyCap: e.target.value })} className="w-28 px-3 py-2 border border-[#D4D1C9] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20" />
+                      <span className="text-sm text-[#5C5A55]">messages / day</span>
+                    </div>
+                  )}
+                </div>
+                {/* Business hours */}
+                <label className="flex items-center gap-3 p-3 border border-[#E3E1DB] rounded-lg cursor-pointer hover:bg-[#F7F6F3]">
+                  <input type="checkbox" checked={formData.businessHoursOnly} onChange={(e) => setFormData({ ...formData, businessHoursOnly: e.target.checked })} className="accent-[#D63B1F]" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-[#131210]">Only during business hours</p>
+                    <p className="text-xs text-[#9B9890]">
+                      {bizHours ? `${(bizHours.start || '09:00').slice(0,5)}–${(bizHours.end || '18:00').slice(0,5)} ${bizHours.tz || ''}, your business days. ` : ''}
+                      Otherwise sends any time. <a href="/settings?section=business-hours" className="text-[#D63B1F] hover:underline">Edit hours</a>
+                    </p>
+                  </div>
+                </label>
+                {/* Recurring */}
+                <label className={`flex items-center gap-3 p-3 border border-[#E3E1DB] rounded-lg ${formData.dailyLimitEnabled ? 'cursor-pointer hover:bg-[#F7F6F3]' : 'opacity-50'}`}>
+                  <input type="checkbox" disabled={!formData.dailyLimitEnabled} checked={formData.recurring} onChange={(e) => setFormData({ ...formData, recurring: e.target.checked })} className="accent-[#D63B1F]" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-[#131210]">Recurring (keep cycling)</p>
+                    <p className="text-xs text-[#9B9890]">When the list finishes, re-pull the source and start over — a continuous drip. Requires a daily limit.</p>
+                  </div>
+                </label>
+              </div>
             </section>
             )}
 
@@ -1656,6 +1716,30 @@ function ViewCampaignModal({ campaign, contactLists, phoneNumbers, isTrial, onCl
     }
     fetchLogs()
   }, [campaign.id])
+
+  // Per-recipient list with expected (ETA) or actual send times.
+  const [recipTab, setRecipTab] = useState('queued')   // queued | sent | failed
+  const [recipients, setRecipients] = useState([])
+  const [recipPage, setRecipPage] = useState(0)
+  const [recipTotal, setRecipTotal] = useState(0)
+  const [loadingRecip, setLoadingRecip] = useState(false)
+  useEffect(() => { setRecipPage(0) }, [recipTab])
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      setLoadingRecip(true)
+      try {
+        const res = await apiGet(`/api/campaigns/${campaign.id}/recipients?status=${recipTab}&page=${recipPage}`)
+        const data = await res.json()
+        if (alive) { setRecipients(data.recipients || []); setRecipTotal(data.total || 0) }
+      } catch { if (alive) setRecipients([]) } finally { if (alive) setLoadingRecip(false) }
+    })()
+    return () => { alive = false }
+  }, [campaign.id, recipTab, recipPage])
+  const fmtEta = (iso) => {
+    try { return new Intl.DateTimeFormat('en-US', { timeZone: campaign.send_timezone || undefined, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(iso)) }
+    catch { return iso }
+  }
 
   const validateEditForm = () => {
     const newErrors = {}
@@ -1761,6 +1845,55 @@ function ViewCampaignModal({ campaign, contactLists, phoneNumbers, isTrial, onCl
                     </div>
                   ))}
                 </div>
+              )}
+            </div>
+
+            {/* Recipients & schedule — expected delivery time per recipient */}
+            <div className="border-t border-[#E3E1DB] px-5 py-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold text-[#9B9890] uppercase tracking-wider">Recipients &amp; schedule</p>
+                <div className="flex gap-1">
+                  {[['queued', 'Upcoming'], ['sent', 'Sent'], ['failed', 'Failed']].map(([k, l]) => (
+                    <button key={k} onClick={() => setRecipTab(k)} className={`px-2.5 py-1 text-xs rounded-md ${recipTab === k ? 'bg-[#D63B1F] text-white' : 'text-[#5C5A55] hover:bg-[#F7F6F3]'}`}>{l}</button>
+                  ))}
+                </div>
+              </div>
+              {loadingRecip ? (
+                <p className="text-sm text-[#9B9890]">Loading…</p>
+              ) : recipients.length === 0 ? (
+                <p className="text-sm text-[#9B9890]">{recipTab === 'queued' ? 'Nothing queued.' : recipTab === 'sent' ? 'Nothing sent yet.' : 'No failures.'}</p>
+              ) : (
+                <>
+                  <div className="border border-[#E3E1DB] rounded-lg divide-y divide-[#EFEDE8] max-h-72 overflow-y-auto">
+                    {recipients.map((r) => (
+                      <div key={r.id} className="flex items-center gap-3 px-3 py-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm text-[#131210] font-mono">{r.to_number}</p>
+                          <p className="text-xs text-[#9B9890] truncate">{r.body}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          {recipTab === 'queued' ? (
+                            <><p className="text-[10px] text-[#9B9890] uppercase tracking-wide">~ Expected</p><p className="text-xs text-[#5C5A55]">{r.eta ? fmtEta(r.eta) : '—'}</p></>
+                          ) : recipTab === 'sent' ? (
+                            <><p className="text-[10px] text-[#9B9890] uppercase tracking-wide">Sent</p><p className="text-xs text-[#5C5A55]">{r.sent_at ? fmtEta(r.sent_at) : '—'}</p></>
+                          ) : (
+                            <p className="text-xs text-[#D63B1F] max-w-[150px] truncate" title={r.error_message}>{r.error_message || 'Failed'}</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {recipTotal > 100 && (
+                    <div className="flex items-center justify-between mt-2 text-xs text-[#9B9890]">
+                      <span>{recipPage * 100 + 1}–{Math.min((recipPage + 1) * 100, recipTotal)} of {recipTotal}</span>
+                      <div className="flex gap-1">
+                        <button disabled={recipPage === 0} onClick={() => setRecipPage(p => Math.max(0, p - 1))} className="px-2 py-1 border border-[#E3E1DB] rounded disabled:opacity-40">Prev</button>
+                        <button disabled={(recipPage + 1) * 100 >= recipTotal} onClick={() => setRecipPage(p => p + 1)} className="px-2 py-1 border border-[#E3E1DB] rounded disabled:opacity-40">Next</button>
+                      </div>
+                    </div>
+                  )}
+                  {recipTab === 'queued' && <p className="text-[11px] text-[#9B9890] mt-2">Estimates from the campaign's pace, daily limit, and send window — actual times shift if you pause or change limits.</p>}
+                </>
               )}
             </div>
 

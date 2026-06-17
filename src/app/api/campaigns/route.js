@@ -102,7 +102,16 @@ export async function POST(request) {
       sender_number,
       contact_list_ids,
       delay_between_messages,
-      source
+      source,
+      scheduled_at,   // optional ISO time — when set (future), the campaign sends then
+      // Scheduling / throttle config (RVM-parity). All optional.
+      throttle_count,
+      throttle_window_seconds,
+      send_windows,
+      send_timezone,
+      send_days,
+      daily_cap,
+      recurring,
     } = body
 
     // Monday-sourced campaigns get their recipients from a board (linked right
@@ -177,6 +186,14 @@ export async function POST(request) {
       sender_number: sender_number.trim(),
       contact_list_ids: contact_list_ids,
       delay_between_messages: delay_between_messages || 1000,
+      scheduled_at: scheduled_at || null,
+      throttle_count: throttle_count || null,
+      throttle_window_seconds: throttle_window_seconds || null,
+      send_windows: send_windows || null,
+      send_timezone: send_timezone || null,
+      send_days: Array.isArray(send_days) && send_days.length ? send_days : null,
+      daily_cap: daily_cap || null,
+      recurring: !!recurring,
       workspace_id: workspace.workspaceId,
       status: 'draft',
       total_recipients: totalRecipients,

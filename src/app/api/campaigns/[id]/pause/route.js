@@ -13,7 +13,9 @@ export async function POST(request, { params }) {
     const body = await request.json()
     const { is_paused } = body
 
-    const newStatus = is_paused ? 'paused' : 'draft'
+    // Pause = the queue sweeper skips it; Resume = back to running so the cron
+    // continues sending the remaining queued recipients.
+    const newStatus = is_paused ? 'paused' : 'running'
 
     const { error } = await supabaseAdmin
       .from('campaigns')
