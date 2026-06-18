@@ -10,6 +10,7 @@ const STATUS_STYLES = {
   scheduled:         { label: 'Scheduled',             cls: 'bg-[#EEF2FF] text-[#3730A3] border-[#C7D2FE]' },
   sent:              { label: 'Sent',                  cls: 'bg-[#ECFDF5] text-[#065F46] border-[#A7F3D0]' },
   delivered:         { label: 'Delivered',             cls: 'bg-[#ECFDF5] text-[#065F46] border-[#A7F3D0]' },
+  failed:            { label: 'Failed',                cls: 'bg-[#FEF2F2] text-[#991B1B] border-[#FECACA]' },
   responded_before:  { label: 'Responded Before',      cls: 'bg-[#FEF3C7] text-[#92400E] border-[#FDE68A]' },
   cancelled:         { label: 'Cancelled',             cls: 'bg-[#F3F4F6] text-[#4B5563] border-[#E5E7EB]' },
   skipped:           { label: 'Skipped',               cls: 'bg-[#F3F4F6] text-[#4B5563] border-[#E5E7EB]' },
@@ -20,6 +21,7 @@ const FILTERS = [
   { v: 'scheduled', l: 'Scheduled' },
   { v: 'sent', l: 'Sent' },
   { v: 'delivered', l: 'Delivered' },
+  { v: 'failed', l: 'Failed' },
   { v: 'responded_before', l: 'Responded' },
   { v: 'skipped', l: 'Skipped' },
 ]

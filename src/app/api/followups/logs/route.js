@@ -1,11 +1,14 @@
-// Follow-Up Logs — aggregates followup_events into one row per (lead, stage):
-// scheduled time, actual send time, and a derived status. Paginated.
+// Follow-Up Logs — one row per (lead, stage). The SENT/DELIVERED/FAILED status
+// comes from the actual follow-up MESSAGE row (is_followup=true, updated by the
+// Telnyx delivery webhooks) — the message is the source of truth. Events supply
+// the scheduled time, "responded before", and template-sent time.
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
 import { getWorkspaceFromRequest } from '@/lib/session-helper'
 
 const PAGE = 50
-const SCAN = 4000   // how many recent events to aggregate over
+const SCAN = 4000
+const FAILED = new Set(['failed', 'undelivered', 'delivery_failed', 'sending_failed'])
 
 export async function GET(request) {
   const workspace = getWorkspaceFromRequest(request)
@@ -13,7 +16,7 @@ export async function GET(request) {
 
   const { searchParams } = new URL(request.url)
   const page = Math.max(0, parseInt(searchParams.get('page') || '0', 10))
-  const statusFilter = searchParams.get('status') || ''   // optional
+  const statusFilter = searchParams.get('status') || ''
 
   const { data: events } = await supabaseAdmin
     .from('followup_events')
@@ -22,42 +25,74 @@ export async function GET(request) {
     .order('occurred_at', { ascending: true })
     .limit(SCAN)
 
-  const evs = events || []
-
-  // template_sent time per conversation; one accumulating row per stage.
   const templateAt = new Map()
-  const rows = new Map()   // key conv:scenario:stage
-  for (const e of evs) {
+  const convScenario = new Map()
+  const rows = new Map()   // key conv:stage → { ..., scheduled_for, responded, skipped, last }
+  const rowKey = (c, s) => `${c}:${s}`
+  const ensure = (conv, stage, at) => {
+    const k = rowKey(conv, stage)
+    let r = rows.get(k)
+    if (!r) { r = { conversation_id: conv, stage_number: stage, scheduled_for: null, sent_at: null, responded: false, skipped: false, last: at }; rows.set(k, r) }
+    if (at && new Date(at) > new Date(r.last)) r.last = at
+    return r
+  }
+
+  for (const e of (events || [])) {
+    if (e.scenario_id) convScenario.set(e.conversation_id, e.scenario_id)
     if (e.type === 'template_sent') { templateAt.set(e.conversation_id, e.occurred_at); continue }
     if (e.stage_number == null) continue
-    const key = `${e.conversation_id}:${e.scenario_id}:${e.stage_number}`
-    let r = rows.get(key)
-    if (!r) { r = { conversation_id: e.conversation_id, scenario_id: e.scenario_id, stage_number: e.stage_number, scheduled_for: null, sent_at: null, status: 'scheduled', last: e.occurred_at }; rows.set(key, r) }
-    r.last = e.occurred_at
-    const terminal = r.status === 'sent' || r.status === 'delivered'
-    if (e.type === 'scheduled' || e.type === 'rescheduled') { r.scheduled_for = e.scheduled_for; if (!terminal) r.status = 'scheduled' }
-    else if (e.type === 'sent') { r.sent_at = e.occurred_at; if (r.status !== 'delivered') r.status = 'sent' }
-    else if (e.type === 'delivered') { if (!r.sent_at) r.sent_at = e.occurred_at; r.status = 'delivered' }
-    else if (e.type === 'cancelled' || e.type === 'responded_before') { if (!terminal) r.status = 'responded_before' }
-    else if (e.type === 'skipped') { if (!terminal) r.status = 'skipped' }
+    const r = ensure(e.conversation_id, e.stage_number, e.occurred_at)
+    if (e.type === 'scheduled' || e.type === 'rescheduled') r.scheduled_for = e.scheduled_for
+    else if (e.type === 'responded_before' || e.type === 'cancelled') r.responded = true
+    else if (e.type === 'skipped') r.skipped = true
+  }
+
+  // Authoritative status from the follow-up MESSAGE rows.
+  const convIds = [...new Set([...rows.values()].map(r => r.conversation_id))]
+  const msgByKey = new Map()
+  if (convIds.length) {
+    const { data: fmsgs } = await supabaseAdmin
+      .from('messages')
+      .select('conversation_id, followup_stage, status, created_at, error_code, error_message')
+      .in('conversation_id', convIds)
+      .eq('is_followup', true)
+      .not('followup_stage', 'is', null)
+    for (const m of (fmsgs || [])) {
+      const k = rowKey(m.conversation_id, m.followup_stage)
+      msgByKey.set(k, m)
+      // A sent message may exist with no event (e.g. the 'sent' event wasn't logged).
+      ensure(m.conversation_id, m.followup_stage, m.created_at)
+    }
+  }
+
+  // Derive each row's final status.
+  for (const r of rows.values()) {
+    const m = msgByKey.get(rowKey(r.conversation_id, r.stage_number))
+    if (m) {
+      r.sent_at = m.created_at
+      if (m.status === 'delivered') r.status = 'delivered'
+      else if (FAILED.has(m.status)) { r.status = 'failed'; r.error = m.error_code || m.error_message || null }
+      else r.status = 'sent'
+    } else if (r.responded) r.status = 'responded_before'
+    else if (r.skipped) r.status = 'skipped'
+    else r.status = 'scheduled'
   }
 
   let all = [...rows.values()].sort((a, b) => new Date(b.last) - new Date(a.last))
   if (statusFilter) all = all.filter(r => r.status === statusFilter)
 
-  // Resolve lead + scenario names for the current page only.
   const total = all.length
   const slice = all.slice(page * PAGE, page * PAGE + PAGE)
-  const convIds = [...new Set(slice.map(r => r.conversation_id))]
-  const scIds = [...new Set(slice.map(r => r.scenario_id))]
+  const cIds = [...new Set(slice.map(r => r.conversation_id))]
+  const sIds = [...new Set(slice.map(r => convScenario.get(r.conversation_id)).filter(Boolean))]
 
   const convMap = {}, scMap = {}
-  if (convIds.length) {
-    const { data: convs } = await supabaseAdmin.from('conversations').select('id, name, phone_number').in('id', convIds)
+  if (cIds.length) {
+    const { data: convs } = await supabaseAdmin.from('conversations').select('id, name, phone_number').in('id', cIds)
     for (const c of (convs || [])) convMap[c.id] = c
   }
-  if (scIds.length) {
-    const { data: scs } = await supabaseAdmin.from('scenarios').select('id, name').in('id', scIds)
+  if (sIds.length) {
+    const { data: scs } = await supabaseAdmin.from('scenarios').select('id, name').in('id', sIds)
     for (const s of (scs || [])) scMap[s.id] = s.name
   }
 
@@ -65,7 +100,7 @@ export async function GET(request) {
     ...r,
     lead_name: convMap[r.conversation_id]?.name || null,
     phone: convMap[r.conversation_id]?.phone_number || null,
-    scenario_name: scMap[r.scenario_id] || null,
+    scenario_name: scMap[convScenario.get(r.conversation_id)] || null,
     template_sent_at: templateAt.get(r.conversation_id) || null,
   }))
 

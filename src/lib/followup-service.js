@@ -702,14 +702,20 @@ async function sendFollowupMessage(conversationId, scenarioId, stageInstructions
       outboundText = aiResult.response
     }
 
-    // Send the message via Telnyx
+    // Send the message via /api/sms/send, tagging it as a follow-up so the
+    // SINGLE recorded message row carries is_followup + followup_stage + the
+    // Telnyx id. The delivery webhook then updates THIS row's status to
+    // delivered/failed — which is what the Follow-up Logs read (the message is
+    // the source of truth for sent/delivered/failed, not a separate event).
     const sendResult = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/sms/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         to: conversation.phone_number,
         from: conversation.from_number,
-        message: outboundText
+        message: outboundText,
+        is_followup: true,
+        followup_stage: stage,
       })
     })
 
@@ -717,24 +723,8 @@ async function sendFollowupMessage(conversationId, scenarioId, stageInstructions
       return { success: false, error: 'Failed to send SMS' }
     }
 
-    // The Telnyx message id — lets the delivery webhook promote this stage's
-    // 'sent' event to 'delivered' once the carrier confirms.
     const sendBody = await sendResult.json().catch(() => ({}))
     const telnyxMessageId = sendBody?.messageId || null
-
-    // Record the message in database with follow-up tracking
-    await supabaseAdmin
-      .from('messages')
-      .insert({
-        conversation_id: conversationId,
-        body: outboundText,
-        direction: 'outbound',
-        is_followup: true,
-        followup_stage: stage,
-        tokens_used: aiResult?.tokensUsed ?? null,
-        processing_time_ms: aiResult?.processingTime ?? null,
-        ai_model: aiResult?.model ?? null
-      })
 
     return { success: true, telnyxMessageId }
   } catch (error) {

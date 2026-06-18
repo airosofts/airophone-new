@@ -35,7 +35,7 @@ export async function POST(request) {
     // `agentReply` is set by the inbox when a HUMAN agent sends a reply — it
     // auto-pauses the AI for that conversation so the agent can take over.
     // Automated senders (follow-ups, AI replies) omit it, so they never pause.
-    const { from, to, message, conversationId, agentReply, mediaUrls } = body
+    const { from, to, message, conversationId, agentReply, mediaUrls, is_followup, followup_stage } = body
 
     // Normalize media into [{ url, type }] and a plain url list for Telnyx.
     const media = (Array.isArray(mediaUrls) ? mediaUrls : [])
@@ -281,7 +281,8 @@ export async function POST(request) {
         body: message,
         media_urls: media.length > 0 ? media : null,
         status: 'sent',
-        user_id: user.userId || null
+        user_id: user.userId || null,
+        ...(is_followup ? { is_followup: true, followup_stage: followup_stage ?? null } : {}),
       })
       .select()
       .single()
