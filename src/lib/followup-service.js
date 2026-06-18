@@ -157,23 +157,30 @@ export async function updateFollowupState(conversationId, scenarioId, messageFro
       }
 
       // Standard cadence behavior: a reply EXITS the follow-up sequence. Cancel
-      // any pending nudge, and stop the sequence — but only once it's actually
-      // active (a nudge is pending or already sent), NOT on the first inbound
-      // that merely starts the conversation (that one still needs to arm stage 1).
-      let loggedCancel = false
+      // any pending nudge and stop the sequence — but only once it's actually
+      // active (a nudge is pending or a stage already sent), NOT on the first
+      // inbound that merely starts the conversation (that one still arms stage 1).
+      //
+      // We log 'responded_before' ONCE — only when we actually cancel a PENDING
+      // nudge (next_followup_at set) and weren't already stopped — and attribute
+      // it to the PENDING stage (current_stage + 1), i.e. the follow-up that was
+      // about to send, NOT the stage that already went out. Subsequent replies on
+      // an already-stopped sequence don't re-log.
+      let cancelledStage = null
       if (messageFrom === 'customer') {
+        const wasPending = !existingState.stopped && !!existingState.next_followup_at
         updates.next_followup_at = null
-        if (existingState.next_followup_at || (existingState.current_stage || 0) >= 1) {
+        if (!existingState.stopped && (existingState.next_followup_at || (existingState.current_stage || 0) >= 1)) {
           updates.stopped = true
           updates.stopped_at = now.toISOString()
-          loggedCancel = true
         }
+        if (wasPending) cancelledStage = (existingState.current_stage || 0) + 1
       }
 
-      if (loggedCancel) {
+      if (cancelledStage != null) {
         await logFollowupEvent({
           workspaceId: scenario.workspace_id || null,
-          conversationId, scenarioId, stageNumber: existingState.current_stage || null,
+          conversationId, scenarioId, stageNumber: cancelledStage,
           type: 'responded_before',
         })
       }
