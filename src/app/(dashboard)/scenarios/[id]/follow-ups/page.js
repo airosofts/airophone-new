@@ -73,18 +73,36 @@ export default function FollowUpSequencePage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [savedTick, setSavedTick] = useState(false)
+  // Real Monday status columns (+ labels) for this scenario's board(s).
+  const [statusCols, setStatusCols] = useState([])   // [{ id, title, labels, board_name }]
+  const [multiBoard, setMultiBoard] = useState(false)
 
   const load = useCallback(async () => {
     try {
-      const [scRes, stRes] = await Promise.all([
+      const [scRes, stRes, mcRes] = await Promise.all([
         apiGet(`/api/scenarios/${id}`),
         apiGet(`/api/scenarios/${id}/followup-stages`),
+        apiGet(`/api/scenarios/${id}/monday-status-columns`),
       ])
       const sc = await scRes.json().catch(() => ({}))
       const st = await stRes.json().catch(() => ({}))
+      const mc = await mcRes.json().catch(() => ({}))
       setScenarioName(sc?.scenario?.name || sc?.name || 'Scenario')
       const list = st?.stages || []
       setStages(list.length > 0 ? list : [{ stage_number: 1, wait_duration: 1, wait_unit: 'days', instructions: '' }])
+
+      // Flatten board → status columns; dedupe by column id (union labels).
+      const boards = mc?.boards || []
+      setMultiBoard(boards.length > 1)
+      const map = new Map()
+      for (const b of boards) {
+        for (const c of (b.columns || [])) {
+          const ex = map.get(c.id)
+          if (ex) ex.labels = [...new Set([...ex.labels, ...c.labels])]
+          else map.set(c.id, { id: c.id, title: c.title, labels: [...c.labels], board_name: b.board_name })
+        }
+      }
+      setStatusCols([...map.values()])
     } catch {
       setError('Failed to load this sequence.')
     } finally {
@@ -201,15 +219,39 @@ export default function FollowUpSequencePage() {
                     placeholder={"What should this message say? e.g. “Hey {{first_name}}, just checking in — still interested? Happy to answer any questions.”"}
                     className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F] resize-none" />
 
-                  {/* Optional Monday status when this stage fires */}
+                  {/* Optional Monday status when this stage fires — real columns + labels */}
                   <div className="pt-2 border-t border-[#EFEDE8]">
                     <label className="flex items-center gap-1.5 text-[11px] font-medium text-[#5C5A55] mb-1.5">
-                      <MondayDot /> Set Monday status to <span className="text-[#9B9890] font-normal">(optional)</span>
+                      <MondayDot /> Set Monday status <span className="text-[#9B9890] font-normal">(optional)</span>
                     </label>
-                    <input type="text" value={stage.monday_status_label || ''}
-                      onChange={(e) => updateStage(index, 'monday_status_label', e.target.value)}
-                      placeholder={`e.g. ${stage.stage_number === 1 ? '1st' : stage.stage_number === 2 ? '2nd' : `${stage.stage_number}th`} follow-up sent`}
-                      className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]" />
+                    {statusCols.length === 0 ? (
+                      <p className="text-[11px] text-[#9B9890] leading-relaxed">Add an automation on this scenario’s line (with a status column) to set a Monday status here.</p>
+                    ) : (() => {
+                      const selCol = statusCols.find(c => c.id === stage.monday_status_column_id)
+                      return (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <select
+                            value={stage.monday_status_column_id || ''}
+                            onChange={(e) => { updateStage(index, 'monday_status_column_id', e.target.value); updateStage(index, 'monday_status_label', '') }}
+                            className={`${inputCls} flex-1 min-w-[130px]`}>
+                            <option value="">— No status —</option>
+                            {statusCols.map(c => <option key={c.id} value={c.id}>{multiBoard ? `${c.board_name} · ${c.title}` : c.title}</option>)}
+                          </select>
+                          {selCol && (
+                            <>
+                              <span className="text-xs text-[#9B9890]">to</span>
+                              <select
+                                value={stage.monday_status_label || ''}
+                                onChange={(e) => updateStage(index, 'monday_status_label', e.target.value)}
+                                className={`${inputCls} flex-1 min-w-[130px]`}>
+                                <option value="">— Choose a label —</option>
+                                {selCol.labels.map(l => <option key={l} value={l}>{l}</option>)}
+                              </select>
+                            </>
+                          )}
+                        </div>
+                      )
+                    })()}
                   </div>
                 </FlowCard>
               </div>

@@ -1,12 +1,13 @@
--- Per follow-up stage → Monday status label.
+-- Per follow-up stage → Monday status.
 --
--- When a follow-up stage fires, optionally flip the source Monday item's status
--- (e.g. "1st follow-up sent", "2nd follow-up sent") so the human agent sees the
--- cadence progress on the board. The label is written to the board's pipeline
--- STATUS column — the same status column already chosen in the automation's
--- two-way sync (on sent / on reply). Reply still flips it back via on_reply.
+-- When a follow-up stage fires, optionally set a status on the source Monday
+-- item (e.g. "1st follow-up sent", "2nd follow-up sent") so the human agent sees
+-- the cadence progress on the board. The user picks a real STATUS column and one
+-- of ITS labels (no free text / hardcoding) — exactly like the automation's
+-- two-way sync editor. Reply still flips status back via the automation on_reply.
 --
--- Empty/null = this stage does not touch Monday.
+-- Both null = this stage does not touch Monday.
 
 ALTER TABLE public.scenario_followup_stages
+  ADD COLUMN IF NOT EXISTS monday_status_column_id text,
   ADD COLUMN IF NOT EXISTS monday_status_label text;

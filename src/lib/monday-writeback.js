@@ -62,12 +62,12 @@ function buildColumnValue(columnType, configuredValue) {
   return null
 }
 
-// Write an explicit status LABEL to the board's pipeline status column for the
-// Monday item behind this conversation. Used by per-follow-up-stage updates
-// ("1st follow-up sent", "2nd follow-up sent"). It reuses whichever writeback
-// column was configured as a STATUS type (sent → reply → done), so it lands in
-// the same pipeline column as on-sent/on-reply. Best-effort; never throws.
-export async function writeStatusLabel(conversationId, label) {
+// Write a status LABEL to a Monday status column for the item behind this
+// conversation. Used by per-follow-up-stage updates ("1st follow-up sent").
+// The caller passes the exact status column the user picked in the follow-up
+// editor; if it's missing (legacy rows) we fall back to whichever two-way-sync
+// column is a status type. Best-effort; never throws.
+export async function writeStatusLabel(conversationId, label, columnId = null) {
   try {
     const clean = (label || '').trim()
     if (!clean) return
@@ -78,24 +78,23 @@ export async function writeStatusLabel(conversationId, label) {
       return
     }
 
-    const { data: config } = await supabaseAdmin
-      .from('monday_writeback_configs')
-      .select('*')
-      .eq('workspace_id', link.workspaceId)
-      .eq('board_id', link.boardId)
-      .maybeSingle()
-    if (!config) {
-      console.log(`[monday-writeback] stage-status "${clean}": skipped — no writeback config for board ${link.boardId}`)
-      return
-    }
-
-    // The board's pipeline status column = first configured status-type column.
-    const statusColId =
-      (config.on_sent_column_type === 'status' && config.on_sent_column_id) ||
-      (config.on_reply_column_type === 'status' && config.on_reply_column_id) ||
-      (config.on_done_column_type === 'status' && config.on_done_column_id) || null
+    let statusColId = columnId || null
     if (!statusColId) {
-      console.log(`[monday-writeback] stage-status "${clean}": skipped — board ${link.boardId} has no status column in its two-way sync config`)
+      const { data: config } = await supabaseAdmin
+        .from('monday_writeback_configs')
+        .select('*')
+        .eq('workspace_id', link.workspaceId)
+        .eq('board_id', link.boardId)
+        .maybeSingle()
+      if (config) {
+        statusColId =
+          (config.on_sent_column_type === 'status' && config.on_sent_column_id) ||
+          (config.on_reply_column_type === 'status' && config.on_reply_column_id) ||
+          (config.on_done_column_type === 'status' && config.on_done_column_id) || null
+      }
+    }
+    if (!statusColId) {
+      console.log(`[monday-writeback] stage-status "${clean}": skipped — no status column to write for board ${link.boardId}`)
       return
     }
 

@@ -113,7 +113,9 @@ export async function POST(request, { params }) {
         wait_duration: stage.wait_duration,
         wait_unit: stage.wait_unit || 'minutes',
         instructions: stage.instructions,
-        monday_status_label: (stage.monday_status_label || '').trim() || null,
+        // Only persist the status pair when BOTH a column and a label are chosen.
+        monday_status_column_id: (stage.monday_status_column_id && stage.monday_status_label) ? stage.monday_status_column_id : null,
+        monday_status_label: (stage.monday_status_column_id && stage.monday_status_label) ? String(stage.monday_status_label).trim() : null,
       }))
 
       const { error: insertError } = await supabaseAdmin

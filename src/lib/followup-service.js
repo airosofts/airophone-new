@@ -461,7 +461,7 @@ export async function processScheduledFollowups() {
         // flips it back via the automation's on_reply writeback. Best-effort.
         if (stage.monday_status_label) {
           const { writeStatusLabel } = await import('@/lib/monday-writeback')
-          writeStatusLabel(followupState.conversation_id, stage.monday_status_label).catch(() => {})
+          writeStatusLabel(followupState.conversation_id, stage.monday_status_label, stage.monday_status_column_id || null).catch(() => {})
         }
 
         // Schedule next follow-up
