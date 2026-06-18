@@ -98,7 +98,11 @@ export async function PATCH(request, { params }) {
       business_hours_end,
       business_hours_timezone,
       auto_stop_keywords,
-      enable_business_hours
+      enable_business_hours,
+      followup_days,
+      followup_start_time,
+      followup_end_time,
+      followup_timezone
     } = body
 
     // Update scenario
@@ -114,6 +118,10 @@ export async function PATCH(request, { params }) {
     if (business_hours_timezone !== undefined) updateData.business_hours_timezone = business_hours_timezone
     if (auto_stop_keywords !== undefined) updateData.auto_stop_keywords = auto_stop_keywords
     if (enable_business_hours !== undefined) updateData.enable_business_hours = enable_business_hours
+    if (followup_days !== undefined) updateData.followup_days = Array.isArray(followup_days) && followup_days.length ? followup_days : null
+    if (followup_start_time !== undefined) updateData.followup_start_time = followup_start_time || null
+    if (followup_end_time !== undefined) updateData.followup_end_time = followup_end_time || null
+    if (followup_timezone !== undefined) updateData.followup_timezone = followup_timezone || null
     if (contact_list_ids !== undefined) updateData.restrict_to_contact_lists = contact_list_ids?.length > 0 ? contact_list_ids : null
 
     const { data: scenario, error: updateError } = await supabaseAdmin

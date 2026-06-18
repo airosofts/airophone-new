@@ -2,6 +2,40 @@
 // Handles automatic follow-ups, STOP keywords, business hours, and manual takeover
 
 import { supabaseAdmin } from './supabase-server'
+import { isWithinSendWindows, nextSendTime } from './scheduling'
+
+// Append a follow-up lifecycle event (best-effort — never throws). Powers the
+// Follow-Up Logs page and the per-lead timeline.
+export async function logFollowupEvent({ workspaceId = null, conversationId = null, scenarioId = null, stageNumber = null, type, scheduledFor = null, occurredAt = null, meta = null }) {
+  try {
+    if (!type) return
+    await supabaseAdmin.from('followup_events').insert({
+      workspace_id: workspaceId,
+      conversation_id: conversationId,
+      scenario_id: scenarioId,
+      stage_number: stageNumber,
+      type,
+      scheduled_for: scheduledFor,
+      occurred_at: occurredAt || new Date().toISOString(),
+      meta,
+    })
+  } catch (e) {
+    console.error('[logFollowupEvent] failed:', e?.message || e)
+  }
+}
+
+// Resolve a scenario's follow-up SEND window. Separate from workspace business
+// hours (which govern AI booking). `enabled` mirrors enable_business_hours:
+// false → 24/7. Nulls fall back to Mon–Sun, 08:00–22:00, workspace/ET tz.
+function followupWindowFor(scenario) {
+  const enabled = !!scenario?.enable_business_hours
+  const days = (Array.isArray(scenario?.followup_days) && scenario.followup_days.length)
+    ? scenario.followup_days : [1, 2, 3, 4, 5, 6, 7]
+  const start = scenario?.followup_start_time || '08:00'
+  const end = scenario?.followup_end_time || '22:00'
+  const tz = scenario?.followup_timezone || scenario?.business_hours_timezone || 'America/New_York'
+  return { enabled, windows: [{ start, end }], days, tz }
+}
 
 /**
  * Check if message contains STOP keywords
@@ -96,7 +130,7 @@ export async function updateFollowupState(conversationId, scenarioId, messageFro
     // Get scenario settings
     const { data: scenario } = await supabaseAdmin
       .from('scenarios')
-      .select('enable_followups, max_followup_attempts')
+      .select('enable_followups, max_followup_attempts, workspace_id')
       .eq('id', scenarioId)
       .single()
 
@@ -126,12 +160,22 @@ export async function updateFollowupState(conversationId, scenarioId, messageFro
       // any pending nudge, and stop the sequence — but only once it's actually
       // active (a nudge is pending or already sent), NOT on the first inbound
       // that merely starts the conversation (that one still needs to arm stage 1).
+      let loggedCancel = false
       if (messageFrom === 'customer') {
         updates.next_followup_at = null
         if (existingState.next_followup_at || (existingState.current_stage || 0) >= 1) {
           updates.stopped = true
           updates.stopped_at = now.toISOString()
+          loggedCancel = true
         }
+      }
+
+      if (loggedCancel) {
+        await logFollowupEvent({
+          workspaceId: scenario.workspace_id || null,
+          conversationId, scenarioId, stageNumber: existingState.current_stage || null,
+          type: 'responded_before',
+        })
       }
 
       await supabaseAdmin
@@ -185,7 +229,7 @@ export async function armFollowupsForSend(conversationId, senderNumber) {
     const now = new Date().toISOString()
     for (const link of links) {
       const { data: sc } = await supabaseAdmin
-        .from('scenarios').select('id, is_active, enable_followups').eq('id', link.scenario_id).maybeSingle()
+        .from('scenarios').select('id, workspace_id, is_active, enable_followups').eq('id', link.scenario_id).maybeSingle()
       if (!sc || !sc.is_active || !sc.enable_followups) continue
 
       // Must have a stage 1 defined, else there's nothing to schedule.
@@ -210,7 +254,13 @@ export async function armFollowupsForSend(conversationId, senderNumber) {
         })
       }
 
-      // Sets next_followup_at = now + stage-1 wait.
+      // Log the first touch for the timeline (the template/AI message just went out).
+      await logFollowupEvent({
+        workspaceId: sc.workspace_id || null,
+        conversationId, scenarioId: sc.id, type: 'template_sent',
+      })
+
+      // Sets next_followup_at = now + stage-1 wait (and logs the 'scheduled' event).
       const res = await scheduleNextFollowup(conversationId, sc.id)
       console.log(`[armFollowupsForSend] conv ${conversationId} scenario ${sc.id} →`, res?.scheduled ? `stage 1 at ${res.nextFollowupAt}` : `not scheduled (${res?.reason || 'n/a'})`)
     }
@@ -227,7 +277,7 @@ export async function scheduleNextFollowup(conversationId, scenarioId) {
     // Get follow-up state
     const { data: state } = await supabaseAdmin
       .from('conversation_followup_state')
-      .select('*, scenarios(enable_followups, max_followup_attempts)')
+      .select('*, scenarios(workspace_id, enable_followups, max_followup_attempts, enable_business_hours, followup_days, followup_start_time, followup_end_time, followup_timezone, business_hours_timezone)')
       .eq('conversation_id', conversationId)
       .eq('scenario_id', scenarioId)
       .single()
@@ -264,7 +314,7 @@ export async function scheduleNextFollowup(conversationId, scenarioId) {
     }
 
     // Calculate next follow-up time (respect wait_unit: minutes / hours / days)
-    const nextFollowupAt = new Date()
+    let nextFollowupAt = new Date()
     const unit = (followupStage.wait_unit || 'minutes').toLowerCase()
     if (unit === 'weeks') {
       nextFollowupAt.setDate(nextFollowupAt.getDate() + followupStage.wait_duration * 7)
@@ -276,6 +326,14 @@ export async function scheduleNextFollowup(conversationId, scenarioId) {
       nextFollowupAt.setMinutes(nextFollowupAt.getMinutes() + followupStage.wait_duration)
     }
 
+    // Snap to the scenario's follow-up window: if the computed time lands outside
+    // the allowed days/hours, move it to the next window open (e.g. 11PM → 8AM
+    // next morning). When the window is disabled, send 24/7 (no snapping).
+    const win = followupWindowFor(state.scenarios)
+    if (win.enabled) {
+      nextFollowupAt = nextSendTime(nextFollowupAt, win.windows, win.tz, win.days)
+    }
+
     // Update state with next follow-up time
     await supabaseAdmin
       .from('conversation_followup_state')
@@ -284,6 +342,16 @@ export async function scheduleNextFollowup(conversationId, scenarioId) {
         updated_at: new Date().toISOString()
       })
       .eq('id', state.id)
+
+    // Log a 'scheduled' event for the activity log / lead timeline.
+    await logFollowupEvent({
+      workspaceId: state.scenarios?.workspace_id || null,
+      conversationId,
+      scenarioId,
+      stageNumber: nextStage,
+      type: 'scheduled',
+      scheduledFor: nextFollowupAt.toISOString(),
+    })
 
     return {
       success: true,
@@ -322,7 +390,11 @@ export async function processScheduledFollowups() {
           enable_business_hours,
           business_hours_start,
           business_hours_end,
-          business_hours_timezone
+          business_hours_timezone,
+          followup_days,
+          followup_start_time,
+          followup_end_time,
+          followup_timezone
         )
       `)
       .eq('stopped', false)
@@ -383,28 +455,44 @@ export async function processScheduledFollowups() {
         console.log(`Skipping follow-up for ${followupState.conversation_id} — lead has replied; cancelling pending nudge`)
         await supabaseAdmin
           .from('conversation_followup_state')
-          .update({ next_followup_at: null, last_message_from: 'customer', updated_at: now.toISOString() })
+          .update({ next_followup_at: null, last_message_from: 'customer', stopped: true, stopped_at: now.toISOString(), updated_at: now.toISOString() })
           .eq('id', followupState.id)
+        await logFollowupEvent({
+          workspaceId: followupState.scenarios?.workspace_id || null,
+          conversationId: followupState.conversation_id,
+          scenarioId: followupState.scenario_id,
+          stageNumber: followupState.current_stage + 1,
+          type: 'responded_before',
+        })
         skipped++
         continue
       }
 
-      // Follow-ups run 24/7 by DEFAULT. Only when this scenario has the
-      // "Business Hours — Restrict AI to specific hours" toggle ON do we hold
-      // sends to the Settings → Business Hours window. The hours come from
-      // Settings (loadWorkspaceHours), never hardcoded, and apply every day
-      // (7-day, hour-gated). `bh` is still loaded unconditionally so the AI's
-      // callback-time suggestions stay sane (see hoursPromptBlock).
+      // `bh` = workspace business hours, used ONLY for the AI's booking prompt
+      // (Option B: the AI may engage at any hour but only offers slots inside
+      // business hours). It does NOT gate whether the nudge sends.
       const bh = await loadWorkspaceHours(followupState.scenarios?.workspace_id)
-      const restrictToHours = !!followupState.scenarios?.enable_business_hours
-      if (restrictToHours && !isWithinWorkspaceHours(bh)) {
-        console.log(`Holding follow-up for ${followupState.conversation_id} - outside Settings business hours (restriction toggle on)`)
-        const nextHour = new Date()
-        nextHour.setHours(nextHour.getHours() + 1)
+
+      // SEND gate = the scenario's own follow-up window (per-sequence days/hours).
+      // 24/7 by default; when restricted and we're outside the window, snap the
+      // nudge forward to the next window open (e.g. 11PM → 8AM next morning)
+      // instead of firing late.
+      const win = followupWindowFor(followupState.scenarios)
+      if (win.enabled && !isWithinSendWindows(now, win.windows, win.tz, win.days)) {
+        const next = nextSendTime(now, win.windows, win.tz, win.days)
+        console.log(`Holding follow-up for ${followupState.conversation_id} - outside follow-up window; rescheduled to ${next.toISOString()}`)
         await supabaseAdmin
           .from('conversation_followup_state')
-          .update({ next_followup_at: nextHour.toISOString() })
+          .update({ next_followup_at: next.toISOString() })
           .eq('id', followupState.id)
+        await logFollowupEvent({
+          workspaceId: followupState.scenarios?.workspace_id || null,
+          conversationId: followupState.conversation_id,
+          scenarioId: followupState.scenario_id,
+          stageNumber: followupState.current_stage + 1,
+          type: 'rescheduled',
+          scheduledFor: next.toISOString(),
+        })
         skipped++
         continue
       }
@@ -456,6 +544,15 @@ export async function processScheduledFollowups() {
             updated_at: now.toISOString()
           })
           .eq('id', followupState.id)
+
+        await logFollowupEvent({
+          workspaceId: followupState.scenarios?.workspace_id || null,
+          conversationId: followupState.conversation_id,
+          scenarioId: followupState.scenario_id,
+          stageNumber: nextStage,
+          type: 'sent',
+          meta: result.telnyxMessageId ? { telnyx_message_id: result.telnyxMessageId } : null,
+        })
 
         // Per-stage Monday status — flip the board's status to e.g.
         // "1st follow-up sent" so the agent sees cadence progress. Reply still
@@ -613,6 +710,11 @@ async function sendFollowupMessage(conversationId, scenarioId, stageInstructions
       return { success: false, error: 'Failed to send SMS' }
     }
 
+    // The Telnyx message id — lets the delivery webhook promote this stage's
+    // 'sent' event to 'delivered' once the carrier confirms.
+    const sendBody = await sendResult.json().catch(() => ({}))
+    const telnyxMessageId = sendBody?.messageId || null
+
     // Record the message in database with follow-up tracking
     await supabaseAdmin
       .from('messages')
@@ -627,7 +729,7 @@ async function sendFollowupMessage(conversationId, scenarioId, stageInstructions
         ai_model: aiResult?.model ?? null
       })
 
-    return { success: true }
+    return { success: true, telnyxMessageId }
   } catch (error) {
     console.error('Error sending follow-up message:', error)
     return { success: false, error: error.message }

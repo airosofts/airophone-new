@@ -57,9 +57,19 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user, on
   const [editCustomIdx, setEditCustomIdx]     = useState(null)
   const [editCustomValue, setEditCustomValue] = useState('')
 
+  const [timeline, setTimeline] = useState([])
+
   useEffect(() => {
-    Promise.all([fetchContact(), fetchNotes(), fetchScenario()])
+    Promise.all([fetchContact(), fetchNotes(), fetchScenario(), fetchTimeline()])
   }, [conversation.id])
+
+  const fetchTimeline = async () => {
+    try {
+      const res = await fetchWithWorkspace(`/api/conversations/${conversation.id}/timeline`)
+      const data = await res.json()
+      setTimeline(data?.items || [])
+    } catch { setTimeline([]) }
+  }
 
   useEffect(() => {
     setAiPaused(conversation.manual_override || false)
@@ -437,6 +447,36 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user, on
           </button>
         )}
       </div>
+
+      {/* ── Follow-up timeline ── */}
+      {timeline.length > 1 && (
+        <div className="px-5 py-4 border-t border-[#E3E1DB]">
+          <span className="text-sm font-semibold text-[#5C5A55]">Follow-up timeline</span>
+          <div className="mt-3 space-y-0">
+            {timeline.map((it, i) => {
+              const dot = it.type === 'sent' || it.type === 'delivered' || it.type === 'template_sent' ? 'bg-[#16A34A]'
+                : it.type === 'responded_before' || it.type === 'cancelled' ? 'bg-[#D63B1F]'
+                : it.type === 'created' ? 'bg-[#131210]' : 'bg-[#9B9890]'
+              const when = it.type === 'scheduled' && it.scheduled_for ? it.scheduled_for : it.at
+              return (
+                <div key={i} className="flex gap-2.5">
+                  <div className="flex flex-col items-center">
+                    <span className={`w-2 h-2 rounded-full ${dot} mt-1.5 shrink-0`} />
+                    {i < timeline.length - 1 && <span className="w-px flex-1 bg-[#E3E1DB] my-0.5" />}
+                  </div>
+                  <div className="pb-3 min-w-0">
+                    <p className="text-[13px] text-[#131210] leading-snug">{it.label}</p>
+                    <p className="text-[11px] text-[#9B9890] mt-0.5">
+                      {when ? new Date(when).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'}
+                      {it.type === 'scheduled' ? ' (planned)' : ''}
+                    </p>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ── Notes ── */}
       <div className="px-5 py-4 border-t border-[#E3E1DB]">

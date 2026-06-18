@@ -419,6 +419,28 @@ async function handleMessageDelivered(event) {
 
     console.log(`Message delivered status updated: ${telnyxMessageId}`)
 
+    // If this was a follow-up stage send, promote its 'sent' event to
+    // 'delivered' so the Logs page / timeline reflect carrier confirmation.
+    const { data: sentEv } = await supabaseAdmin
+      .from('followup_events')
+      .select('workspace_id, conversation_id, scenario_id, stage_number')
+      .eq('type', 'sent')
+      .filter('meta->>telnyx_message_id', 'eq', telnyxMessageId)
+      .order('occurred_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (sentEv) {
+      const { logFollowupEvent } = await import('@/lib/followup-service')
+      await logFollowupEvent({
+        workspaceId: sentEv.workspace_id,
+        conversationId: sentEv.conversation_id,
+        scenarioId: sentEv.scenario_id,
+        stageNumber: sentEv.stage_number,
+        type: 'delivered',
+        occurredAt: deliveredAt,
+      })
+    }
+
   } catch (error) {
     console.error('Error handling message delivered:', error)
   }

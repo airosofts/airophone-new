@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { apiGet, apiPost } from '@/lib/api-client'
+import { apiGet, apiPost, fetchWithWorkspace } from '@/lib/api-client'
 
 // One card on the canvas (matches AutomationBuilder's FlowCard).
 function FlowCard({ badge, badgeBg, title, subtitle, accent = '#D63B1F', width = 'w-[340px]', children, headerRight }) {
@@ -52,6 +52,18 @@ function FlowArrow({ label, tone = 'red' }) {
 
 const inputCls = 'px-2.5 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]'
 
+const DAYS = [{ n: 1, l: 'M' }, { n: 2, l: 'T' }, { n: 3, l: 'W' }, { n: 4, l: 'T' }, { n: 5, l: 'F' }, { n: 6, l: 'S' }, { n: 7, l: 'S' }]
+const TIMEZONES = [
+  { v: 'America/New_York', l: 'Eastern (ET)' },
+  { v: 'America/Chicago', l: 'Central (CT)' },
+  { v: 'America/Denver', l: 'Mountain (MT)' },
+  { v: 'America/Los_Angeles', l: 'Pacific (PT)' },
+  { v: 'America/Phoenix', l: 'Arizona' },
+  { v: 'America/Anchorage', l: 'Alaska' },
+  { v: 'Pacific/Honolulu', l: 'Hawaii' },
+  { v: 'UTC', l: 'UTC' },
+]
+
 // Tiny Monday tri-dot mark for the per-stage status field.
 function MondayDot() {
   return (
@@ -76,6 +88,8 @@ export default function FollowUpSequencePage() {
   // Real Monday status columns (+ labels) for this scenario's board(s).
   const [statusCols, setStatusCols] = useState([])   // [{ id, title, labels, board_name }]
   const [multiBoard, setMultiBoard] = useState(false)
+  // Per-sequence working window (when follow-ups may send).
+  const [win, setWin] = useState({ enabled: false, days: [1, 2, 3, 4, 5, 6, 7], start: '08:00', end: '22:00', tz: 'America/New_York' })
 
   const load = useCallback(async () => {
     try {
@@ -87,9 +101,19 @@ export default function FollowUpSequencePage() {
       const sc = await scRes.json().catch(() => ({}))
       const st = await stRes.json().catch(() => ({}))
       const mc = await mcRes.json().catch(() => ({}))
-      setScenarioName(sc?.scenario?.name || sc?.name || 'Scenario')
+      const scenario = sc?.scenario || sc || {}
+      setScenarioName(scenario.name || 'Scenario')
       const list = st?.stages || []
       setStages(list.length > 0 ? list : [{ stage_number: 1, wait_duration: 1, wait_unit: 'days', instructions: '' }])
+
+      // Hydrate the working window from the scenario (with sane defaults).
+      setWin({
+        enabled: !!scenario.enable_business_hours,
+        days: (Array.isArray(scenario.followup_days) && scenario.followup_days.length) ? scenario.followup_days : [1, 2, 3, 4, 5, 6, 7],
+        start: (scenario.followup_start_time || '08:00').slice(0, 5),
+        end: (scenario.followup_end_time || '22:00').slice(0, 5),
+        tz: scenario.followup_timezone || scenario.business_hours_timezone || 'America/New_York',
+      })
 
       // Flatten board → status columns; dedupe by column id (union labels).
       const boards = mc?.boards || []
@@ -119,6 +143,17 @@ export default function FollowUpSequencePage() {
   const save = async () => {
     setSaving(true); setError(null)
     try {
+      // Save the working window on the scenario, then the stages.
+      await fetchWithWorkspace(`/api/scenarios/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          enable_business_hours: win.enabled,
+          followup_days: win.days,
+          followup_start_time: win.start,
+          followup_end_time: win.end,
+          followup_timezone: win.tz,
+        }),
+      }).catch(() => {})
       const res = await apiPost(`/api/scenarios/${id}/followup-stages`, { stages })
       const data = await res.json()
       if (data.success) { setSavedTick(true); setTimeout(() => setSavedTick(false), 2000) }
@@ -168,6 +203,44 @@ export default function FollowUpSequencePage() {
           These messages send <span className="font-semibold text-[#131210]">only if the lead hasn’t replied</span>. The moment they reply, every follow-up stops and your AI takes over.
         </p>
       </div>
+
+      {/* Working hours — when follow-ups may send (per sequence) */}
+      {!loading && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-2.5 bg-white border-b border-[#E3E1DB] shrink-0">
+          <label className="flex items-center gap-2 text-xs font-medium text-[#131210] cursor-pointer">
+            <button type="button" role="switch" aria-checked={win.enabled}
+              onClick={() => setWin(w => ({ ...w, enabled: !w.enabled }))}
+              className={`relative inline-flex h-5 w-9 rounded-full transition-colors ${win.enabled ? 'bg-[#D63B1F]' : 'bg-[#D4D1C9]'}`}>
+              <span className={`inline-block h-4 w-4 mt-0.5 rounded-full bg-white shadow transition-transform ${win.enabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
+            </button>
+            Only send during working hours
+          </label>
+          {win.enabled ? (
+            <>
+              <div className="flex items-center gap-1">
+                {DAYS.map((d, i) => (
+                  <button key={i} type="button" title={`Day ${d.n}`}
+                    onClick={() => setWin(w => ({ ...w, days: w.days.includes(d.n) ? w.days.filter(x => x !== d.n) : [...w.days, d.n].sort((a, b) => a - b) }))}
+                    className={`w-7 h-7 rounded-md text-xs font-semibold transition-colors ${win.days.includes(d.n) ? 'bg-[#D63B1F] text-white' : 'bg-[#F1EFEA] text-[#9B9890] hover:text-[#5C5A55]'}`}>
+                    {d.l}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-1.5 text-xs text-[#5C5A55]">
+                <input type="time" value={win.start} onChange={e => setWin(w => ({ ...w, start: e.target.value }))} className={inputCls} />
+                <span>to</span>
+                <input type="time" value={win.end} onChange={e => setWin(w => ({ ...w, end: e.target.value }))} className={inputCls} />
+              </div>
+              <select value={win.tz} onChange={e => setWin(w => ({ ...w, tz: e.target.value }))} className={inputCls}>
+                {TIMEZONES.map(t => <option key={t.v} value={t.v}>{t.l}</option>)}
+              </select>
+              <span className="text-[11px] text-[#9B9890]">Outside these hours, a nudge waits for the next open window.</span>
+            </>
+          ) : (
+            <span className="text-xs text-[#9B9890]">Follow-ups send 24/7. Turn on to limit to specific days &amp; hours.</span>
+          )}
+        </div>
+      )}
 
       {error && (
         <div className="px-5 py-2 text-xs bg-[rgba(214,59,31,0.07)] border-b border-[rgba(214,59,31,0.16)] text-[#D63B1F] shrink-0">{error}</div>
