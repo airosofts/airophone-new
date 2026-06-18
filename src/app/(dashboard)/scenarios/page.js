@@ -1,17 +1,18 @@
 'use client'
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { apiGet, apiPost, fetchWithWorkspace } from '@/lib/api-client'
 
 export default function ScenariosPage() {
+  const router = useRouter()
   const [scenarios, setScenarios] = useState([])
   const [phoneNumbers, setPhoneNumbers] = useState([])
   const [loading, setLoading] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showViewModal, setShowViewModal] = useState(false)
   const [selectedScenario, setSelectedScenario] = useState(null)
-  const [showFollowupModal, setShowFollowupModal] = useState(false)
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false)
   const [showExecutionsModal, setShowExecutionsModal] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
@@ -230,7 +231,7 @@ export default function ScenariosPage() {
                           className="p-2 text-[#9B9890] hover:text-[#5C5A55] rounded-lg transition-colors">
                           <i className="fas fa-eye text-xs"></i>
                         </button>
-                        <button title="Follow-up Stages" onClick={(e) => { e.stopPropagation(); setSelectedScenario(scenario); setShowFollowupModal(true) }}
+                        <button title="Follow-up Stages" onClick={(e) => { e.stopPropagation(); router.push(`/scenarios/${scenario.id}/follow-ups`) }}
                           className="p-2 text-[#9B9890] hover:text-[#D63B1F] rounded-lg transition-colors">
                           <i className="fas fa-layer-group text-xs"></i>
                         </button>
@@ -286,7 +287,7 @@ export default function ScenariosPage() {
                           <div className="flex items-center justify-end gap-1">
                             <button title="View" onClick={(e) => { e.stopPropagation(); setSelectedScenario(scenario); setShowViewModal(true) }} className="p-1.5 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded transition-colors"><i className="fas fa-eye text-[13px]"></i></button>
                             <button title="Execution Logs" onClick={(e) => { e.stopPropagation(); setSelectedScenario(scenario); setShowExecutionsModal(true) }} className="p-1.5 text-[#9B9890] hover:text-[#D63B1F] hover:bg-[rgba(214,59,31,0.07)] rounded transition-colors"><i className="fas fa-list-alt text-[13px]"></i></button>
-                            <button title="Follow-up Stages" onClick={(e) => { e.stopPropagation(); setSelectedScenario(scenario); setShowFollowupModal(true) }} className="p-1.5 text-[#9B9890] hover:text-[#D63B1F] hover:bg-[rgba(214,59,31,0.07)] rounded transition-colors"><i className="fas fa-layer-group text-[13px]"></i></button>
+                            <button title="Follow-up Stages" onClick={(e) => { e.stopPropagation(); router.push(`/scenarios/${scenario.id}/follow-ups`) }} className="p-1.5 text-[#9B9890] hover:text-[#D63B1F] hover:bg-[rgba(214,59,31,0.07)] rounded transition-colors"><i className="fas fa-layer-group text-[13px]"></i></button>
                             <button title="Analytics" onClick={(e) => { e.stopPropagation(); setSelectedScenario(scenario); setShowAnalyticsModal(true) }} className="p-1.5 text-[#9B9890] hover:text-green-600 hover:bg-green-50 rounded transition-colors"><i className="fas fa-chart-bar text-[13px]"></i></button>
                             <button title={scenario.is_active ? 'Deactivate' : 'Activate'} onClick={(e) => { e.stopPropagation(); handleToggleActive(scenario) }} className={`p-1.5 rounded transition-colors ${scenario.is_active ? 'text-[#9B9890] hover:text-yellow-600 hover:bg-yellow-50' : 'text-[#9B9890] hover:text-green-600 hover:bg-green-50'}`}><i className={`fas ${scenario.is_active ? 'fa-pause' : 'fa-play'} text-[13px]`}></i></button>
                             <button title="Delete" onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ scenarioId: scenario.id, scenarioName: scenario.name }) }} className="p-1.5 text-[#9B9890] hover:text-[#D63B1F] hover:bg-[rgba(214,59,31,0.07)] rounded transition-colors"><i className="fas fa-trash text-[13px]"></i></button>
@@ -355,17 +356,9 @@ export default function ScenariosPage() {
           onUpdated={() => fetchScenarios()}
           onToggleActive={() => handleToggleActive(selectedScenario)}
           onDelete={() => setDeleteConfirm({ scenarioId: selectedScenario.id, scenarioName: selectedScenario.name })}
-          onFollowups={() => { setShowViewModal(false); setShowFollowupModal(true) }}
+          onFollowups={() => { setShowViewModal(false); router.push(`/scenarios/${selectedScenario.id}/follow-ups`) }}
           onAnalytics={() => { setShowViewModal(false); setShowAnalyticsModal(true) }}
           onExecutions={() => { setShowViewModal(false); setShowExecutionsModal(true) }}
-        />
-      )}
-
-      {showFollowupModal && selectedScenario && (
-        <FollowupStagesModal
-          scenario={selectedScenario}
-          onClose={() => { setShowFollowupModal(false); setSelectedScenario(null) }}
-          onSuccess={() => fetchScenarios()}
         />
       )}
 
@@ -1218,177 +1211,6 @@ function ViewScenarioModal({ scenario, phoneNumbers, onClose, onUpdated, onToggl
   )
 }
 
-// ─── Follow-up Stages Modal ───────────────────────────────────────────────────
-
-function FollowupStagesModal({ scenario, onClose, onSuccess }) {
-  const [stages, setStages] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState(null)
-
-  useEffect(() => {
-    const fetchStages = async () => {
-      try {
-        const response = await apiGet(`/api/scenarios/${scenario.id}/followup-stages`)
-        const data = await response.json()
-        if (data.success) {
-          setStages(data.stages.length > 0 ? data.stages : [
-            { stage_number: 1, wait_duration: 1440, wait_unit: 'minutes', instructions: '' }
-          ])
-        }
-      } catch (err) {
-        console.error('Error fetching stages:', err)
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchStages()
-  }, [scenario.id])
-
-  const addStage = () => {
-    const nextNum = stages.length + 1
-    setStages([...stages, { stage_number: nextNum, wait_duration: 1440, wait_unit: 'minutes', instructions: '' }])
-  }
-
-  const removeStage = (index) => {
-    const updated = stages.filter((_, i) => i !== index).map((s, i) => ({ ...s, stage_number: i + 1 }))
-    setStages(updated)
-  }
-
-  const updateStage = (index, field, value) => {
-    const updated = [...stages]
-    updated[index] = { ...updated[index], [field]: value }
-    setStages(updated)
-  }
-
-  const handleSave = async () => {
-    setSaving(true)
-    setError(null)
-    try {
-      const response = await apiPost(`/api/scenarios/${scenario.id}/followup-stages`, { stages })
-      const data = await response.json()
-      if (data.success) {
-        onSuccess()
-        onClose()
-      } else {
-        setError(data.error || 'Failed to save stages')
-      }
-    } catch {
-      setError('Failed to save stages. Please try again.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const formatWaitLabel = (duration, unit) => {
-    if (unit === 'minutes' && duration >= 1440) return `${duration / 1440} day${duration / 1440 !== 1 ? 's' : ''}`
-    if (unit === 'minutes' && duration >= 60) return `${duration / 60} hour${duration / 60 !== 1 ? 's' : ''}`
-    return `${duration} minute${duration !== 1 ? 's' : ''}`
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-2xl my-8">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#E3E1DB] sticky top-0 bg-[#FFFFFF] z-10">
-          <div>
-            <h3 className="text-sm font-semibold text-[#131210]">Follow-up Stages</h3>
-            <p className="text-xs text-[#9B9890] mt-0.5">{scenario.name}</p>
-          </div>
-          <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1">
-            <i className="fas fa-times text-sm"></i>
-          </button>
-        </div>
-
-        <div className="px-5 py-4">
-          {loading ? (
-            <div className="text-center py-8">
-              <i className="fas fa-spinner fa-spin text-[#9B9890] text-xl"></i>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {stages.map((stage, index) => (
-                <div key={index} className="border border-[#E3E1DB] rounded-md p-3">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-semibold text-[#5C5A55] uppercase tracking-wider">Stage {stage.stage_number}</span>
-                    {stages.length > 1 && (
-                      <button onClick={() => removeStage(index)} className="text-[#9B9890] hover:text-[#D63B1F] p-1">
-                        <i className="fas fa-times text-xs"></i>
-                      </button>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-3 gap-3 mb-3">
-                    <div>
-                      <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Wait Duration</label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={stage.wait_duration}
-                        onChange={(e) => updateStage(index, 'wait_duration', parseInt(e.target.value))}
-                        className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Unit</label>
-                      <select
-                        value={stage.wait_unit}
-                        onChange={(e) => updateStage(index, 'wait_unit', e.target.value)}
-                        className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
-                      >
-                        <option value="minutes">Minutes</option>
-                        <option value="hours">Hours</option>
-                        <option value="days">Days</option>
-                        <option value="weeks">Weeks</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Effective Wait</label>
-                      <div className="px-3 py-2 bg-[#F7F6F3] border border-[#E3E1DB] rounded-md text-sm text-[#5C5A55]">
-                        {formatWaitLabel(stage.wait_duration, stage.wait_unit)}
-                      </div>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Stage AI Instructions</label>
-                    <textarea
-                      value={stage.instructions}
-                      onChange={(e) => updateStage(index, 'instructions', e.target.value)}
-                      placeholder={`Instructions for follow-up stage ${stage.stage_number}…`}
-                      rows="3"
-                      className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F] resize-none"
-                    />
-                  </div>
-                </div>
-              ))}
-
-              <button
-                type="button"
-                onClick={addStage}
-                className="w-full py-2 border border-dashed border-[#D4D1C9] rounded-md text-sm text-[#9B9890] hover:border-[#D63B1F] hover:text-[#D63B1F] transition-colors"
-              >
-                <i className="fas fa-plus mr-1.5 text-xs"></i>Add Stage
-              </button>
-
-              {error && (
-                <div className="bg-[rgba(214,59,31,0.07)] border border-[rgba(214,59,31,0.14)] text-[#D63B1F] px-3 py-2.5 rounded-md text-sm">{error}</div>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="px-5 py-3.5 border-t border-[#E3E1DB] flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
-          <button
-            onClick={handleSave}
-            disabled={saving || loading}
-            className="px-4 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md disabled:opacity-50"
-          >
-            {saving ? <><i className="fas fa-spinner fa-spin mr-1.5"></i>Saving…</> : 'Save Stages'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 // ─── Analytics Modal ──────────────────────────────────────────────────────────
 

@@ -158,6 +158,9 @@ export default function AutomationBuilder({ phoneNumbers = [], automation = null
   const [submitting, setSubmitting] = useState(false)
 
   // Two-way Monday sync (writeback) — per-board, mirrors the list-page feature.
+  const [wbSentCol, setWbSentCol] = useState('')
+  const [wbSentLabel, setWbSentLabel] = useState('')
+  const [wbSentText, setWbSentText] = useState('')
   const [wbReplyCol, setWbReplyCol] = useState('')
   const [wbReplyLabel, setWbReplyLabel] = useState('')
   const [wbReplyText, setWbReplyText] = useState('')
@@ -200,6 +203,9 @@ export default function AutomationBuilder({ phoneNumbers = [], automation = null
       .then(d => {
         const cfg = (d?.configs || []).find(c => String(c.board_id) === String(form.boardId))
         if (!cfg) return
+        setWbSentCol(cfg.on_sent_column_id || '')
+        setWbSentLabel(cfg.on_sent_value?.label || '')
+        setWbSentText(cfg.on_sent_value?.text || '')
         setWbReplyCol(cfg.on_reply_column_id || '')
         setWbReplyLabel(cfg.on_reply_value?.label || '')
         setWbReplyText(cfg.on_reply_value?.text || '')
@@ -263,7 +269,8 @@ export default function AutomationBuilder({ phoneNumbers = [], automation = null
         if (col.type === 'text')   return { columnId: colId, columnType: 'text',   value: { text } }
         return { columnId: null, columnType: null, value: null }
       }
-      if (form.boardId && (isEdit || wbReplyCol || wbDoneCol)) {
+      if (form.boardId && (isEdit || wbSentCol || wbReplyCol || wbDoneCol)) {
+        const sentWb = wbPayload(wbSentCol, wbSentLabel, wbSentText)
         const reply = wbPayload(wbReplyCol, wbReplyLabel, wbReplyText)
         const done = wbPayload(wbDoneCol, wbDoneLabel, wbDoneText)
         await fetchWithWorkspace('/api/automations/writeback', {
@@ -271,6 +278,7 @@ export default function AutomationBuilder({ phoneNumbers = [], automation = null
           body: JSON.stringify({
             board_id: form.boardId,
             board_name: form.boardName || automation?.board_name,
+            on_sent_column_id: sentWb.columnId, on_sent_column_type: sentWb.columnType, on_sent_value: sentWb.value,
             on_reply_column_id: reply.columnId, on_reply_column_type: reply.columnType, on_reply_value: reply.value,
             on_done_column_id: done.columnId, on_done_column_type: done.columnType, on_done_value: done.value,
           }),
@@ -488,14 +496,24 @@ export default function AutomationBuilder({ phoneNumbers = [], automation = null
             {form.boardId ? (
               <>
                 <EventEditor
-                  title="When a lead replies"
-                  hint="Set on every inbound message — e.g. Status = Engaged, or Last contact = today."
+                  title="When the first message is sent"
+                  hint="Set the moment the AI/template goes out — e.g. Status = AI Engaged / Template Sent."
                   columns={wbColumns}
-                  colId={wbReplyCol} setColId={setWbReplyCol}
-                  valueLabel={wbReplyLabel} setValueLabel={setWbReplyLabel}
-                  valueText={wbReplyText} setValueText={setWbReplyText}
+                  colId={wbSentCol} setColId={setWbSentCol}
+                  valueLabel={wbSentLabel} setValueLabel={setWbSentLabel}
+                  valueText={wbSentText} setValueText={setWbSentText}
                 />
-                <div className="border-t border-[#EFEDE8] pt-3">
+                <div className="border-t border-[#EFEDE8] pt-3 mt-3">
+                  <EventEditor
+                    title="When a lead replies"
+                    hint="Set on every inbound message — e.g. Status = Replied / Engaged."
+                    columns={wbColumns}
+                    colId={wbReplyCol} setColId={setWbReplyCol}
+                    valueLabel={wbReplyLabel} setValueLabel={setWbReplyLabel}
+                    valueText={wbReplyText} setValueText={setWbReplyText}
+                  />
+                </div>
+                <div className="border-t border-[#EFEDE8] pt-3 mt-3">
                   <EventEditor
                     title="When marked done"
                     hint="Set when you toggle the chat to Done / Closed."

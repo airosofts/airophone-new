@@ -62,7 +62,10 @@ function buildColumnValue(columnType, configuredValue) {
   return null
 }
 
-// Run the writeback for a given event. `event` is 'reply' or 'done'.
+// Run the writeback for a given event. `event` is 'sent' | 'reply' | 'done'.
+//   'sent'  → the first AI/template message just went out (Status → "AI Engaged")
+//   'reply' → the lead replied        (Status → "Replied" / "Engaged")
+//   'done'  → conversation closed     (Status → "Done")
 export async function runWriteback(conversationId, event) {
   try {
     console.log(`[monday-writeback] ${event}: starting for conversation ${conversationId}`)
@@ -90,9 +93,15 @@ export async function runWriteback(conversationId, event) {
       return
     }
 
-    const columnId = event === 'reply' ? config.on_reply_column_id : config.on_done_column_id
-    const columnType = event === 'reply' ? config.on_reply_column_type : config.on_done_column_type
-    const value = event === 'reply' ? config.on_reply_value : config.on_done_value
+    const COLS = {
+      sent:  ['on_sent_column_id',  'on_sent_column_type',  'on_sent_value'],
+      reply: ['on_reply_column_id', 'on_reply_column_type', 'on_reply_value'],
+      done:  ['on_done_column_id',  'on_done_column_type',  'on_done_value'],
+    }
+    const COL = COLS[event] || COLS.done
+    const columnId = config[COL[0]]
+    const columnType = config[COL[1]]
+    const value = config[COL[2]]
 
     if (!columnId || !columnType) {
       console.log(`[monday-writeback] ${event}: skipped — nothing configured for this event (columnId=${columnId}, columnType=${columnType})`)

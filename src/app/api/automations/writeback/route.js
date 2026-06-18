@@ -40,6 +40,7 @@ export async function POST(request) {
   const body = await request.json().catch(() => ({}))
   const {
     board_id, board_name,
+    on_sent_column_id, on_sent_column_type, on_sent_value,
     on_reply_column_id, on_reply_column_type, on_reply_value,
     on_done_column_id, on_done_column_type, on_done_value,
   } = body
@@ -47,6 +48,9 @@ export async function POST(request) {
   if (!board_id) return badRequest('board_id is required')
 
   // Validate types when set (column is optional, but if set the type must be valid).
+  if (on_sent_column_id && !VALID_TYPES.includes(on_sent_column_type)) {
+    return badRequest(`on_sent_column_type must be one of: ${VALID_TYPES.join(', ')}`)
+  }
   if (on_reply_column_id && !VALID_TYPES.includes(on_reply_column_type)) {
     return badRequest(`on_reply_column_type must be one of: ${VALID_TYPES.join(', ')}`)
   }
@@ -62,6 +66,9 @@ export async function POST(request) {
         workspace_id: user.workspaceId,
         board_id: String(board_id),
         board_name: board_name || null,
+        on_sent_column_id: on_sent_column_id || null,
+        on_sent_column_type: on_sent_column_id ? on_sent_column_type : null,
+        on_sent_value: on_sent_column_id ? (on_sent_value ?? null) : null,
         on_reply_column_id: on_reply_column_id || null,
         on_reply_column_type: on_reply_column_id ? on_reply_column_type : null,
         on_reply_value: on_reply_column_id ? (on_reply_value ?? null) : null,

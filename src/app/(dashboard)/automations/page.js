@@ -281,7 +281,7 @@ function WritebackSection({ automations, configs, onSaved, onCleared }) {
     <div className="mt-10 pt-6 border-t border-[#E3E1DB]">
       <h2 className="text-base font-semibold text-[#131210]">Two-way Monday sync</h2>
       <p className="text-xs text-[#9B9890] mt-1 mb-4">
-        When a lead replies or a conversation is marked done, automatically update a column on the source Monday item.
+        When the first message is sent, a lead replies, or a conversation is marked done, automatically update a column on the source Monday item.
       </p>
       <div className="space-y-2">
         {boards.map(b => (
@@ -305,6 +305,9 @@ function BoardWritebackCard({ board, config, onSaved, onCleared }) {
   const [saving, setSaving] = useState(false)
 
   // Form state — initialized from existing config or blank.
+  const [sentCol, setSentCol] = useState(config?.on_sent_column_id || '')
+  const [sentValueLabel, setSentValueLabel] = useState(config?.on_sent_value?.label || '')
+  const [sentValueText, setSentValueText] = useState(config?.on_sent_value?.text || '')
   const [replyCol, setReplyCol] = useState(config?.on_reply_column_id || '')
   const [replyValueLabel, setReplyValueLabel] = useState(config?.on_reply_value?.label || '')
   const [replyValueText, setReplyValueText] = useState(config?.on_reply_value?.text || '')
@@ -331,6 +334,7 @@ function BoardWritebackCard({ board, config, onSaved, onCleared }) {
   }
 
   const colById = new Map((columns || []).map(c => [c.id, c]))
+  const sentColObj  = colById.get(sentCol)
   const replyColObj = colById.get(replyCol)
   const doneColObj  = colById.get(doneCol)
 
@@ -346,6 +350,7 @@ function BoardWritebackCard({ board, config, onSaved, onCleared }) {
   const save = async () => {
     setSaving(true)
     try {
+      const sent  = buildPayload(sentCol,  sentColObj,  sentValueLabel,  sentValueText)
       const reply = buildPayload(replyCol, replyColObj, replyValueLabel, replyValueText)
       const done  = buildPayload(doneCol,  doneColObj,  doneValueLabel,  doneValueText)
       const res = await fetchWithWorkspace('/api/automations/writeback', {
@@ -353,6 +358,9 @@ function BoardWritebackCard({ board, config, onSaved, onCleared }) {
         body: JSON.stringify({
           board_id: board.id,
           board_name: board.name,
+          on_sent_column_id: sent.columnId,
+          on_sent_column_type: sent.columnType,
+          on_sent_value: sent.value,
           on_reply_column_id: reply.columnId,
           on_reply_column_type: reply.columnType,
           on_reply_value: reply.value,
@@ -379,6 +387,7 @@ function BoardWritebackCard({ board, config, onSaved, onCleared }) {
       const res = await fetchWithWorkspace(`/api/automations/writeback?board_id=${encodeURIComponent(board.id)}`, { method: 'DELETE' })
       if (res.ok) {
         onCleared(board.id)
+        setSentCol(''); setSentValueLabel(''); setSentValueText('')
         setReplyCol(''); setReplyValueLabel(''); setReplyValueText('')
         setDoneCol(''); setDoneValueLabel(''); setDoneValueText('')
         setOpen(false)
@@ -393,6 +402,7 @@ function BoardWritebackCard({ board, config, onSaved, onCleared }) {
   const summary = (() => {
     if (!config) return 'Not configured'
     const parts = []
+    if (config.on_sent_column_id)  parts.push(`On sent → ${config.on_sent_column_id}`)
     if (config.on_reply_column_id) parts.push(`On reply → ${config.on_reply_column_id}`)
     if (config.on_done_column_id)  parts.push(`On done → ${config.on_done_column_id}`)
     return parts.join(' · ') || 'Not configured'
@@ -418,8 +428,16 @@ function BoardWritebackCard({ board, config, onSaved, onCleared }) {
           ) : (
             <>
               <EventEditor
+                title="When the first message is sent"
+                hint="Set the moment the AI/template goes out — e.g. 'Status = AI Engaged / Template Sent'."
+                columns={columns || []}
+                colId={sentCol}        setColId={setSentCol}
+                valueLabel={sentValueLabel} setValueLabel={setSentValueLabel}
+                valueText={sentValueText}   setValueText={setSentValueText}
+              />
+              <EventEditor
                 title="When a lead replies"
-                hint="Set on every inbound message — e.g. 'Last contact = today' or 'Status = Engaged'."
+                hint="Set on every inbound message — e.g. 'Status = Replied / Engaged'."
                 columns={columns || []}
                 colId={replyCol}        setColId={setReplyCol}
                 valueLabel={replyValueLabel} setValueLabel={setReplyValueLabel}

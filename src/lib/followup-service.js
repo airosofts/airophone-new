@@ -67,8 +67,11 @@ const _DOW = { Sun: 7, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }   // ISO
 function isWithinWorkspaceHours(bh) {
   if (!bh) return true
   const p = new Intl.DateTimeFormat('en-US', { timeZone: bh.tz, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date())
-  const day = _DOW[p.find(x => x.type === 'weekday')?.value]
-  if (!bh.days.includes(day)) return false
+  // Follow-ups run 7 days a week — only the HOUR window gates whether a nudge may
+  // fire (per client spec: "the bot is active 7 days, it just schedules during
+  // business hours, 8AM–10PM"). We intentionally do NOT restrict by business DAY
+  // here; the weekday list only shapes what the AI proposes for callbacks
+  // (see hoursPromptBlock), not whether today is eligible to send.
   const cur = Number(p.find(x => x.type === 'hour')?.value) * 60 + Number(p.find(x => x.type === 'minute')?.value)
   const [sh, sm] = bh.start.split(':').map(Number)
   const [eh, em] = bh.end.split(':').map(Number)
@@ -203,7 +206,9 @@ export async function scheduleNextFollowup(conversationId, scenarioId) {
     // Calculate next follow-up time (respect wait_unit: minutes / hours / days)
     const nextFollowupAt = new Date()
     const unit = (followupStage.wait_unit || 'minutes').toLowerCase()
-    if (unit === 'days') {
+    if (unit === 'weeks') {
+      nextFollowupAt.setDate(nextFollowupAt.getDate() + followupStage.wait_duration * 7)
+    } else if (unit === 'days') {
       nextFollowupAt.setDate(nextFollowupAt.getDate() + followupStage.wait_duration)
     } else if (unit === 'hours') {
       nextFollowupAt.setHours(nextFollowupAt.getHours() + followupStage.wait_duration)
@@ -324,11 +329,16 @@ export async function processScheduledFollowups() {
         continue
       }
 
-      // Business hours — use the WORKSPACE's configured hours (Settings →
-      // Business Hours), the same source the main scenario prompt uses.
+      // Follow-ups run 24/7 by DEFAULT. Only when this scenario has the
+      // "Business Hours — Restrict AI to specific hours" toggle ON do we hold
+      // sends to the Settings → Business Hours window. The hours come from
+      // Settings (loadWorkspaceHours), never hardcoded, and apply every day
+      // (7-day, hour-gated). `bh` is still loaded unconditionally so the AI's
+      // callback-time suggestions stay sane (see hoursPromptBlock).
       const bh = await loadWorkspaceHours(followupState.scenarios?.workspace_id)
-      if (!isWithinWorkspaceHours(bh)) {
-        console.log(`Skipping conversation ${followupState.conversation_id} - outside business hours`)
+      const restrictToHours = !!followupState.scenarios?.enable_business_hours
+      if (restrictToHours && !isWithinWorkspaceHours(bh)) {
+        console.log(`Holding follow-up for ${followupState.conversation_id} - outside Settings business hours (restriction toggle on)`)
         const nextHour = new Date()
         nextHour.setHours(nextHour.getHours() + 1)
         await supabaseAdmin

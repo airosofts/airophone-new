@@ -152,8 +152,16 @@ export async function POST(request) {
         message_id: outcome.messageId || null,
       })
       .eq('id', row.id)
-    if (outcome.status === 'sent') sent++
-    else gaveUp++   // 'failed'
+    if (outcome.status === 'sent') {
+      sent++
+      // Two-way sync: the first AI/template touch just went out — flip the
+      // configured Monday status (e.g. → "AI Engaged") so the human agent sees
+      // it on the board. Best-effort; never blocks the sweep.
+      if (outcome.conversationId) {
+        const { runWriteback } = await import('@/lib/monday-writeback')
+        runWriteback(outcome.conversationId, 'sent').catch(() => {})
+      }
+    } else gaveUp++   // 'failed'
   }
 
   // ── Recipe runs ───────────────────────────────────────────────────────────
