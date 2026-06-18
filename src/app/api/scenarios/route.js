@@ -72,7 +72,10 @@ export async function POST(request) {
     }
 
     const body = await request.json()
-    const { name, description, instructions, phoneNumbers, contacts, contact_list_ids } = body
+    const {
+      name, description, instructions, phoneNumbers, contacts, contact_list_ids,
+      enable_followups, max_followup_attempts, auto_stop_keywords, ai_reply_mode, books_appointments,
+    } = body
 
     if (!name || !instructions) {
       return NextResponse.json(
@@ -92,6 +95,11 @@ export async function POST(request) {
         created_by: user.userId,
         is_active: true,
         restrict_to_contact_lists: contact_list_ids?.length > 0 ? contact_list_ids : null,
+        enable_followups: !!enable_followups,
+        max_followup_attempts: max_followup_attempts || 3,
+        auto_stop_keywords: Array.isArray(auto_stop_keywords) ? auto_stop_keywords : undefined,
+        ai_reply_mode: ai_reply_mode === 'business_hours' ? 'business_hours' : 'anytime',
+        books_appointments: books_appointments !== false,
       })
       .select()
       .single()
