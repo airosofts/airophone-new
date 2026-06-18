@@ -79,8 +79,6 @@ export default function AutomationsPage() {
   const [phoneNumbers, setPhoneNumbers] = useState([])
   const [showCreate, setShowCreate] = useState(false)
   const [busyId, setBusyId] = useState(null)
-  // Two-way sync — keyed by board_id
-  const [writebackConfigs, setWritebackConfigs] = useState({})
   // Deletion confirmation — holds the automation pending delete, null otherwise.
   const [pendingDelete, setPendingDelete] = useState(null)
   // When set, the create/edit modal opens in EDIT mode pre-filled from this row.
@@ -88,18 +86,14 @@ export default function AutomationsPage() {
 
   const load = useCallback(async () => {
     try {
-      const [aRes, mRes, pRes, wRes] = await Promise.all([
+      const [aRes, mRes, pRes] = await Promise.all([
         fetchWithWorkspace('/api/automations').then(r => r.json()),
         fetchWithWorkspace('/api/integrations/monday').then(r => r.json()),
         fetchWithWorkspace('/api/phone-numbers').then(r => r.json()),
-        fetchWithWorkspace('/api/automations/writeback').then(r => r.json()),
       ])
       setAutomations(aRes?.automations || [])
       setMondayConnected(!!mRes?.connected)
       setPhoneNumbers(pRes?.phoneNumbers || [])
-      const map = {}
-      for (const c of (wRes?.configs || [])) map[c.board_id] = c
-      setWritebackConfigs(map)
     } catch (e) {
       console.error('[automations] load failed:', e)
     } finally {
@@ -233,17 +227,6 @@ export default function AutomationsPage() {
           </div>
         )}
 
-        {/* ── Two-way Monday sync ─────────────────────────────────────── */}
-        {!loading && mondayConnected && automations.length > 0 && (
-          <WritebackSection
-            automations={automations}
-            configs={writebackConfigs}
-            onSaved={(config) => setWritebackConfigs(prev => ({ ...prev, [config.board_id]: config }))}
-            onCleared={(boardId) => setWritebackConfigs(prev => {
-              const next = { ...prev }; delete next[boardId]; return next
-            })}
-          />
-        )}
       </div>
 
 
@@ -261,283 +244,6 @@ export default function AutomationsPage() {
   )
 }
 
-// ─── Two-way Monday sync ────────────────────────────────────────────────────
-// One card per unique board (derived from automations). Each card shows the
-// current writeback config and lets you edit it inline. Column choices come
-// from /api/integrations/monday/boards/[id]/columns and are filtered to
-// types we know how to write back (status, date, text).
-
-function WritebackSection({ automations, configs, onSaved, onCleared }) {
-  // Unique boards from automations.
-  const boards = []
-  const seen = new Set()
-  for (const a of automations) {
-    if (seen.has(a.board_id)) continue
-    seen.add(a.board_id)
-    boards.push({ id: a.board_id, name: a.board_name || a.board_id })
-  }
-
-  return (
-    <div className="mt-10 pt-6 border-t border-[#E3E1DB]">
-      <h2 className="text-base font-semibold text-[#131210]">Two-way Monday sync</h2>
-      <p className="text-xs text-[#9B9890] mt-1 mb-4">
-        When the first message is sent, a lead replies, or a conversation is marked done, automatically update a column on the source Monday item.
-      </p>
-      <div className="space-y-2">
-        {boards.map(b => (
-          <BoardWritebackCard
-            key={b.id}
-            board={b}
-            config={configs[b.id] || null}
-            onSaved={onSaved}
-            onCleared={onCleared}
-          />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function BoardWritebackCard({ board, config, onSaved, onCleared }) {
-  const [open, setOpen] = useState(false)
-  const [columns, setColumns] = useState(null)        // null = not loaded, [] = loaded empty
-  const [loadingCols, setLoadingCols] = useState(false)
-  const [saving, setSaving] = useState(false)
-
-  // Form state — initialized from existing config or blank.
-  const [sentCol, setSentCol] = useState(config?.on_sent_column_id || '')
-  const [sentValueLabel, setSentValueLabel] = useState(config?.on_sent_value?.label || '')
-  const [sentValueText, setSentValueText] = useState(config?.on_sent_value?.text || '')
-  const [replyCol, setReplyCol] = useState(config?.on_reply_column_id || '')
-  const [replyValueLabel, setReplyValueLabel] = useState(config?.on_reply_value?.label || '')
-  const [replyValueText, setReplyValueText] = useState(config?.on_reply_value?.text || '')
-  const [doneCol, setDoneCol] = useState(config?.on_done_column_id || '')
-  const [doneValueLabel, setDoneValueLabel] = useState(config?.on_done_value?.label || '')
-  const [doneValueText, setDoneValueText] = useState(config?.on_done_value?.text || '')
-
-  const expand = async () => {
-    setOpen(o => !o)
-    if (columns || loadingCols) return
-    setLoadingCols(true)
-    try {
-      const res = await fetchWithWorkspace(`/api/integrations/monday/boards/${board.id}/columns`)
-      const data = await res.json()
-      // Keep only types we support for writeback.
-      const ok = (data?.columns || []).filter(c => c.type === 'status' || c.type === 'date' || c.type === 'text')
-      setColumns(ok)
-    } catch (e) {
-      console.error('[writeback] columns load failed:', e)
-      setColumns([])
-    } finally {
-      setLoadingCols(false)
-    }
-  }
-
-  const colById = new Map((columns || []).map(c => [c.id, c]))
-  const sentColObj  = colById.get(sentCol)
-  const replyColObj = colById.get(replyCol)
-  const doneColObj  = colById.get(doneCol)
-
-  // Build the per-event payload — null when nothing's configured for that event.
-  function buildPayload(colId, colObj, valueLabel, valueText) {
-    if (!colId || !colObj) return { columnId: null, columnType: null, value: null }
-    if (colObj.type === 'status') return { columnId: colId, columnType: 'status', value: { label: valueLabel } }
-    if (colObj.type === 'date')   return { columnId: colId, columnType: 'date',   value: null }   // always today
-    if (colObj.type === 'text')   return { columnId: colId, columnType: 'text',   value: { text: valueText } }
-    return { columnId: null, columnType: null, value: null }
-  }
-
-  const save = async () => {
-    setSaving(true)
-    try {
-      const sent  = buildPayload(sentCol,  sentColObj,  sentValueLabel,  sentValueText)
-      const reply = buildPayload(replyCol, replyColObj, replyValueLabel, replyValueText)
-      const done  = buildPayload(doneCol,  doneColObj,  doneValueLabel,  doneValueText)
-      const res = await fetchWithWorkspace('/api/automations/writeback', {
-        method: 'POST',
-        body: JSON.stringify({
-          board_id: board.id,
-          board_name: board.name,
-          on_sent_column_id: sent.columnId,
-          on_sent_column_type: sent.columnType,
-          on_sent_value: sent.value,
-          on_reply_column_id: reply.columnId,
-          on_reply_column_type: reply.columnType,
-          on_reply_value: reply.value,
-          on_done_column_id: done.columnId,
-          on_done_column_type: done.columnType,
-          on_done_value: done.value,
-        }),
-      })
-      const data = await res.json()
-      if (res.ok && data.config) {
-        onSaved(data.config)
-        setOpen(false)
-      }
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const [confirmingClear, setConfirmingClear] = useState(false)
-
-  const doClear = async () => {
-    setSaving(true)
-    try {
-      const res = await fetchWithWorkspace(`/api/automations/writeback?board_id=${encodeURIComponent(board.id)}`, { method: 'DELETE' })
-      if (res.ok) {
-        onCleared(board.id)
-        setSentCol(''); setSentValueLabel(''); setSentValueText('')
-        setReplyCol(''); setReplyValueLabel(''); setReplyValueText('')
-        setDoneCol(''); setDoneValueLabel(''); setDoneValueText('')
-        setOpen(false)
-      }
-    } finally {
-      setSaving(false)
-      setConfirmingClear(false)
-    }
-  }
-
-  // Summary line shown when collapsed.
-  const summary = (() => {
-    if (!config) return 'Not configured'
-    const parts = []
-    if (config.on_sent_column_id)  parts.push(`On sent → ${config.on_sent_column_id}`)
-    if (config.on_reply_column_id) parts.push(`On reply → ${config.on_reply_column_id}`)
-    if (config.on_done_column_id)  parts.push(`On done → ${config.on_done_column_id}`)
-    return parts.join(' · ') || 'Not configured'
-  })()
-
-  return (
-    <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-xl">
-      <button
-        onClick={expand}
-        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left"
-      >
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-[#131210] truncate">{board.name}</p>
-          <p className="text-xs text-[#9B9890] mt-0.5">{summary}</p>
-        </div>
-        <span className="text-xs text-[#9B9890]">{open ? '▲' : '▼'}</span>
-      </button>
-
-      {open && (
-        <div className="px-4 pb-4 border-t border-[#EFEDE8]">
-          {loadingCols ? (
-            <p className="text-xs text-[#9B9890] py-3">Loading columns…</p>
-          ) : (
-            <>
-              <EventEditor
-                title="When the first message is sent"
-                hint="Set the moment the AI/template goes out — e.g. 'Status = AI Engaged / Template Sent'."
-                columns={columns || []}
-                colId={sentCol}        setColId={setSentCol}
-                valueLabel={sentValueLabel} setValueLabel={setSentValueLabel}
-                valueText={sentValueText}   setValueText={setSentValueText}
-              />
-              <EventEditor
-                title="When a lead replies"
-                hint="Set on every inbound message — e.g. 'Status = Replied / Engaged'."
-                columns={columns || []}
-                colId={replyCol}        setColId={setReplyCol}
-                valueLabel={replyValueLabel} setValueLabel={setReplyValueLabel}
-                valueText={replyValueText}   setValueText={setReplyValueText}
-              />
-              <EventEditor
-                title="When a conversation is marked done"
-                hint="Set when you toggle the chat to Done/Closed."
-                columns={columns || []}
-                colId={doneCol}        setColId={setDoneCol}
-                valueLabel={doneValueLabel} setValueLabel={setDoneValueLabel}
-                valueText={doneValueText}   setValueText={setDoneValueText}
-              />
-
-              <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-[#EFEDE8]">
-                {config ? (
-                  <button onClick={() => setConfirmingClear(true)} disabled={saving} className="text-xs text-[#9B9890] hover:text-[#D63B1F]">
-                    Remove rules
-                  </button>
-                ) : <span />}
-                <div className="flex items-center gap-2">
-                  <button onClick={() => setOpen(false)} className="px-3 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">
-                    Cancel
-                  </button>
-                  <button onClick={save} disabled={saving} className="px-3 py-1.5 text-xs font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md disabled:opacity-50">
-                    {saving ? 'Saving…' : 'Save rules'}
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      <ConfirmDialog
-        open={confirmingClear}
-        title="Remove two-way sync?"
-        message={`The writeback rules for "${board.name}" will be deleted. Inbound replies and "marked done" events will stop updating this board.`}
-        confirmLabel="Remove"
-        destructive
-        busy={saving}
-        onCancel={() => setConfirmingClear(false)}
-        onConfirm={doClear}
-      />
-    </div>
-  )
-}
-
-function EventEditor({ title, hint, columns, colId, setColId, valueLabel, setValueLabel, valueText, setValueText }) {
-  const colObj = columns.find(c => c.id === colId)
-  // Status columns expose `settings_str` (JSON) — parse for label options.
-  let statusLabels = []
-  if (colObj?.type === 'status') {
-    try {
-      const settings = JSON.parse(colObj.settings_str || '{}')
-      const labels = settings.labels || {}
-      statusLabels = Object.values(labels).filter(Boolean)
-    } catch { /* leave empty */ }
-  }
-
-  return (
-    <div className="mt-4">
-      <p className="text-xs font-semibold text-[#131210] uppercase tracking-wider">{title}</p>
-      <p className="text-[11px] text-[#9B9890] mt-0.5 mb-2">{hint}</p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        <select
-          value={colId}
-          onChange={(e) => { setColId(e.target.value); setValueLabel(''); setValueText('') }}
-          className={inputCls}
-        >
-          <option value="">— No update —</option>
-          {columns.map(c => (
-            <option key={c.id} value={c.id}>{c.title} ({c.type})</option>
-          ))}
-        </select>
-
-        {colObj?.type === 'status' && (
-          <select value={valueLabel} onChange={(e) => setValueLabel(e.target.value)} className={inputCls}>
-            <option value="">— Choose a label —</option>
-            {statusLabels.map(l => <option key={l} value={l}>{l}</option>)}
-          </select>
-        )}
-        {colObj?.type === 'date' && (
-          <div className="flex items-center px-3 py-2.5 border border-[#E3E1DB] rounded-lg bg-[#F7F6F3] text-xs text-[#5C5A55]">
-            Always set to today
-          </div>
-        )}
-        {colObj?.type === 'text' && (
-          <input
-            type="text"
-            value={valueText}
-            onChange={(e) => setValueText(e.target.value)}
-            placeholder="Text to write"
-            className={inputCls}
-          />
-        )}
-      </div>
-    </div>
-  )
-}
 
 // Inverse of delayToSeconds — picks the largest unit that divides evenly so a
 // stored "3600" comes back as "1 hour" instead of "60 minutes" when editing.
