@@ -439,7 +439,8 @@ export async function processScheduledFollowups() {
         followupState.scenarios?.instructions || '',
         followupState.scenarios?.workspace_id || null,
         nextStage,
-        bh
+        bh,
+        stage.message_mode || 'ai'
       )
 
       if (result.success) {
@@ -518,7 +519,7 @@ function isAutomatedFollowupMessage(body) {
  * is the parent scenario's persona — both are sent to the AI so it stays in
  * character instead of generating generic "you there?" messages.
  */
-async function sendFollowupMessage(conversationId, scenarioId, stageInstructions, scenarioInstructions, workspaceId, stage, bh = null) {
+async function sendFollowupMessage(conversationId, scenarioId, stageInstructions, scenarioInstructions, workspaceId, stage, bh = null, messageMode = 'ai') {
   try {
     // Get conversation details and history
     const { data: conversation } = await supabaseAdmin
@@ -542,11 +543,8 @@ async function sendFollowupMessage(conversationId, scenarioId, stageInstructions
       m.direction === 'outbound' || !isAutomatedFollowupMessage(m.body)
     )
 
-    // Look up contact for {{token}} substitution
-    let combinedInstructions = [scenarioInstructions || '', stageInstructions || '']
-      .filter(Boolean)
-      .join('\n\n--- FOLLOW-UP STAGE ' + stage + ' INSTRUCTIONS ---\n')
-
+    // Resolve {{token}} → contact field values once; used by both modes.
+    let subs = null
     if (workspaceId && conversation.phone_number) {
       const { data: contact } = await supabaseAdmin
         .from('contacts')
@@ -555,7 +553,7 @@ async function sendFollowupMessage(conversationId, scenarioId, stageInstructions
         .eq('phone_number', conversation.phone_number)
         .maybeSingle()
       if (contact) {
-        const subs = {
+        subs = {
           first_name: contact.first_name || '',
           last_name: contact.last_name || '',
           business_name: contact.business_name || '',
@@ -566,27 +564,38 @@ async function sendFollowupMessage(conversationId, scenarioId, stageInstructions
           country: contact.country || '',
           ...(Array.isArray(contact.custom_fields) ? {} : (contact.custom_fields || {})),
         }
-        const unresolved = new Set()
-        combinedInstructions = combinedInstructions.replace(/\{\{(\w+)\}\}/g, (_, key) => {
-          if (subs[key] === undefined || subs[key] === '') {
-            unresolved.add(key)
-            return ''
-          }
-          return subs[key]
-        })
-        if (unresolved.size > 0) {
-          console.warn(`[followup] Unresolved tokens: ${[...unresolved].join(', ')} (conversation ${conversationId})`)
-        }
       }
     }
+    const applyTokens = (text) => {
+      if (!text) return ''
+      if (!subs) return text
+      const unresolved = new Set()
+      const out = text.replace(/\{\{(\w+)\}\}/g, (_, key) => {
+        if (subs[key] === undefined || subs[key] === '') { unresolved.add(key); return '' }
+        return subs[key]
+      })
+      if (unresolved.size > 0) console.warn(`[followup] Unresolved tokens: ${[...unresolved].join(', ')} (conversation ${conversationId})`)
+      return out
+    }
 
-    // Generate AI response — append the current date/time + business-hours block
-    // so a scheduling follow-up respects hours, exactly like the main scenario.
-    const { getAIResponse } = await import('./openai')
-    const aiResult = await getAIResponse(messages, combinedInstructions + hoursPromptBlock(bh))
-
-    if (!aiResult.success) {
-      return { success: false, error: aiResult.error }
+    // Build the outbound text.
+    //   'exact' → send the stage text verbatim (tokens filled), no AI rephrase.
+    //   'ai'    → the stage text is a PROMPT; the AI writes the message in the
+    //             scenario persona using the full thread + business hours.
+    let outboundText, aiResult = null
+    if (messageMode === 'exact') {
+      outboundText = applyTokens(stageInstructions).trim()
+      if (!outboundText) return { success: false, error: 'Follow-up stage message is empty' }
+    } else {
+      const combinedInstructions = applyTokens(
+        [scenarioInstructions || '', stageInstructions || '']
+          .filter(Boolean)
+          .join('\n\n--- FOLLOW-UP STAGE ' + stage + ' INSTRUCTIONS ---\n')
+      )
+      const { getAIResponse } = await import('./openai')
+      aiResult = await getAIResponse(messages, combinedInstructions + hoursPromptBlock(bh))
+      if (!aiResult.success) return { success: false, error: aiResult.error }
+      outboundText = aiResult.response
     }
 
     // Send the message via Telnyx
@@ -596,7 +605,7 @@ async function sendFollowupMessage(conversationId, scenarioId, stageInstructions
       body: JSON.stringify({
         to: conversation.phone_number,
         from: conversation.from_number,
-        message: aiResult.response
+        message: outboundText
       })
     })
 
@@ -609,13 +618,13 @@ async function sendFollowupMessage(conversationId, scenarioId, stageInstructions
       .from('messages')
       .insert({
         conversation_id: conversationId,
-        body: aiResult.response,
+        body: outboundText,
         direction: 'outbound',
         is_followup: true,
         followup_stage: stage,
-        tokens_used: aiResult.tokensUsed,
-        processing_time_ms: aiResult.processingTime,
-        ai_model: aiResult.model
+        tokens_used: aiResult?.tokensUsed ?? null,
+        processing_time_ms: aiResult?.processingTime ?? null,
+        ai_model: aiResult?.model ?? null
       })
 
     return { success: true }

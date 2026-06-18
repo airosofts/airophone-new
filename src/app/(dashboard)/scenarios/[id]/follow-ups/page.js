@@ -213,11 +213,37 @@ export default function FollowUpSequencePage() {
                       <option value="weeks">weeks</option>
                     </select>
                   </div>
-                  <p className="text-[11px] text-[#9B9890] -mt-1">≈ {formatWaitLabel(stage.wait_duration, stage.wait_unit)} after the previous message, then send:</p>
-                  <textarea value={stage.instructions} onChange={(e) => updateStage(index, 'instructions', e.target.value)}
-                    rows="4"
-                    placeholder={"What should this message say? e.g. “Hey {{first_name}}, just checking in — still interested? Happy to answer any questions.”"}
-                    className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F] resize-none" />
+                  <p className="text-[11px] text-[#9B9890] -mt-1">≈ {formatWaitLabel(stage.wait_duration, stage.wait_unit)} after the previous message:</p>
+
+                  {/* Message mode: AI writes it (prompt) vs send exact text */}
+                  {(() => {
+                    const mode = stage.message_mode === 'exact' ? 'exact' : 'ai'
+                    const seg = (val, label) => (
+                      <button type="button" onClick={() => updateStage(index, 'message_mode', val)}
+                        className={`flex-1 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors ${mode === val ? 'bg-white text-[#131210] shadow-sm' : 'text-[#9B9890] hover:text-[#5C5A55]'}`}>
+                        {label}
+                      </button>
+                    )
+                    return (
+                      <>
+                        <div className="flex gap-1 p-1 bg-[#F1EFEA] rounded-lg">
+                          {seg('ai', '✨ AI writes it')}
+                          {seg('exact', 'Send exact message')}
+                        </div>
+                        <textarea value={stage.instructions} onChange={(e) => updateStage(index, 'instructions', e.target.value)}
+                          rows="4"
+                          placeholder={mode === 'exact'
+                            ? 'The exact text to send, e.g. “Hey {{first_name}}, just checking in — let me know when you’d like to schedule a call.”'
+                            : 'Describe what this message should do — the AI writes it. e.g. “Light, friendly bump. Re-ask for a day/time to connect. One short sentence.”'}
+                          className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F] resize-none" />
+                        <p className="text-[11px] text-[#9B9890] -mt-1">
+                          {mode === 'exact'
+                            ? 'Sent word-for-word. {{first_name}} and other tokens are filled in.'
+                            : 'The AI writes a fresh message in your scenario’s voice, using the whole conversation.'}
+                        </p>
+                      </>
+                    )
+                  })()}
 
                   {/* Optional Monday status when this stage fires — real columns + labels */}
                   <div className="pt-2 border-t border-[#EFEDE8]">

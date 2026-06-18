@@ -11,3 +11,9 @@
 ALTER TABLE public.scenario_followup_stages
   ADD COLUMN IF NOT EXISTS monday_status_column_id text,
   ADD COLUMN IF NOT EXISTS monday_status_label text;
+
+-- Per-stage message mode:
+--   'ai'    → the stage text is a PROMPT; the AI writes the message (default).
+--   'exact' → send the stage text verbatim (with {{tokens}} filled), no rephrase.
+ALTER TABLE public.scenario_followup_stages
+  ADD COLUMN IF NOT EXISTS message_mode text NOT NULL DEFAULT 'ai';
