@@ -3,7 +3,6 @@ import { getAIResponse } from '@/lib/openai'
 import telnyx from '@/lib/telnyx'
 import { getWorkspaceMessageRate } from '@/lib/pricing'
 import {
-  isWithinBusinessHours,
   updateFollowupState,
   scheduleNextFollowup,
   addConversationLabel,
@@ -87,7 +86,9 @@ export async function findMatchingScenario(recipientNumber, senderNumber) {
           business_hours_end,
           business_hours_timezone,
           auto_stop_keywords,
-          restrict_to_contact_lists
+          restrict_to_contact_lists,
+          ai_reply_mode,
+          books_appointments
         )
       `)
       .in('phone_number_id', phoneIds)
@@ -203,14 +204,11 @@ export async function executeScenario(scenario, message, conversation) {
   }
 
   try {
-    // Check business hours if enabled
-    if (!isWithinBusinessHours(scenario)) {
-      console.log(`Outside business hours for scenario ${scenario.id} - skipping execution`)
-      executionLog.execution_status = 'skipped_business_hours'
-      executionLog.processing_time_ms = Date.now() - startTime
-      await logScenarioExecution(executionLog)
-      return { success: true, skipped: true, reason: 'business_hours' }
-    }
+    // Business hours: the AI ENGAGES whenever a lead replies — at any hour
+    // (Option B). We do NOT skip out-of-hours messages; the BUSINESS HOURS block
+    // injected into the prompt (below) constrains it to only offer/confirm
+    // appointment slots inside business hours. So a lead replying at midnight
+    // still gets an immediate reply, but the booking lands in business hours.
 
     // Get conversation history
     const { data: messages, error: messagesError } = await supabaseAdmin
@@ -352,8 +350,12 @@ export async function executeScenario(scenario, message, conversation) {
         .maybeSingle()
       if (ws) {
         bizTz = ws.business_hours_tz || bizTz
-        const days = summarizeDays(ws.business_days && ws.business_days.length ? ws.business_days : [1, 2, 3, 4, 5])
-        businessHoursLine = `\n\nBUSINESS HOURS: ${days}, ${fmtBizTime(ws.business_hours_start)}–${fmtBizTime(ws.business_hours_end)} (${tzShort(bizTz)}). Only confirm a callback INSIDE these hours. If the lead asks for a time outside them — after close, before open, or on a non-business day — guide them to the next business day at the opening time. Never confirm a time outside business hours.`
+        // Only inject the booking constraint for scenarios that actually BOOK
+        // calls. An info/support scenario shouldn't be told to confirm callbacks.
+        if (scenario.books_appointments !== false) {
+          const days = summarizeDays(ws.business_days && ws.business_days.length ? ws.business_days : [1, 2, 3, 4, 5])
+          businessHoursLine = `\n\nBUSINESS HOURS: ${days}, ${fmtBizTime(ws.business_hours_start)}–${fmtBizTime(ws.business_hours_end)} (${tzShort(bizTz)}). Only confirm a callback INSIDE these hours. If the lead asks for a time outside them — after close, before open, or on a non-business day — guide them to the next business day at the opening time. Never confirm a time outside business hours.`
+        }
       }
     } catch (e) { console.warn('[scenario] business hours load failed:', e.message) }
 

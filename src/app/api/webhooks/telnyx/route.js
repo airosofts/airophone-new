@@ -6,6 +6,7 @@ import { supabaseAdmin } from '@/lib/supabase-server'
 import { findMatchingScenario, executeScenario } from '@/lib/scenario-service'
 import { containsStopKeyword, stopFollowups, updateFollowupState } from '@/lib/followup-service'
 import { sendPushToWorkspace } from '@/lib/expo-push'
+import { isInBusinessHours, nextBusinessTime } from '@/lib/scheduling'
 
 function normalizePhoneNumber(phone) {
   if (!phone) return null
@@ -349,6 +350,34 @@ async function handleIncomingMessage(event) {
 
       // Update follow-up state (customer sent a message)
       await updateFollowupState(conversation.id, scenario.id, 'customer')
+
+      // AI reply hours (user preference). In 'business_hours' mode, a message
+      // that arrives OUTSIDE business hours is not answered now — we DEFER the
+      // reply to the next business-day opening (cron sweeps deferred_ai_replies)
+      // so the lead still gets a reply, just at the right time. 'anytime' (default)
+      // replies immediately. Either way, clear any stale deferred row when we do
+      // reply in-hours so we never double-answer.
+      if (scenario.ai_reply_mode === 'business_hours') {
+        const { data: ws } = await supabaseAdmin
+          .from('workspaces')
+          .select('business_hours_start, business_hours_end, business_hours_tz, business_days')
+          .eq('id', conversation.workspace_id)
+          .maybeSingle()
+        if (ws?.business_hours_start && ws?.business_hours_end && !isInBusinessHours(new Date(), ws)) {
+          const runAt = nextBusinessTime(new Date(), ws)
+          await supabaseAdmin.from('deferred_ai_replies').upsert({
+            workspace_id: conversation.workspace_id,
+            conversation_id: conversation.id,
+            scenario_id: scenario.id,
+            run_at: runAt.toISOString(),
+          }, { onConflict: 'conversation_id' })
+          console.log(`[telnyx] AI reply deferred to ${runAt.toISOString()} for conversation ${conversation.id} (business-hours mode)`)
+          return
+        }
+      }
+      // In-hours (or anytime mode): drop any pending deferred reply so it can't
+      // fire a duplicate later.
+      await supabaseAdmin.from('deferred_ai_replies').delete().eq('conversation_id', conversation.id)
 
       // Execute scenario inline. Previously this was fire-and-forget, but on
       // serverless platforms the function process can be killed right after the

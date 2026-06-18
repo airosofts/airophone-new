@@ -890,6 +890,8 @@ function ViewScenarioModal({ scenario, phoneNumbers, onClose, onUpdated, onToggl
     enable_followups: scenario.enable_followups || false,
     max_followup_attempts: scenario.max_followup_attempts || 3,
     enable_business_hours: scenario.enable_business_hours || false,
+    ai_reply_mode: scenario.ai_reply_mode || 'anytime',
+    books_appointments: scenario.books_appointments !== false,
     business_hours_start: (scenario.business_hours_start || '09:00:00').slice(0, 5),
     business_hours_end: (scenario.business_hours_end || '18:00:00').slice(0, 5),
     business_hours_timezone: scenario.business_hours_timezone || 'America/New_York',
@@ -946,6 +948,8 @@ function ViewScenarioModal({ scenario, phoneNumbers, onClose, onUpdated, onToggl
           enable_followups: editData.enable_followups,
           max_followup_attempts: editData.max_followup_attempts,
           enable_business_hours: editData.enable_business_hours,
+          ai_reply_mode: editData.ai_reply_mode,
+          books_appointments: editData.books_appointments,
           business_hours_start: editData.business_hours_start + ':00',
           business_hours_end: editData.business_hours_end + ':00',
           business_hours_timezone: editData.business_hours_timezone,
@@ -1107,6 +1111,30 @@ function ViewScenarioModal({ scenario, phoneNumbers, onClose, onUpdated, onToggl
                       </div>
                     </div>
                   )}
+                </div>
+
+                {/* Appointment booking — whether the AI confirms call times */}
+                <div className="rounded-lg border border-[#E3E1DB] p-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-[#5C5A55]">Appointment booking</p>
+                    <p className="text-[11px] text-[#9B9890] mt-0.5">This scenario books calls — keep confirmed times inside business hours. Turn off for info-only scenarios.</p>
+                  </div>
+                  <button type="button" onClick={() => setEditData({ ...editData, books_appointments: !(editData.books_appointments !== false) })}
+                    className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${editData.books_appointments !== false ? 'bg-[#D63B1F]' : 'bg-[#EFEDE8]'}`}>
+                    <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${editData.books_appointments !== false ? 'translate-x-4' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+
+                {/* AI reply hours — when the AI answers inbound messages */}
+                <div className="rounded-lg border border-[#E3E1DB] p-3">
+                  <p className="text-xs font-semibold text-[#5C5A55]">AI reply hours</p>
+                  <p className="text-[11px] text-[#9B9890] mt-0.5 mb-2">When should the AI respond to incoming messages?</p>
+                  <select value={editData.ai_reply_mode || 'anytime'} onChange={e => setEditData({ ...editData, ai_reply_mode: e.target.value })}
+                    className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F]">
+                    <option value="anytime">Respond anytime (books within business hours)</option>
+                    <option value="business_hours">Only during business hours (defers replies to next opening)</option>
+                  </select>
+                  <p className="text-[11px] text-[#9B9890] mt-1.5">Business hours come from <span className="font-medium">Settings → Business Hours</span>. In “business hours” mode, a message that arrives after close is answered automatically at the next opening — never dropped.</p>
                 </div>
               </div>
             </div>

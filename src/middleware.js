@@ -39,6 +39,8 @@ const PUBLIC_API_ROUTES = [
   '/api/sms/process-scheduled',
   // SMS campaign queue sweeper — same pattern: Bearer CRON_SECRET.
   '/api/campaigns/process-queue',
+  // Deferred AI replies (business-hours reply mode) — Bearer CRON_SECRET.
+  '/api/scenarios/process-deferred-replies',
 ]
 
 export async function middleware(request) {
