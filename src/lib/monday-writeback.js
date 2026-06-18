@@ -62,6 +62,50 @@ function buildColumnValue(columnType, configuredValue) {
   return null
 }
 
+// Write an explicit status LABEL to the board's pipeline status column for the
+// Monday item behind this conversation. Used by per-follow-up-stage updates
+// ("1st follow-up sent", "2nd follow-up sent"). It reuses whichever writeback
+// column was configured as a STATUS type (sent → reply → done), so it lands in
+// the same pipeline column as on-sent/on-reply. Best-effort; never throws.
+export async function writeStatusLabel(conversationId, label) {
+  try {
+    const clean = (label || '').trim()
+    if (!clean) return
+
+    const link = await resolveMondayItem(conversationId)
+    if (!link) {
+      console.log(`[monday-writeback] stage-status "${clean}": skipped — conversation ${conversationId} has no Monday item link`)
+      return
+    }
+
+    const { data: config } = await supabaseAdmin
+      .from('monday_writeback_configs')
+      .select('*')
+      .eq('workspace_id', link.workspaceId)
+      .eq('board_id', link.boardId)
+      .maybeSingle()
+    if (!config) {
+      console.log(`[monday-writeback] stage-status "${clean}": skipped — no writeback config for board ${link.boardId}`)
+      return
+    }
+
+    // The board's pipeline status column = first configured status-type column.
+    const statusColId =
+      (config.on_sent_column_type === 'status' && config.on_sent_column_id) ||
+      (config.on_reply_column_type === 'status' && config.on_reply_column_id) ||
+      (config.on_done_column_type === 'status' && config.on_done_column_id) || null
+    if (!statusColId) {
+      console.log(`[monday-writeback] stage-status "${clean}": skipped — board ${link.boardId} has no status column in its two-way sync config`)
+      return
+    }
+
+    await updateColumnValue(link.workspaceId, link.boardId, link.itemId, statusColId, { label: clean })
+    console.log(`[monday-writeback] stage-status: board ${link.boardId} item ${link.itemId} column ${statusColId} → "${clean}"`)
+  } catch (err) {
+    console.error('[monday-writeback] writeStatusLabel failed:', err?.message || err, err?.errors || '')
+  }
+}
+
 // Run the writeback for a given event. `event` is 'sent' | 'reply' | 'done'.
 //   'sent'  → the first AI/template message just went out (Status → "AI Engaged")
 //   'reply' → the lead replied        (Status → "Replied" / "Engaged")

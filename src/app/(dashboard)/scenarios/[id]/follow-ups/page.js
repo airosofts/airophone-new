@@ -52,6 +52,17 @@ function FlowArrow({ label, tone = 'red' }) {
 
 const inputCls = 'px-2.5 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]'
 
+// Tiny Monday tri-dot mark for the per-stage status field.
+function MondayDot() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 32 32" fill="none" className="inline-block shrink-0">
+      <circle cx="6" cy="16" r="5" fill="#FF3D57" />
+      <circle cx="16" cy="16" r="5" fill="#FFCB00" />
+      <circle cx="26" cy="16" r="5" fill="#00CA72" />
+    </svg>
+  )
+}
+
 export default function FollowUpSequencePage() {
   const { id } = useParams()
   const router = useRouter()
@@ -189,6 +200,17 @@ export default function FollowUpSequencePage() {
                     rows="4"
                     placeholder={"What should this message say? e.g. “Hey {{first_name}}, just checking in — still interested? Happy to answer any questions.”"}
                     className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F] resize-none" />
+
+                  {/* Optional Monday status when this stage fires */}
+                  <div className="pt-2 border-t border-[#EFEDE8]">
+                    <label className="flex items-center gap-1.5 text-[11px] font-medium text-[#5C5A55] mb-1.5">
+                      <MondayDot /> Set Monday status to <span className="text-[#9B9890] font-normal">(optional)</span>
+                    </label>
+                    <input type="text" value={stage.monday_status_label || ''}
+                      onChange={(e) => updateStage(index, 'monday_status_label', e.target.value)}
+                      placeholder={`e.g. ${stage.stage_number === 1 ? '1st' : stage.stage_number === 2 ? '2nd' : `${stage.stage_number}th`} follow-up sent`}
+                      className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]" />
+                  </div>
                 </FlowCard>
               </div>
             ))}

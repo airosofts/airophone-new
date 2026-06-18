@@ -456,6 +456,14 @@ export async function processScheduledFollowups() {
           })
           .eq('id', followupState.id)
 
+        // Per-stage Monday status — flip the board's status to e.g.
+        // "1st follow-up sent" so the agent sees cadence progress. Reply still
+        // flips it back via the automation's on_reply writeback. Best-effort.
+        if (stage.monday_status_label) {
+          const { writeStatusLabel } = await import('@/lib/monday-writeback')
+          writeStatusLabel(followupState.conversation_id, stage.monday_status_label).catch(() => {})
+        }
+
         // Schedule next follow-up
         await scheduleNextFollowup(
           followupState.conversation_id,

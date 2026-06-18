@@ -112,7 +112,8 @@ export async function POST(request, { params }) {
         stage_number: stage.stage_number || index + 1,
         wait_duration: stage.wait_duration,
         wait_unit: stage.wait_unit || 'minutes',
-        instructions: stage.instructions
+        instructions: stage.instructions,
+        monday_status_label: (stage.monday_status_label || '').trim() || null,
       }))
 
       const { error: insertError } = await supabaseAdmin
