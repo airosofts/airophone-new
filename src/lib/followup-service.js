@@ -160,6 +160,66 @@ export async function updateFollowupState(conversationId, scenarioId, messageFro
 }
 
 /**
+ * Arm the follow-up sequence when the FIRST touch was sent OUTSIDE the AI flow
+ * (i.e. a Monday automation / template message). Without this, the cron has no
+ * conversation_followup_state row to fire — the sequence only ever got created
+ * when the AI scenario itself replied or the lead messaged in.
+ *
+ * For every active, follow-up-enabled scenario on the SENDER line that has at
+ * least a stage 1, we (re)seed the state to "armed at stage 0, not stopped" and
+ * schedule stage 1. Re-arming is idempotent (unique on conversation+scenario);
+ * a resend just re-anchors the timer, and a previously-finished/stopped sequence
+ * is restarted — exactly what a fresh template blast to the lead should do.
+ */
+export async function armFollowupsForSend(conversationId, senderNumber) {
+  try {
+    if (!conversationId || !senderNumber) return
+    const { data: line } = await supabaseAdmin
+      .from('phone_numbers').select('id').eq('phone_number', senderNumber).maybeSingle()
+    if (!line) return
+
+    const { data: links } = await supabaseAdmin
+      .from('scenario_phone_numbers').select('scenario_id').eq('phone_number_id', line.id)
+    if (!links || links.length === 0) return
+
+    const now = new Date().toISOString()
+    for (const link of links) {
+      const { data: sc } = await supabaseAdmin
+        .from('scenarios').select('id, is_active, enable_followups').eq('id', link.scenario_id).maybeSingle()
+      if (!sc || !sc.is_active || !sc.enable_followups) continue
+
+      // Must have a stage 1 defined, else there's nothing to schedule.
+      const { data: stage1 } = await supabaseAdmin
+        .from('scenario_followup_stages').select('id').eq('scenario_id', sc.id).eq('stage_number', 1).maybeSingle()
+      if (!stage1) continue
+
+      const { data: existing } = await supabaseAdmin
+        .from('conversation_followup_state').select('id')
+        .eq('conversation_id', conversationId).eq('scenario_id', sc.id).maybeSingle()
+
+      if (existing) {
+        await supabaseAdmin.from('conversation_followup_state').update({
+          current_stage: 0, total_attempts: 0, stopped: false, stopped_at: null,
+          next_followup_at: null, last_message_from: 'ai', last_message_at: now, updated_at: now,
+        }).eq('id', existing.id)
+      } else {
+        await supabaseAdmin.from('conversation_followup_state').insert({
+          conversation_id: conversationId, scenario_id: sc.id,
+          current_stage: 0, total_attempts: 0, stopped: false,
+          last_message_from: 'ai', last_message_at: now,
+        })
+      }
+
+      // Sets next_followup_at = now + stage-1 wait.
+      const res = await scheduleNextFollowup(conversationId, sc.id)
+      console.log(`[armFollowupsForSend] conv ${conversationId} scenario ${sc.id} →`, res?.scheduled ? `stage 1 at ${res.nextFollowupAt}` : `not scheduled (${res?.reason || 'n/a'})`)
+    }
+  } catch (e) {
+    console.error('[armFollowupsForSend] error:', e?.message || e)
+  }
+}
+
+/**
  * Schedule next follow-up after AI responds
  */
 export async function scheduleNextFollowup(conversationId, scenarioId) {

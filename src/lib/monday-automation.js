@@ -13,6 +13,7 @@ import telnyx from '@/lib/telnyx'
 import { normalizePhoneNumber } from '@/lib/phone-utils'
 import { getAIResponse } from '@/lib/openai'
 import { getItem, listColumns, extractPhone, columnTitleToPlaceholder } from '@/lib/monday'
+import { armFollowupsForSend } from '@/lib/followup-service'
 
 async function buildMessage(automation, item, columns) {
   if (automation.message_mode === 'ai') {
@@ -135,6 +136,11 @@ export async function processAutomationItem(automation, itemId) {
       .from('conversations')
       .update({ last_message_at: new Date().toISOString() })
       .eq('id', conversation.id)
+
+    // Arm the follow-up sequence for the scenario on this line — the template
+    // was sent OUTSIDE the AI flow, so nothing else seeds the follow-up state.
+    // Best-effort: a follow-up hiccup must not fail the (already-sent) message.
+    await armFollowupsForSend(conversation.id, senderNumber)
 
     return { status: 'sent', conversationId: conversation.id, messageId: messageRow?.id || null }
   } catch (err) {

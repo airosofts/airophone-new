@@ -86,6 +86,11 @@ async function runAutomation(automation, itemId, workspaceHours) {
     console.log(`[monday-webhook] item ${itemId} pending — phone not filled yet, sweeper will retry`)
   } else {
     console.log(`[monday-webhook] automation ${automation.id} item ${itemId} → ${outcome.status}`)
+    // Mirror the sweeper: flip the Monday status on first send (two-way sync).
+    if (outcome.status === 'sent' && outcome.conversationId) {
+      const { runWriteback } = await import('@/lib/monday-writeback')
+      runWriteback(outcome.conversationId, 'sent').catch(() => {})
+    }
   }
 }
 
