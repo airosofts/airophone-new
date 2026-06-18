@@ -1,7 +1,10 @@
-// Follow-Up Logs — one row per (lead, stage). The SENT/DELIVERED/FAILED status
-// comes from the actual follow-up MESSAGE row (is_followup=true, updated by the
-// Telnyx delivery webhooks) — the message is the source of truth. Events supply
-// the scheduled time, "responded before", and template-sent time.
+// Follow-Up Logs — ONE ROW PER OCCURRENCE (not merged by conversation/stage, so
+// re-testing the same lead doesn't jumble runs together):
+//   • every follow-up MESSAGE that sent  → a Sent/Delivered/Failed row
+//   • the currently-pending stage (state) → a Scheduled row
+//   • every responded_before event        → a Responded Before row
+// Status is read from the actual message (the source of truth); scheduled/template
+// times are matched to the nearest preceding event for that send.
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
 import { getWorkspaceFromRequest } from '@/lib/session-helper'
@@ -9,6 +12,18 @@ import { getWorkspaceFromRequest } from '@/lib/session-helper'
 const PAGE = 50
 const SCAN = 4000
 const FAILED = new Set(['failed', 'undelivered', 'delivery_failed', 'sending_failed'])
+
+// Latest value in `arr` (array of ISO strings) that is <= beforeIso; else null.
+function latestBefore(arr, beforeIso) {
+  if (!arr || !arr.length) return null
+  const before = beforeIso ? new Date(beforeIso).getTime() : Infinity
+  let best = null, bestT = -Infinity
+  for (const v of arr) {
+    const t = new Date(v).getTime()
+    if (t <= before && t > bestT) { best = v; bestT = t }
+  }
+  return best ?? arr[arr.length - 1]   // fall back to most recent if none precede
+}
 
 export async function GET(request) {
   const workspace = getWorkspaceFromRequest(request)
@@ -25,31 +40,25 @@ export async function GET(request) {
     .order('occurred_at', { ascending: true })
     .limit(SCAN)
 
-  const templateAt = new Map()
   const convScenario = new Map()
-  const rows = new Map()   // key conv:stage → { ..., scheduled_for, responded, skipped, last }
-  const rowKey = (c, s) => `${c}:${s}`
-  const ensure = (conv, stage, at) => {
-    const k = rowKey(conv, stage)
-    let r = rows.get(k)
-    if (!r) { r = { conversation_id: conv, stage_number: stage, scheduled_for: null, sent_at: null, responded: false, skipped: false, last: at }; rows.set(k, r) }
-    if (at && new Date(at) > new Date(r.last)) r.last = at
-    return r
-  }
+  const templatesByConv = new Map()   // conv → [ISO] (asc)
+  const schedByStage = new Map()      // `conv:stage` → [scheduled_for ISO] (asc)
+  const push = (map, key, val) => { const a = map.get(key) || []; a.push(val); map.set(key, a) }
 
   for (const e of (events || [])) {
     if (e.scenario_id) convScenario.set(e.conversation_id, e.scenario_id)
-    if (e.type === 'template_sent') { templateAt.set(e.conversation_id, e.occurred_at); continue }
+    if (e.type === 'template_sent') { push(templatesByConv, e.conversation_id, e.occurred_at); continue }
     if (e.stage_number == null) continue
-    const r = ensure(e.conversation_id, e.stage_number, e.occurred_at)
-    if (e.type === 'scheduled' || e.type === 'rescheduled') r.scheduled_for = e.scheduled_for
-    else if (e.type === 'responded_before' || e.type === 'cancelled') r.responded = true
-    else if (e.type === 'skipped') r.skipped = true
+    if (e.type === 'scheduled' || e.type === 'rescheduled') push(schedByStage, `${e.conversation_id}:${e.stage_number}`, e.scheduled_for)
   }
 
-  // Authoritative status from the follow-up MESSAGE rows.
-  const convIds = [...new Set([...rows.values()].map(r => r.conversation_id))]
-  const msgByKey = new Map()
+  const convIds = [...new Set((events || []).map(e => e.conversation_id))]
+  const schedFor = (conv, stage, beforeIso) => latestBefore(schedByStage.get(`${conv}:${stage}`), beforeIso)
+  const tmplFor = (conv, beforeIso) => latestBefore(templatesByConv.get(conv), beforeIso)
+
+  const out = []
+
+  // 1) Sent rows — one per follow-up message.
   if (convIds.length) {
     const { data: fmsgs } = await supabaseAdmin
       .from('messages')
@@ -58,16 +67,18 @@ export async function GET(request) {
       .eq('is_followup', true)
       .not('followup_stage', 'is', null)
     for (const m of (fmsgs || [])) {
-      const k = rowKey(m.conversation_id, m.followup_stage)
-      msgByKey.set(k, m)
-      // A sent message may exist with no event (e.g. the 'sent' event wasn't logged).
-      ensure(m.conversation_id, m.followup_stage, m.created_at)
+      let status = 'sent', error = null
+      if (m.status === 'delivered') status = 'delivered'
+      else if (FAILED.has(m.status)) { status = 'failed'; error = m.error_code || m.error_message || null }
+      out.push({
+        conversation_id: m.conversation_id, stage_number: m.followup_stage,
+        sent_at: m.created_at, scheduled_for: schedFor(m.conversation_id, m.followup_stage, m.created_at),
+        status, error, template_sent_at: tmplFor(m.conversation_id, m.created_at), _sort: m.created_at,
+      })
     }
   }
 
-  // The CURRENTLY-pending stage comes from the live follow-up state — the source
-  // of truth for what's queued. This surfaces the next scheduled stage even when
-  // its 'scheduled' event wasn't logged (so stage 2+ shows as Scheduled).
+  // 2) Pending scheduled row — from live follow-up state (source of truth).
   if (convIds.length) {
     const { data: states } = await supabaseAdmin
       .from('conversation_followup_state')
@@ -76,27 +87,25 @@ export async function GET(request) {
     for (const s of (states || [])) {
       if (s.scenario_id) convScenario.set(s.conversation_id, s.scenario_id)
       if (s.stopped || !s.next_followup_at) continue
-      const pendingStage = (s.current_stage || 0) + 1
-      if (msgByKey.has(rowKey(s.conversation_id, pendingStage))) continue   // already sent
-      const r = ensure(s.conversation_id, pendingStage, s.next_followup_at)
-      if (!r.scheduled_for) r.scheduled_for = s.next_followup_at
+      out.push({
+        conversation_id: s.conversation_id, stage_number: (s.current_stage || 0) + 1,
+        sent_at: null, scheduled_for: s.next_followup_at, status: 'scheduled',
+        template_sent_at: tmplFor(s.conversation_id, s.next_followup_at), _sort: s.next_followup_at,
+      })
     }
   }
 
-  // Derive each row's final status.
-  for (const r of rows.values()) {
-    const m = msgByKey.get(rowKey(r.conversation_id, r.stage_number))
-    if (m) {
-      r.sent_at = m.created_at
-      if (m.status === 'delivered') r.status = 'delivered'
-      else if (FAILED.has(m.status)) { r.status = 'failed'; r.error = m.error_code || m.error_message || null }
-      else r.status = 'sent'
-    } else if (r.responded) r.status = 'responded_before'
-    else if (r.skipped) r.status = 'skipped'
-    else r.status = 'scheduled'
+  // 3) Responded-before rows — a stage that was cancelled by a reply before it sent.
+  for (const e of (events || [])) {
+    if (e.type !== 'responded_before' && e.type !== 'cancelled') continue
+    out.push({
+      conversation_id: e.conversation_id, stage_number: e.stage_number,
+      sent_at: null, scheduled_for: schedFor(e.conversation_id, e.stage_number, e.occurred_at),
+      status: 'responded_before', template_sent_at: tmplFor(e.conversation_id, e.occurred_at), _sort: e.occurred_at,
+    })
   }
 
-  let all = [...rows.values()].sort((a, b) => new Date(b.last) - new Date(a.last))
+  let all = out.sort((a, b) => new Date(b._sort) - new Date(a._sort))
   if (statusFilter) all = all.filter(r => r.status === statusFilter)
 
   const total = all.length
@@ -115,11 +124,12 @@ export async function GET(request) {
   }
 
   const recipients = slice.map(r => ({
-    ...r,
+    conversation_id: r.conversation_id, stage_number: r.stage_number, scheduled_for: r.scheduled_for,
+    sent_at: r.sent_at, status: r.status, error: r.error || null,
     lead_name: convMap[r.conversation_id]?.name || null,
     phone: convMap[r.conversation_id]?.phone_number || null,
     scenario_name: scMap[convScenario.get(r.conversation_id)] || null,
-    template_sent_at: templateAt.get(r.conversation_id) || null,
+    template_sent_at: r.template_sent_at || null,
   }))
 
   return NextResponse.json({ rows: recipients, total, page, pageSize: PAGE })
