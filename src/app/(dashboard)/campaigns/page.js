@@ -909,30 +909,42 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
       setMondayItemSearch('')
       setMondayItemPage(0)
       setMondayLoading(p => ({ ...p, items: true }))
-      // Whole-board fetch → we know the target (items_count) for a % bar; a group
-      // filter → unknown target, so we show a live count instead.
-      const groupsSelected = formData.mondayGroupIds.length > 0
-      const boardTotal = groupsSelected ? 0 : (mondayBoards.find(b => String(b.id) === String(formData.mondayBoardId))?.items_count || 0)
+      const boardTotal = mondayBoards.find(b => String(b.id) === String(formData.mondayBoardId))?.items_count || 0
       setMondayFetch({ fetched: 0, total: boardTotal })
 
-      const base = new URLSearchParams()
-      if (groupsSelected) base.set('groups', formData.mondayGroupIds.join(','))
-      base.set('phone_column_id', formData.mondayPhoneColumnId)
+      // Fetch one GROUP per request, in parallel — Monday pages ~5s each, so
+      // paging the board's groups concurrently is ~6× faster than one cursor
+      // chain. "All groups" (none picked) → every group on the board.
+      const groupsToFetch = formData.mondayGroupIds.length > 0
+        ? formData.mondayGroupIds
+        : mondayGroups.map(g => g.id)
 
-      let cursor = null, acc = [], guard = 0
+      let acc = []
+      const fetchOne = async (gid) => {
+        const qs = new URLSearchParams()
+        qs.set('phone_column_id', formData.mondayPhoneColumnId)
+        if (gid) qs.set('group', gid)
+        const res = await fetchWithWorkspace(`/api/integrations/monday/boards/${formData.mondayBoardId}/items?${qs}`)
+        const d = await res.json()
+        if (cancelled) return
+        acc = acc.concat(d?.items || [])
+        setMondayItems([...acc])
+        setMondayFetch(prev => ({ fetched: acc.length, total: Math.max(prev.total, acc.length) }))
+      }
+
       try {
-        do {
-          const qs = new URLSearchParams(base)
-          if (cursor) qs.set('cursor', cursor)
-          const res = await fetchWithWorkspace(`/api/integrations/monday/boards/${formData.mondayBoardId}/items?${qs}`)
-          const d = await res.json()
-          if (cancelled) return
-          acc = acc.concat(d?.items || [])
-          cursor = d?.cursor || null
-          setMondayItems([...acc])
-          setMondayFetch(prev => ({ fetched: acc.length, total: Math.max(prev.total, acc.length) }))
-          guard++
-        } while (cursor && guard < 1000)
+        if (groupsToFetch.length === 0) {
+          await fetchOne(null)   // board with no groups → whole board
+        } else {
+          const CONCURRENCY = 8   // safe under Monday's limits with light queries
+          const queue = [...groupsToFetch]
+          await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
+            while (queue.length && !cancelled) {
+              const gid = queue.shift()
+              try { await fetchOne(gid) } catch { /* skip a failed group, keep the rest */ }
+            }
+          }))
+        }
         if (!cancelled) setFormData(f => ({ ...f, mondayItemIds: acc.map(i => i.id), mondayFilters: [] }))
       } catch {
         if (!cancelled) { setMondayItems([]); setFormData(f => ({ ...f, mondayItemIds: [] })) }
@@ -943,7 +955,7 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
     run()
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData.source, formData.mondayBoardId, formData.mondayGroupIds.join(','), formData.mondayPhoneColumnId])
+  }, [formData.source, formData.mondayBoardId, formData.mondayGroupIds.join(','), formData.mondayPhoneColumnId, mondayGroups.map(g => g.id).join(',')])
 
   const insertPlaceholder = (tag) => {
     const ta = messageRef.current
@@ -990,7 +1002,6 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
   const mondayItemPageCount = Math.max(1, Math.ceil(searchedPool.length / MONDAY_ITEMS_PER_PAGE))
   const mondayItemPageClamped = Math.min(mondayItemPage, mondayItemPageCount - 1)
   const visibleMondayItems = searchedPool.slice(mondayItemPageClamped * MONDAY_ITEMS_PER_PAGE, (mondayItemPageClamped + 1) * MONDAY_ITEMS_PER_PAGE)
-  const selectedBoardItemsCount = mondayBoards.find(b => String(b.id) === String(formData.mondayBoardId))?.items_count || 0
 
   // Distinct values present in a column, for the value picker.
   const columnValueOptions = (colId) => colId

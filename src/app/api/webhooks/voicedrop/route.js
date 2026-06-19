@@ -28,9 +28,33 @@ async function applyDeliveryToCampaign(messageId, delivered) {
 }
 
 export async function POST(request) {
-  const payload = await request.json().catch(() => null)
-  if (!payload) {
-    return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })
+  // Read the RAW body first and log it UNCONDITIONALLY. Previously we called
+  // request.json() up front and 400'd before logging if it threw — so a callback
+  // sent as form-encoded (or with a non-JSON content-type) was rejected with ZERO
+  // trace, making it look like VoiceDrop never called us. Now every inbound hit is
+  // visible, and we accept both JSON and form-encoded bodies.
+  const contentType = request.headers.get('content-type') || ''
+  const raw = await request.text().catch(() => '')
+  console.log('[voicedrop:webhook] inbound', { contentType, length: raw.length, body: raw.slice(0, 2000) })
+
+  let payload = null
+  if (raw) {
+    try {
+      payload = JSON.parse(raw)
+    } catch {
+      // Fall back to form-urlencoded (status=delivered&sent_to=...&voice_drop_id=...)
+      try {
+        const params = new URLSearchParams(raw)
+        if ([...params.keys()].length > 0) payload = Object.fromEntries(params.entries())
+      } catch { /* leave payload null */ }
+    }
+  }
+
+  if (!payload || typeof payload !== 'object') {
+    console.warn('[voicedrop:webhook] could not parse body', { contentType, length: raw.length })
+    // Return 200 so VoiceDrop doesn't disable the webhook for repeated 4xx, but
+    // make it clear we couldn't read it — the raw log above shows the real shape.
+    return NextResponse.json({ received: true, note: 'unparseable body (logged raw)' })
   }
 
   console.log('[voicedrop:webhook]', JSON.stringify(payload))
