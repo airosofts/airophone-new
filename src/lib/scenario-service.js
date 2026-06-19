@@ -380,12 +380,16 @@ export async function executeScenario(scenario, message, conversation) {
       weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
       hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
     }).format(new Date())
+    // Spell out tomorrow's weekday so the AI never has to compute it (the
+    // recurring "tried to schedule Saturday" bug came from bad weekday math).
+    const _tp = new Intl.DateTimeFormat('en-US', { timeZone: bizTz, weekday: 'long', month: 'long', day: 'numeric' }).formatToParts(new Date(Date.now() + 86400000))
+    const tomorrowStr = `${_tp.find(x => x.type === 'weekday')?.value}, ${_tp.find(x => x.type === 'month')?.value} ${_tp.find(x => x.type === 'day')?.value}`
 
     // Build AI prompt
     const aiPrompt = `${instructions}
 
-CURRENT DATE & TIME: ${nowLocal}.
-Use this to interpret relative times the customer mentions (e.g. "today", "tomorrow", "this afternoon", "next week") and when confirming or proposing times.${businessHoursLine}
+CURRENT DATE & TIME: ${nowLocal}. Tomorrow is ${tomorrowStr}.
+Use this to interpret relative times the customer mentions (e.g. "today", "tomorrow", "this afternoon", "next week") and when confirming or proposing times. Always check the weekday before proposing a day.${businessHoursLine}
 
 IMPORTANT RULES:
 1. Follow the scenario instructions strictly
