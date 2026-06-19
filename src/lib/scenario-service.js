@@ -353,8 +353,21 @@ export async function executeScenario(scenario, message, conversation) {
         // Only inject the booking constraint for scenarios that actually BOOK
         // calls. An info/support scenario shouldn't be told to confirm callbacks.
         if (scenario.books_appointments !== false) {
-          const days = summarizeDays(ws.business_days && ws.business_days.length ? ws.business_days : [1, 2, 3, 4, 5])
-          businessHoursLine = `\n\nBUSINESS HOURS: ${days}, ${fmtBizTime(ws.business_hours_start)}–${fmtBizTime(ws.business_hours_end)} (${tzShort(bizTz)}). Only confirm a callback INSIDE these hours. If the lead asks for a time outside them — after close, before open, or on a non-business day — guide them to the next business day at the opening time. Never confirm a time outside business hours.`
+          const bdays = ws.business_days && ws.business_days.length ? ws.business_days : [1, 2, 3, 4, 5]
+          const days = summarizeDays(bdays)
+          // Spell out the NEXT few days as open/closed so the AI never has to do
+          // weekday math (the recurring "tried to book Saturday" bug). It just
+          // picks an (open) day.
+          const _ISO = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 }
+          const upcoming = []
+          for (let i = 1; i <= 5; i++) {
+            const p = new Intl.DateTimeFormat('en-US', { timeZone: bizTz, weekday: 'short', month: 'short', day: 'numeric' }).formatToParts(new Date(Date.now() + i * 86400000))
+            const wd = p.find(x => x.type === 'weekday')?.value
+            const md = `${p.find(x => x.type === 'month')?.value} ${p.find(x => x.type === 'day')?.value}`
+            upcoming.push(`${wd} ${md} ${bdays.includes(_ISO[wd]) ? '(open)' : '(CLOSED)'}`)
+          }
+          businessHoursLine = `\n\nBUSINESS HOURS: ${days}, ${fmtBizTime(ws.business_hours_start)}–${fmtBizTime(ws.business_hours_end)} (${tzShort(bizTz)}). Only confirm a callback INSIDE these hours and ONLY on a business day.` +
+            `\nUPCOMING DAYS: ${upcoming.join(', ')}. Propose or confirm a callback ONLY on an (open) day — never on a (CLOSED) day. If the lead asks for a closed day or a time outside hours, guide them to the next (open) day at opening time.`
         }
       }
     } catch (e) { console.warn('[scenario] business hours load failed:', e.message) }

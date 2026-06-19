@@ -27,15 +27,27 @@ async function applyDeliveryToCampaign(messageId, delivered) {
   await finalizeRvmCampaign(sendRow.campaign_id)
 }
 
-export async function POST(request) {
-  // Read the RAW body first and log it UNCONDITIONALLY. Previously we called
-  // request.json() up front and 400'd before logging if it threw — so a callback
-  // sent as form-encoded (or with a non-JSON content-type) was rejected with ZERO
-  // trace, making it look like VoiceDrop never called us. Now every inbound hit is
-  // visible, and we accept both JSON and form-encoded bodies.
+// Handles BOTH GET and POST so we capture VoiceDrop's callback no matter how it's
+// sent. Reads the RAW body and logs every inbound hit UNCONDITIONALLY (method, URL,
+// query, content-type, body) before parsing — so nothing can be silently dropped.
+// Accepts JSON, form-encoded, OR query-string payloads.
+async function handleWebhook(request) {
+  const url = new URL(request.url)
+  const query = Object.fromEntries(url.searchParams.entries())
   const contentType = request.headers.get('content-type') || ''
-  const raw = await request.text().catch(() => '')
-  console.log('[voicedrop:webhook] inbound', { contentType, length: raw.length, body: raw.slice(0, 2000) })
+  const raw = request.method === 'GET' ? '' : await request.text().catch(() => '')
+  console.log('[voicedrop:webhook] inbound', {
+    method: request.method,
+    path: url.pathname,
+    query,
+    contentType,
+    length: raw.length,
+    body: raw.slice(0, 2000),
+    // Identify the caller so we can prove whether an empty hit is actually
+    // VoiceDrop vs. an uptime monitor / scanner pinging the public URL.
+    userAgent: request.headers.get('user-agent') || '',
+    sourceIp: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || '',
+  })
 
   let payload = null
   if (raw) {
@@ -49,12 +61,18 @@ export async function POST(request) {
       } catch { /* leave payload null */ }
     }
   }
+  // No usable body but the URL carries params → treat the query string as the payload.
+  if ((!payload || typeof payload !== 'object') && Object.keys(query).length > 0) {
+    payload = query
+  }
 
   if (!payload || typeof payload !== 'object') {
-    console.warn('[voicedrop:webhook] could not parse body', { contentType, length: raw.length })
-    // Return 200 so VoiceDrop doesn't disable the webhook for repeated 4xx, but
-    // make it clear we couldn't read it — the raw log above shows the real shape.
-    return NextResponse.json({ received: true, note: 'unparseable body (logged raw)' })
+    // Empty body + no params = a health-check / verification ping, NOT a delivery
+    // event. Acknowledge with 200 so VoiceDrop keeps the webhook enabled.
+    console.warn('[voicedrop:webhook] empty request — health-check/verification ping, not a delivery event', {
+      method: request.method, contentType, length: raw.length,
+    })
+    return NextResponse.json({ received: true, note: 'empty body — acknowledged (probe/health-check)' })
   }
 
   console.log('[voicedrop:webhook]', JSON.stringify(payload))
@@ -180,3 +198,8 @@ export async function POST(request) {
   console.warn('[voicedrop:webhook] could not match message', { voiceDropId, toPhone, fromPhone, status })
   return NextResponse.json({ received: true, note: 'no matching message found' })
 }
+
+// VoiceDrop may deliver the callback as a POST (body) or verify/deliver via GET
+// (query string). Handle both with the same logic.
+export const POST = handleWebhook
+export const GET = handleWebhook
