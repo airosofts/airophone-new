@@ -8,7 +8,7 @@
 
 import { NextResponse } from 'next/server'
 import { getUserFromRequest } from '@/lib/session-helper'
-import { listAllItems, extractPhone, MondayNotConnectedError, MondayApiError } from '@/lib/monday'
+import { listItemsPaged, extractPhone, MondayNotConnectedError, MondayApiError } from '@/lib/monday'
 
 export async function GET(request, { params }) {
   const user = getUserFromRequest(request)
@@ -20,12 +20,14 @@ export async function GET(request, { params }) {
   const url = new URL(request.url)
   const groupsParam = url.searchParams.get('groups')
   const phoneColumnId = url.searchParams.get('phone_column_id')
+  const cursor = url.searchParams.get('cursor') || null   // opaque; null to start
   const groupIds = groupsParam
     ? groupsParam.split(',').map(s => s.trim()).filter(Boolean)
     : null
 
   try {
-    const raw = await listAllItems(user.workspaceId, boardId, { groupIds })
+    // ONE page per call — the client loops on `cursor` to show live progress.
+    const { items: raw, cursor: nextCursor } = await listItemsPaged(user.workspaceId, boardId, { groupIds, cursor })
 
     const items = raw.map(it => {
       const cvs = it.column_values || []
@@ -41,7 +43,7 @@ export async function GET(request, { params }) {
       }
     })
 
-    return NextResponse.json({ items, total: items.length })
+    return NextResponse.json({ items, cursor: nextCursor })
   } catch (err) {
     if (err instanceof MondayNotConnectedError) {
       return NextResponse.json({ error: 'not_connected' }, { status: 400 })

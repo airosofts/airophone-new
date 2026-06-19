@@ -839,6 +839,8 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
   const [mondayColumns, setMondayColumns] = useState([])
   const [mondayItems, setMondayItems] = useState([])
   const [mondayItemSearch, setMondayItemSearch] = useState('')
+  const [mondayItemPage, setMondayItemPage] = useState(0)   // paginate the picker so 1000s of rows don't all render
+  const [mondayFetch, setMondayFetch] = useState({ fetched: 0, total: 0 })   // live fetch progress
   const [mondayLoading, setMondayLoading] = useState({ boards: false, groups: false, columns: false, items: false })
 
   // Fetch connection status on mount — gates whether the Monday source option is shown.
@@ -901,24 +903,45 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
       setMondayItems([])
       return
     }
-    setMondayLoading(p => ({ ...p, items: true }))
-    setMondayItemSearch('')
-    const qs = new URLSearchParams()
-    if (formData.mondayGroupIds.length > 0) qs.set('groups', formData.mondayGroupIds.join(','))
-    qs.set('phone_column_id', formData.mondayPhoneColumnId)
-    fetchWithWorkspace(`/api/integrations/monday/boards/${formData.mondayBoardId}/items?${qs}`)
-      .then(r => r.json())
-      .then(d => {
-        const items = d?.items || []
-        setMondayItems(items)
-        setFormData(f => ({
-          ...f,
-          mondayItemIds: items.map(i => i.id),
-          mondayFilters: [],
-        }))
-      })
-      .catch(() => { setMondayItems([]); setFormData(f => ({ ...f, mondayItemIds: [] })) })
-      .finally(() => setMondayLoading(p => ({ ...p, items: false })))
+    let cancelled = false
+    const run = async () => {
+      setMondayItems([])
+      setMondayItemSearch('')
+      setMondayItemPage(0)
+      setMondayLoading(p => ({ ...p, items: true }))
+      // Whole-board fetch → we know the target (items_count) for a % bar; a group
+      // filter → unknown target, so we show a live count instead.
+      const groupsSelected = formData.mondayGroupIds.length > 0
+      const boardTotal = groupsSelected ? 0 : (mondayBoards.find(b => String(b.id) === String(formData.mondayBoardId))?.items_count || 0)
+      setMondayFetch({ fetched: 0, total: boardTotal })
+
+      const base = new URLSearchParams()
+      if (groupsSelected) base.set('groups', formData.mondayGroupIds.join(','))
+      base.set('phone_column_id', formData.mondayPhoneColumnId)
+
+      let cursor = null, acc = [], guard = 0
+      try {
+        do {
+          const qs = new URLSearchParams(base)
+          if (cursor) qs.set('cursor', cursor)
+          const res = await fetchWithWorkspace(`/api/integrations/monday/boards/${formData.mondayBoardId}/items?${qs}`)
+          const d = await res.json()
+          if (cancelled) return
+          acc = acc.concat(d?.items || [])
+          cursor = d?.cursor || null
+          setMondayItems([...acc])
+          setMondayFetch(prev => ({ fetched: acc.length, total: Math.max(prev.total, acc.length) }))
+          guard++
+        } while (cursor && guard < 1000)
+        if (!cancelled) setFormData(f => ({ ...f, mondayItemIds: acc.map(i => i.id), mondayFilters: [] }))
+      } catch {
+        if (!cancelled) { setMondayItems([]); setFormData(f => ({ ...f, mondayItemIds: [] })) }
+      } finally {
+        if (!cancelled) setMondayLoading(p => ({ ...p, items: false }))
+      }
+    }
+    run()
+    return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.source, formData.mondayBoardId, formData.mondayGroupIds.join(','), formData.mondayPhoneColumnId])
 
@@ -956,6 +979,18 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
   }
   // The recipient pool — rows matching EVERY active filter.
   const recipientPool = mondayItems.filter(it => matchesFilters(it, formData.mondayFilters))
+
+  // Search + paginate the picker so a 3000-row board doesn't render all at once.
+  const MONDAY_ITEMS_PER_PAGE = 100
+  const searchedPool = (() => {
+    const q = mondayItemSearch.trim().toLowerCase()
+    if (!q) return recipientPool
+    return recipientPool.filter(it => (it.name || '').toLowerCase().includes(q) || (it.phone || '').toLowerCase().includes(q))
+  })()
+  const mondayItemPageCount = Math.max(1, Math.ceil(searchedPool.length / MONDAY_ITEMS_PER_PAGE))
+  const mondayItemPageClamped = Math.min(mondayItemPage, mondayItemPageCount - 1)
+  const visibleMondayItems = searchedPool.slice(mondayItemPageClamped * MONDAY_ITEMS_PER_PAGE, (mondayItemPageClamped + 1) * MONDAY_ITEMS_PER_PAGE)
+  const selectedBoardItemsCount = mondayBoards.find(b => String(b.id) === String(formData.mondayBoardId))?.items_count || 0
 
   // Distinct values present in a column, for the value picker.
   const columnValueOptions = (colId) => colId
@@ -1342,7 +1377,20 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
                       )}
                     </label>
                     {mondayLoading.items ? (
-                      <p className="text-xs text-[#9B9890]">Loading items…</p>
+                      <div className="py-2">
+                        <div className="flex items-center justify-between text-xs text-[#9B9890] mb-1.5">
+                          <span className="flex items-center gap-2"><i className="fas fa-spinner fa-spin text-[#D63B1F]" />Fetching items from Monday…</span>
+                          <span className="font-medium text-[#5C5A55]">
+                            {mondayFetch.total > 0
+                              ? `${mondayFetch.fetched.toLocaleString()} / ${mondayFetch.total.toLocaleString()}`
+                              : `${mondayFetch.fetched.toLocaleString()} fetched`}
+                          </span>
+                        </div>
+                        <div className="h-1.5 w-full bg-[#EFEDE8] rounded-full overflow-hidden">
+                          <div className="h-full bg-[#D63B1F] transition-all duration-300 rounded-full"
+                            style={{ width: mondayFetch.total > 0 ? `${Math.min(100, Math.round(mondayFetch.fetched / mondayFetch.total * 100))}%` : '40%', opacity: mondayFetch.total > 0 ? 1 : 0.5 }} />
+                        </div>
+                      </div>
                     ) : mondayItems.length === 0 ? (
                       <p className="text-xs text-[#9B9890]">No items in the selected group(s).</p>
                     ) : (
@@ -1407,13 +1455,14 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
                         <input
                           type="text"
                           value={mondayItemSearch}
-                          onChange={(e) => setMondayItemSearch(e.target.value)}
+                          onChange={(e) => { setMondayItemSearch(e.target.value); setMondayItemPage(0) }}
                           placeholder="Search items…"
                           className="w-full mb-2 px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F]"
                         />
-                        {recipientPool.length === 0 ? (
-                          <p className="text-xs text-[#9B9890]">No rows match this status filter.</p>
+                        {searchedPool.length === 0 ? (
+                          <p className="text-xs text-[#9B9890]">No rows match.</p>
                         ) : (
+                        <>
                         <div className="border border-[#E3E1DB] rounded-lg max-h-60 overflow-y-auto divide-y divide-[#F0EEE9]">
                           <label className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-[#F7F6F3] sticky top-0 bg-[#FFFFFF] border-b border-[#E3E1DB]">
                             <input
@@ -1425,15 +1474,9 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
                               }}
                               className="accent-[#D63B1F]"
                             />
-                            <span className="text-sm font-medium text-[#131210]">Select all</span>
+                            <span className="text-sm font-medium text-[#131210]">Select all{recipientPool.length > visibleMondayItems.length ? ` (${recipientPool.length.toLocaleString()} rows)` : ''}</span>
                           </label>
-                          {recipientPool
-                            .filter(it => {
-                              const q = mondayItemSearch.trim().toLowerCase()
-                              if (!q) return true
-                              return (it.name || '').toLowerCase().includes(q) || (it.phone || '').toLowerCase().includes(q)
-                            })
-                            .map(it => (
+                          {visibleMondayItems.map(it => (
                               <label key={it.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-[#F7F6F3]">
                                 <input
                                   type="checkbox"
@@ -1457,6 +1500,21 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
                               </label>
                             ))}
                         </div>
+                        {mondayItemPageCount > 1 && (
+                          <div className="flex items-center justify-between mt-2 text-xs text-[#9B9890]">
+                            <span>
+                              {(mondayItemPageClamped * MONDAY_ITEMS_PER_PAGE + 1).toLocaleString()}–{Math.min((mondayItemPageClamped + 1) * MONDAY_ITEMS_PER_PAGE, searchedPool.length).toLocaleString()} of {searchedPool.length.toLocaleString()}
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <button type="button" disabled={mondayItemPageClamped === 0} onClick={() => setMondayItemPage(p => Math.max(0, p - 1))}
+                                className="px-2 py-1 border border-[#E3E1DB] rounded-md bg-white disabled:opacity-40 hover:bg-[#F7F6F3]">Prev</button>
+                              <span>Page {mondayItemPageClamped + 1} / {mondayItemPageCount}</span>
+                              <button type="button" disabled={mondayItemPageClamped + 1 >= mondayItemPageCount} onClick={() => setMondayItemPage(p => p + 1)}
+                                className="px-2 py-1 border border-[#E3E1DB] rounded-md bg-white disabled:opacity-40 hover:bg-[#F7F6F3]">Next</button>
+                            </div>
+                          </div>
+                        )}
+                        </>
                         )}
                         {errors.mondayItemIds && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.mondayItemIds}</p>}
                       </>

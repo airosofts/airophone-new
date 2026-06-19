@@ -36,22 +36,39 @@ export async function POST(request) {
   console.log('[voicedrop:webhook]', JSON.stringify(payload))
 
   const status = String(payload.status || '').toLowerCase()
-  // VoiceDrop statuses: scheduled, skipped, failed, delivered, not-delivered
+  // VoiceDrop statuses seen so far: scheduled, skipped, failed, delivered,
+  // not-delivered — plus carrier dispositions like "FAS" that may arrive as the
+  // status itself rather than inside extra_status_info.
   let newStatus = null
   let errorMessage = null
   let errorCode = null
 
+  // Known in-progress statuses are non-terminal — acknowledge and wait for the
+  // final event. Anything that ISN'T delivered and ISN'T in this list is treated
+  // as a failure (so a novel disposition like "fas" can't leave a row stuck on
+  // 'sent' forever); the raw payload is preserved in error_details for triage.
+  const NON_TERMINAL = ['scheduled', 'queued', 'pending', 'processing', 'sending', 'accepted', 'received', 'in-progress']
+
   if (status.startsWith('delivered')) {
     newStatus = 'delivered'
-  } else if (status === 'not-delivered' || status === 'failed' || status.startsWith('failed') || status.startsWith('skipped')) {
+  } else if (!status || NON_TERMINAL.includes(status)) {
+    newStatus = null
+  } else {
     newStatus = 'failed'
-    // payload.reason or payload.error carries the actual failure reason.
-    // payload.message is VoiceDrop's generic queue-confirmation text — ignore it.
-    errorMessage = payload.reason || payload.error || payload.failure_reason || (
-        status === 'not-delivered' ? 'Not delivered — sender number may not be verified for voicemail'
-      : status.startsWith('skipped') ? 'Skipped (recipient phone could not receive the voicemail)'
-      : 'Send failed'
-    )
+    // payload.reason / payload.error carries an explicit failure reason; VoiceDrop
+    // also sends extra_status_info (e.g. "FAS") with carrier-level detail. payload.message
+    // is just the generic queue-confirmation text — ignore it. The most common real
+    // causes are recipient-side: no mailbox set up, mailbox full, or carrier FAS
+    // (Failed Answer Supervision) — NOT sender verification.
+    const extra = payload.extra_status_info && payload.extra_status_info !== 'pending'
+      ? ` (${payload.extra_status_info})`
+      : ''
+    errorMessage = (payload.reason || payload.error || payload.failure_reason || (
+        status === 'not-delivered' ? 'Not delivered — recipient could not receive the voicemail (no mailbox set up, mailbox full, or carrier returned FAS)'
+      : status.startsWith('skipped') ? 'Skipped — recipient phone could not receive the voicemail'
+      : status.startsWith('failed') || status === 'failed' ? 'Send failed'
+      : `Not delivered (${status})`   // novel disposition, e.g. "fas" — show it verbatim
+    )) + extra
     errorCode = 'voicedrop_' + status.replace(/[^a-z]/g, '_')
   }
 
@@ -76,8 +93,19 @@ export async function POST(request) {
     })
   }
 
-  // Try matching by voice_drop_id first (preferred, if VoiceDrop sends it in webhook)
+  // VoiceDrop's delivery payload uses sent_to / sent_from / voice_drop_id (confirmed
+  // by VoiceDrop support). Older/alternate field names kept as fallbacks in case the
+  // schema varies across event types.
   const voiceDropId = payload.voice_drop_id || payload.id || payload.job_id || payload.request_id
+  const toPhone = payload.sent_to || payload.to || payload.recipient || payload.phone_number
+  const fromPhone = payload.sent_from || payload.from
+
+  const normalize = (p) => String(p || '').replace(/\D/g, '').replace(/^1(\d{10})$/, '$1')
+
+  // 1) Preferred: match by voice_drop_id IF we ever captured one for this send.
+  // The /ringless_voicemail send RESPONSE returns no id, so telnyx_message_id is
+  // null on a fresh send — this path only hits once an earlier webhook (below)
+  // has backfilled the id, e.g. for a follow-up retry event on the same send.
   if (voiceDropId) {
     const { data: updatedMsgs } = await supabaseAdmin
       .from('messages')
@@ -91,33 +119,40 @@ export async function POST(request) {
     }
   }
 
-  // Fallback: match by recipient phone + type='voicemail' + recent sent status.
-  // VoiceDrop's initial response doesn't always include an ID, so telnyx_message_id
-  // may be null. We match by the `to` phone number and grab the most recent voicemail
-  // message for that number that hasn't been given a terminal status yet.
-  const toPhone = payload.to || payload.recipient || payload.phone_number
+  // 2) Primary path: match by recipient (sent_to) — scoped by sender (sent_from)
+  // when present so two campaigns to the same number can't collide — among recent
+  // voicemail sends still awaiting a disposition. On match we BACKFILL
+  // telnyx_message_id = voice_drop_id so any later event for this same send matches
+  // instantly by id. Phone formats vary (stored E.164 vs payload's bare "1503…"),
+  // so we normalize both sides in JS rather than in the query.
   if (toPhone) {
-    const normalizedTo = toPhone.replace(/\D/g, '').replace(/^1(\d{10})$/, '$1')
+    const normalizedTo = normalize(toPhone)
+    const normalizedFrom = fromPhone ? normalize(fromPhone) : null
     const { data: msgs } = await supabaseAdmin
       .from('messages')
-      .select('id, to_number')
+      .select('id, to_number, from_number')
       .eq('type', 'voicemail')
       .eq('status', 'sent')
       .order('created_at', { ascending: false })
-      .limit(20)
+      .limit(200)
 
-    const match = msgs?.find(m => {
-      const d = (m.to_number || '').replace(/\D/g, '').replace(/^1(\d{10})$/, '$1')
-      return d === normalizedTo
-    })
+    const candidates = msgs || []
+    // Prefer an exact (to + from) match; fall back to to-only if the sender
+    // didn't line up (e.g. legacy rows with a differently-formatted from_number).
+    let match = normalizedFrom
+      ? candidates.find(m => normalize(m.to_number) === normalizedTo && normalize(m.from_number) === normalizedFrom)
+      : null
+    if (!match) match = candidates.find(m => normalize(m.to_number) === normalizedTo)
 
     if (match) {
-      await supabaseAdmin.from('messages').update(update).eq('id', match.id)
+      await supabaseAdmin.from('messages')
+        .update({ ...update, ...(voiceDropId ? { telnyx_message_id: voiceDropId } : {}) })
+        .eq('id', match.id)
       await applyDeliveryToCampaign(match.id, newStatus === 'delivered')
-      return NextResponse.json({ received: true, matched: 'by_phone' })
+      return NextResponse.json({ received: true, matched: normalizedFrom ? 'by_phone_pair' : 'by_phone' })
     }
   }
 
-  console.warn('[voicedrop:webhook] could not match message', { voiceDropId, toPhone, status })
+  console.warn('[voicedrop:webhook] could not match message', { voiceDropId, toPhone, fromPhone, status })
   return NextResponse.json({ received: true, note: 'no matching message found' })
 }
