@@ -59,10 +59,17 @@ export async function POST(request) {
     // Single-message reconcile (called from the message details modal)
     const { data } = await supabaseAdmin
       .from('messages')
-      .select('id, telnyx_message_id, status, conversation_id')
+      .select('id, telnyx_message_id, status, conversation_id, type')
       .eq('id', messageId)
       .single()
     if (!data) return NextResponse.json({ error: 'Message not found' }, { status: 404 })
+
+    // Voicemails (RVM) are sent via VoiceDrop, NOT Telnyx — their telnyx_message_id
+    // column actually holds a VoiceDrop id. Reconciling it against Telnyx would 404
+    // and tag a bogus "couldn't verify" error, falsely overriding a real delivery.
+    if (data.type === 'voicemail') {
+      return NextResponse.json({ success: true, checked: 0, updated: 0, skipped: 'voicemail', results: [] })
+    }
 
     // Workspace check via the conversation
     const { data: convCheck } = await supabaseAdmin
@@ -96,6 +103,7 @@ export async function POST(request) {
       .in('status', ['sent', 'sending'])
       .lt('created_at', cutoff)
       .not('telnyx_message_id', 'is', null)
+      .neq('type', 'voicemail')   // RVM goes via VoiceDrop, not Telnyx — never reconcile against Telnyx
       .order('created_at', { ascending: false })
       .limit(MAX_BATCH)
     stale = rows || []

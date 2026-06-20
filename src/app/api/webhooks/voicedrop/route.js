@@ -67,37 +67,46 @@ export async function POST(request) {
   let errorMessage = null
   let errorCode = null
 
-  // Known in-progress statuses are non-terminal — acknowledge and wait for the
-  // final event. Anything that ISN'T delivered and ISN'T in this list is treated
-  // as a failure (so a novel disposition like "fas" can't leave a row stuck on
-  // 'sent' forever); the raw payload is preserved in error_details for triage.
-  const NON_TERMINAL = ['scheduled', 'queued', 'pending', 'processing', 'sending', 'accepted', 'received', 'in-progress']
+  // CONSERVATIVE mapping — RVM deposits with a delay (often 20s+) and VoiceDrop's
+  // callbacks are intermittent/intermediate, so we must NOT mark "not delivered" on
+  // an ambiguous status. Only an EXPLICIT, known failure flips a row to failed:
+  //   • delivered*                         → delivered
+  //   • not-delivered / failed* / skipped* / FAS → failed
+  //   • ANYTHING ELSE (scheduled, queued, sent, processing, blank, or a status we
+  //     don't recognize) → NON-terminal: leave the row 'sent' and wait. Worst case
+  //     it stays 'sent' (an honest "handed off") rather than a false "not delivered".
+  // An explicit FAS may arrive either as the status itself or in extra_status_info.
+  const extraInfo = String(payload.extra_status_info || '').toLowerCase()
+  const isKnownFailure =
+       status === 'not-delivered' || status === 'undelivered'
+    || status === 'failed' || status.startsWith('failed')
+    || status.startsWith('skipped')
+    || status === 'fas' || extraInfo === 'fas'
 
   if (status.startsWith('delivered')) {
     newStatus = 'delivered'
-  } else if (!status || NON_TERMINAL.includes(status)) {
-    newStatus = null
-  } else {
+  } else if (isKnownFailure) {
     newStatus = 'failed'
     // payload.reason / payload.error carries an explicit failure reason; VoiceDrop
     // also sends extra_status_info (e.g. "FAS") with carrier-level detail. payload.message
     // is just the generic queue-confirmation text — ignore it. The most common real
     // causes are recipient-side: no mailbox set up, mailbox full, or carrier FAS
     // (Failed Answer Supervision) — NOT sender verification.
-    const extra = payload.extra_status_info && payload.extra_status_info !== 'pending'
-      ? ` (${payload.extra_status_info})`
-      : ''
+    const extra = extraInfo && extraInfo !== 'pending' ? ` (${payload.extra_status_info})` : ''
     errorMessage = (payload.reason || payload.error || payload.failure_reason || (
-        status === 'not-delivered' ? 'Not delivered — recipient could not receive the voicemail (no mailbox set up, mailbox full, or carrier returned FAS)'
+        status === 'not-delivered' || status === 'undelivered' ? 'Not delivered — recipient could not receive the voicemail (no mailbox set up, mailbox full, or carrier returned FAS)'
       : status.startsWith('skipped') ? 'Skipped — recipient phone could not receive the voicemail'
-      : status.startsWith('failed') || status === 'failed' ? 'Send failed'
-      : `Not delivered (${status})`   // novel disposition, e.g. "fas" — show it verbatim
+      : status === 'fas' || extraInfo === 'fas' ? 'Not delivered — carrier returned FAS (Failed Answer Supervision)'
+      : 'Send failed'
     )) + extra
-    errorCode = 'voicedrop_' + status.replace(/[^a-z]/g, '_')
+    errorCode = 'voicedrop_' + (status || extraInfo).replace(/[^a-z]/g, '_')
+  } else {
+    // Non-terminal / unknown — do nothing, wait for a definitive event.
+    newStatus = null
   }
 
   if (!newStatus) {
-    return NextResponse.json({ received: true, note: `non-terminal status: ${status}` })
+    return NextResponse.json({ received: true, note: `non-terminal/ignored status: ${status || '(none)'}` })
   }
 
   const update = { status: newStatus }
