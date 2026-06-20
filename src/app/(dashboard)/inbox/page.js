@@ -63,6 +63,52 @@ export default function InboxPage() {
   const [selectedConversation, setSelectedConversation] = useState(null)
   const [isCreatingNewConversation, setIsCreatingNewConversation] = useState(false)
 
+  // ── Resizable panels (threads list + contact panel) ──────────────────────
+  // Drag the dividers to resize; widths persist per browser. The middle chat
+  // column is flex-1 and fills whatever's left.
+  const [isDesktop, setIsDesktop] = useState(true)
+  const [leftWidth, setLeftWidth] = useState(384)      // threads list (md:w-96 default)
+  const [contactWidth, setContactWidth] = useState(340) // contact panel default
+  useEffect(() => {
+    const onResize = () => setIsDesktop(window.innerWidth >= 768)
+    onResize()
+    const lw = Number(localStorage.getItem('inbox.leftWidth'))
+    const cw = Number(localStorage.getItem('inbox.contactWidth'))
+    if (lw) setLeftWidth(lw)
+    if (cw) setContactWidth(cw)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  useEffect(() => { localStorage.setItem('inbox.leftWidth', String(leftWidth)) }, [leftWidth])
+  useEffect(() => { localStorage.setItem('inbox.contactWidth', String(contactWidth)) }, [contactWidth])
+  const startResize = (which) => (e) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startW = which === 'left' ? leftWidth : contactWidth
+    const onMove = (ev) => {
+      const dx = ev.clientX - startX
+      if (which === 'left') setLeftWidth(Math.min(680, Math.max(280, startW + dx)))
+      else setContactWidth(Math.min(620, Math.max(260, startW - dx)))   // contact = right column, drag its left edge
+    }
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }
+  const ResizeHandle = ({ onMouseDown, className = 'hidden md:block' }) => (
+    <div onMouseDown={onMouseDown} title="Drag to resize"
+      className={`shrink-0 group ${className}`}
+      style={{ width: 6, cursor: 'col-resize', background: 'transparent' }}>
+      <div className="h-full mx-auto group-hover:bg-[#D63B1F]/40 transition-colors" style={{ width: 2 }} />
+    </div>
+  )
+
   const [filter, setFilter] = useState(() => {
     if (typeof window === 'undefined') return 'all'
     return localStorage.getItem('inbox_filter') || 'all'
@@ -872,7 +918,7 @@ export default function InboxPage() {
       ) : (
       <div className="flex flex-1 overflow-hidden min-h-0">
       {/* Conversation List - Hidden on mobile when chat is open */}
-      <div data-tour="left-panel" className={`${mobileView === 'chat' ? 'hidden' : 'flex'} md:flex w-full md:w-96 flex-col`} style={{ borderRight: '1px solid #E3E1DB' }}>
+      <div data-tour="left-panel" className={`${mobileView === 'chat' ? 'hidden' : 'flex'} md:flex w-full flex-col`} style={{ borderRight: '1px solid #E3E1DB', ...(isDesktop ? { width: leftWidth, flexShrink: 0 } : {}) }}>
         <div className="sticky top-0 z-10" style={{ background: '#FFFFFF' }}>
           {/* Row 1: Chats/Calls tabs + call + compose icons */}
           <div className="flex items-center justify-between" style={{ padding: '12px 16px 8px' }}>
@@ -1290,8 +1336,11 @@ export default function InboxPage() {
         </div>
       </div>
 
+      {/* Drag to resize the threads list */}
+      <ResizeHandle onMouseDown={startResize('left')} />
+
       {/* Chat Window - Full width on mobile when open */}
-      <div data-tour="chat-window" className={`${mobileView === 'list' ? 'hidden md:flex' : 'flex'} flex-1`}>
+      <div data-tour="chat-window" className={`${mobileView === 'list' ? 'hidden md:flex' : 'flex'} flex-1 min-w-0`}>
         {isCreatingNewConversation ? (
           <div className="flex-1 min-h-0 flex flex-col">
             <NewConversationView
@@ -1334,8 +1383,11 @@ export default function InboxPage() {
               />
             </div>
 
+            {/* Drag to resize the contact panel */}
+            <ResizeHandle onMouseDown={startResize('contact')} className="hidden lg:block" />
+
             {/* Contact Panel - Always visible on desktop, hidden on mobile */}
-            <div data-tour="contact-panel" className="hidden lg:block w-[340px] overflow-y-auto" style={{ borderLeft: '1px solid #E3E1DB', background: '#FFFFFF' }}>
+            <div data-tour="contact-panel" className="hidden lg:block overflow-y-auto" style={{ width: contactWidth, flexShrink: 0, borderLeft: '1px solid #E3E1DB', background: '#FFFFFF' }}>
               <ContactPanel
                 conversation={activeConversation}
                 formatPhoneNumber={formatPhoneNumber}

@@ -83,6 +83,8 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
   const [phoneNumbers, setPhoneNumbers] = useState([])
   const [loading, setLoading] = useState(true)
   const [unreadCounts, setUnreadCounts] = useState({})
+  const [phoneOrder, setPhoneOrder] = useState([])   // custom drag order (array of phone ids)
+  const [dragId, setDragId] = useState(null)
   const unreadChannelRef = useRef(null)
   const router = useRouter()
   const pathname = usePathname()
@@ -149,6 +151,33 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
       }
     }
   }, [user?.workspaceId])
+
+  // Load the user's custom phone-number order (drag to reorder), per workspace.
+  const orderKey = user?.workspaceId ? `sidebar.phoneOrder.${user.workspaceId}` : null
+  useEffect(() => {
+    if (!orderKey) return
+    try { const s = JSON.parse(localStorage.getItem(orderKey) || '[]'); if (Array.isArray(s)) setPhoneOrder(s) } catch {}
+  }, [orderKey])
+
+  // Apply the saved order; un-ordered (new) numbers fall to the end.
+  const orderedPhones = (() => {
+    if (!phoneOrder.length) return phoneNumbers
+    const pos = new Map(phoneOrder.map((id, i) => [String(id), i]))
+    return [...phoneNumbers].sort((a, b) =>
+      (pos.has(String(a.id)) ? pos.get(String(a.id)) : Infinity) - (pos.has(String(b.id)) ? pos.get(String(b.id)) : Infinity))
+  })()
+
+  const handlePhoneDrop = (targetId) => {
+    const srcId = dragId
+    setDragId(null)
+    if (srcId == null || String(srcId) === String(targetId)) return
+    const ids = orderedPhones.map(p => String(p.id))
+    const from = ids.indexOf(String(srcId)), to = ids.indexOf(String(targetId))
+    if (from < 0 || to < 0) return
+    ids.splice(to, 0, ids.splice(from, 1)[0])
+    setPhoneOrder(ids)
+    if (orderKey) { try { localStorage.setItem(orderKey, JSON.stringify(ids)) } catch {} }
+  }
 
   const fetchPhoneNumbers = async () => {
     try {
@@ -473,16 +502,23 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
           Phone Numbers
         </div>
         <div>
-          {phoneNumbers.map((phone) => {
+          {orderedPhones.map((phone) => {
             const isSelected = selectedPhoneNumber === phone.phoneNumber
+            const isDragging = String(dragId) === String(phone.id)
             return (
               <button
                 key={phone.id}
+                draggable
+                onDragStart={(e) => { setDragId(phone.id); e.dataTransfer.effectAllowed = 'move' }}
+                onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }}
+                onDrop={(e) => { e.preventDefault(); handlePhoneDrop(phone.id) }}
+                onDragEnd={() => setDragId(null)}
                 onClick={() => handlePhoneNumberClick(phone.phoneNumber)}
                 style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '5px 16px', border: 'none', cursor: 'pointer',
+                  padding: '5px 16px', border: 'none', cursor: 'grab',
                   background: isSelected ? '#F7F6F3' : 'transparent',
+                  opacity: isDragging ? 0.45 : 1,
                   textAlign: 'left', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
                   transition: 'background 0.12s',
                 }}
