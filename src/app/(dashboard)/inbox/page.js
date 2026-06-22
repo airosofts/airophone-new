@@ -1342,7 +1342,7 @@ export default function InboxPage() {
       {/* Chat Window - Full width on mobile when open */}
       <div data-tour="chat-window" className={`${mobileView === 'list' ? 'hidden md:flex' : 'flex'} flex-1 min-w-0`}>
         {isCreatingNewConversation ? (
-          <div className="flex-1 min-h-0 flex flex-col">
+          <div className="flex-1 min-h-0 min-w-0 flex flex-col">
             <NewConversationView
               phoneNumber={selectedPhoneNumber}
               formatPhoneNumber={formatPhoneNumber}
@@ -1356,7 +1356,7 @@ export default function InboxPage() {
           </div>
         ) : activeConversation ? (
           <>
-            <div className="flex-1 min-h-0 flex flex-col">
+            <div className="flex-1 min-h-0 min-w-0 flex flex-col">
               <ChatWindow
                 conversation={activeConversation}
                 messages={messages}

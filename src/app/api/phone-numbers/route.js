@@ -59,6 +59,7 @@ export async function GET(request) {
           next_billing_at: phone.next_billing_at,
           voicedrop_verified: phone.voicedrop_verified,
           ai_enabled: phone.ai_enabled !== false,   // default on
+          sort_order: phone.sort_order ?? null,
         }))
 
         // Deduplicate by phone number (keep the most recent entry)
@@ -70,6 +71,15 @@ export async function GET(request) {
           }
         })
         cachedNumbers = Array.from(uniqueNumbers.values())
+
+        // Apply the saved drag order: explicit sort_order first (ascending),
+        // then un-ordered numbers by purchase date so new ones append last.
+        cachedNumbers.sort((a, b) => {
+          const ao = a.sort_order == null ? Infinity : a.sort_order
+          const bo = b.sort_order == null ? Infinity : b.sort_order
+          if (ao !== bo) return ao - bo
+          return new Date(a.purchasedAt) - new Date(b.purchasedAt)
+        })
 
         console.log(`Found ${cachedNumbers.length} unique cached numbers for workspace`)
 

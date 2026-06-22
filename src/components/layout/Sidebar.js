@@ -5,7 +5,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { logout } from '@/lib/auth'
-import { apiGet } from '@/lib/api-client'
+import { apiGet, apiPost } from '@/lib/api-client'
 import { validateAndUpgradeSession } from '@/lib/session-validator'
 import NotificationPanel from './NotificationPanel'
 import { supabase } from '@/lib/supabase'
@@ -83,8 +83,8 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
   const [phoneNumbers, setPhoneNumbers] = useState([])
   const [loading, setLoading] = useState(true)
   const [unreadCounts, setUnreadCounts] = useState({})
-  const [phoneOrder, setPhoneOrder] = useState([])   // custom drag order (array of phone ids)
   const [dragId, setDragId] = useState(null)
+  const [sidebarWidth, setSidebarWidth] = useState(216)   // resizable; persists per browser
   const unreadChannelRef = useRef(null)
   const router = useRouter()
   const pathname = usePathname()
@@ -152,31 +152,44 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
     }
   }, [user?.workspaceId])
 
-  // Load the user's custom phone-number order (drag to reorder), per workspace.
-  const orderKey = user?.workspaceId ? `sidebar.phoneOrder.${user.workspaceId}` : null
+  // Resizable sidebar — drag the right edge.
   useEffect(() => {
-    if (!orderKey) return
-    try { const s = JSON.parse(localStorage.getItem(orderKey) || '[]'); if (Array.isArray(s)) setPhoneOrder(s) } catch {}
-  }, [orderKey])
+    const w = Number(localStorage.getItem('sidebar.width'))
+    if (w) setSidebarWidth(w)
+  }, [])
+  useEffect(() => { localStorage.setItem('sidebar.width', String(sidebarWidth)) }, [sidebarWidth])
+  const startSidebarResize = (e) => {
+    e.preventDefault()
+    const startX = e.clientX, startW = sidebarWidth
+    const onMove = (ev) => setSidebarWidth(Math.min(380, Math.max(180, startW + (ev.clientX - startX))))
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }
 
-  // Apply the saved order; un-ordered (new) numbers fall to the end.
-  const orderedPhones = (() => {
-    if (!phoneOrder.length) return phoneNumbers
-    const pos = new Map(phoneOrder.map((id, i) => [String(id), i]))
-    return [...phoneNumbers].sort((a, b) =>
-      (pos.has(String(a.id)) ? pos.get(String(a.id)) : Infinity) - (pos.has(String(b.id)) ? pos.get(String(b.id)) : Infinity))
-  })()
-
+  // Drag to reorder. The list arrives already sorted (server sort_order); on
+  // drop we optimistically reorder and persist to the DB so it sticks across
+  // devices and for everyone in the workspace.
   const handlePhoneDrop = (targetId) => {
     const srcId = dragId
     setDragId(null)
     if (srcId == null || String(srcId) === String(targetId)) return
-    const ids = orderedPhones.map(p => String(p.id))
-    const from = ids.indexOf(String(srcId)), to = ids.indexOf(String(targetId))
-    if (from < 0 || to < 0) return
-    ids.splice(to, 0, ids.splice(from, 1)[0])
-    setPhoneOrder(ids)
-    if (orderKey) { try { localStorage.setItem(orderKey, JSON.stringify(ids)) } catch {} }
+    setPhoneNumbers(prev => {
+      const arr = [...prev]
+      const from = arr.findIndex(p => String(p.id) === String(srcId))
+      const to = arr.findIndex(p => String(p.id) === String(targetId))
+      if (from < 0 || to < 0) return prev
+      arr.splice(to, 0, arr.splice(from, 1)[0])
+      apiPost('/api/phone-numbers/reorder', { order: arr.map(p => p.id) }).catch(() => {})
+      return arr
+    })
   }
 
   const fetchPhoneNumbers = async () => {
@@ -327,13 +340,19 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
     <div
       className="h-screen flex flex-col z-40"
       style={{
-        width: 216,
+        width: sidebarWidth,
         flexShrink: 0,
+        position: 'relative',
         background: '#FFFFFF',
         borderRight: '1px solid #E3E1DB',
         fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
       }}
     >
+      {/* Drag the right edge to resize the sidebar (desktop only) */}
+      <div onMouseDown={startSidebarResize} title="Drag to resize" className="hidden lg:block group"
+        style={{ position: 'absolute', top: 0, right: -3, width: 6, height: '100%', cursor: 'col-resize', zIndex: 50 }}>
+        <div className="h-full mx-auto group-hover:bg-[#D63B1F]/40 transition-colors" style={{ width: 2 }} />
+      </div>
       {/* ── Header: workspace name = account dropdown trigger ── */}
       <div ref={menuRef} style={{ position: 'relative', borderBottom: '1px solid #E3E1DB' }}>
         <div style={{
@@ -502,7 +521,7 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
           Phone Numbers
         </div>
         <div>
-          {orderedPhones.map((phone) => {
+          {phoneNumbers.map((phone) => {
             const isSelected = selectedPhoneNumber === phone.phoneNumber
             const isDragging = String(dragId) === String(phone.id)
             return (
@@ -525,6 +544,12 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
                 onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = '#F7F6F3' }}
                 onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
               >
+                {/* Drag grip — signals the row is reorderable */}
+                <svg width="8" height="14" viewBox="0 0 8 14" fill="#C8C5BD" style={{ flexShrink: 0, marginLeft: -2 }} aria-hidden>
+                  <circle cx="2" cy="2" r="1"/><circle cx="6" cy="2" r="1"/>
+                  <circle cx="2" cy="7" r="1"/><circle cx="6" cy="7" r="1"/>
+                  <circle cx="2" cy="12" r="1"/><circle cx="6" cy="12" r="1"/>
+                </svg>
                 <div style={{
                   width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
                   background: phone.campaign_status === 'rejected' ? '#ef4444'

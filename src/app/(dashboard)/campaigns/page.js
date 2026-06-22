@@ -830,6 +830,7 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [created, setCreated] = useState(false)
   const [step, setStep] = useState(1)        // 4-step wizard: 1 Basics → 4 Review
+  const lastAdvanceRef = useRef(0)           // when we last advanced a step (ghost-click guard)
   const messageRef = useRef(null)
 
   // Monday integration state
@@ -1051,7 +1052,7 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
     return Object.keys(e).length === 0
   }
 
-  const goNext = () => { if (validateStep(step)) setStep(s => Math.min(4, s + 1)) }
+  const goNext = () => { if (validateStep(step)) { lastAdvanceRef.current = Date.now(); setStep(s => Math.min(4, s + 1)) } }
   const goBack = () => { setErrors({}); setStep(s => Math.max(1, s - 1)) }
 
   const validateForm = () => {
@@ -1075,6 +1076,14 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    // Safety net: NEVER create the campaign before the Review step. If a submit
+    // fires early (implicit form submit, Enter key, etc.) just advance the wizard
+    // so the user always sees Review before anything is created/scheduled.
+    if (step < 4) { goNext(); return }
+    // Ghost-click guard: the "Next" click that advanced us to Review can land on
+    // the Create/Schedule button that just rendered in the same spot. Ignore any
+    // submit that fires right after a step advance.
+    if (Date.now() - lastAdvanceRef.current < 600) return
     if (!validateForm()) return
     setIsSubmitting(true)
     try {

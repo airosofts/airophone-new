@@ -507,9 +507,9 @@ export default function ChatWindow({
   const isWebRTCReady = callHook?.isRegistered && !callHook?.isInitializing
 
   return (
-    <div className="flex flex-1 min-h-0 bg-[#FFFFFF]">
+    <div className="flex flex-1 min-h-0 min-w-0 bg-[#FFFFFF]">
       {/* Main Chat Area */}
-      <div className="flex flex-col flex-1 relative">
+      <div className="flex flex-col flex-1 min-w-0 relative">
         {/* Header */}
         <div className="bg-[#FFFFFF] border-b border-[#E3E1DB] sticky top-0 z-10">
           <div className="px-4 py-3">
