@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import SearchableDropdown from '@/components/SearchableDropdown'
 import { getCurrentUser } from '@/lib/auth'
-import { apiGet, apiPost, fetchWithWorkspace } from '@/lib/api-client'
+import { apiGet, apiPost, apiDelete, fetchWithWorkspace } from '@/lib/api-client'
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz'
 import { estimateSendSchedule } from '@/lib/scheduling'
 import { CONTACT_STATUSES, CONTACT_STATUS_MAP, DEFAULT_EXCLUDED_STATUSES } from '@/lib/contact-status'
@@ -811,7 +811,7 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
   useEffect(() => {
     fetchWithWorkspace('/api/workspace/business-hours').then(r => r.json()).then(setBizHours).catch(() => {})
   }, [])
-  const [formData, setFormData] = useState({
+  const CAMPAIGN_DEFAULTS = {
     name: '', message: '', contactListId: '', phoneNumberId: '',
     scheduleTime: '', scheduleType: 'immediate',
     // Sending pace & limits
@@ -825,11 +825,64 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
     mondayPhoneColumnId: '',
     mondayItemIds: [],           // selected rows; all-selected == "all items"
     mondayFilters: [],           // [{ columnId, values: [] }] — AND across, OR within
+  }
+  // Preserve in-progress work: restore the autosaved draft if there is one.
+  const DRAFT_KEY = 'campaign.wizard.draft'
+  const restoredRef = useRef(typeof window !== 'undefined' && !!localStorage.getItem(DRAFT_KEY))
+  const [formData, setFormData] = useState(() => {
+    if (typeof window === 'undefined') return CAMPAIGN_DEFAULTS
+    try { const s = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); if (s?.formData) return { ...CAMPAIGN_DEFAULTS, ...s.formData } } catch {}
+    return CAMPAIGN_DEFAULTS
   })
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [created, setCreated] = useState(false)
-  const [step, setStep] = useState(1)        // 4-step wizard: 1 Basics → 4 Review
+  const [step, setStep] = useState(() => {
+    if (typeof window === 'undefined') return 1
+    try { const s = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); if (s?.step) return Math.min(4, Math.max(1, s.step)) } catch {}
+    return 1
+  })
+  // Autosave (debounced) so navigating away / refreshing never loses progress.
+  useEffect(() => {
+    const t = setTimeout(() => { try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ formData, step })) } catch {} }, 300)
+    return () => clearTimeout(t)
+  }, [formData, step])
+  const clearDraft = () => { try { localStorage.removeItem(DRAFT_KEY) } catch {} }
+  const startOver = () => { clearDraft(); restoredRef.current = false; setFormData(CAMPAIGN_DEFAULTS); setStep(1); setErrors({}) }
+
+  // Inline CSV → new contact list (no leaving the wizard). Locally-created lists
+  // are merged into the picker and become reusable in Contacts.
+  const [extraLists, setExtraLists] = useState([])
+  const [csvOpen, setCsvOpen] = useState(false)
+  const [csvFile, setCsvFile] = useState(null)
+  const [csvListName, setCsvListName] = useState('')
+  const [csvBusy, setCsvBusy] = useState(false)
+  const [csvError, setCsvError] = useState('')
+  const handleCsvImport = async () => {
+    if (!csvFile) { setCsvError('Choose a CSV file.'); return }
+    const listName = csvListName.trim() || csvFile.name.replace(/\.csv$/i, '') || 'Imported list'
+    setCsvBusy(true); setCsvError('')
+    try {
+      const listRes = await apiPost('/api/contact-lists', { name: listName })
+      const listData = await listRes.json()
+      const listId = listData?.contactList?.id || listData?.id
+      if (!listId) { setCsvError(listData?.error || 'Could not create the list.'); return }
+      const fd = new FormData()
+      fd.append('file', csvFile)
+      fd.append('contact_list_id', listId)
+      const impRes = await fetchWithWorkspace('/api/contacts/import', { method: 'POST', body: fd })
+      const impData = await impRes.json()
+      if (!impRes.ok || !impData?.success) { setCsvError(impData?.error || 'Import failed — make sure the CSV has a phone and a name column.'); return }
+      const imported = impData.imported || 0
+      setExtraLists(prev => [{ id: listId, name: listName, contactCount: imported }, ...prev])
+      setFormData(f => ({ ...f, contactListId: listId }))
+      setCsvOpen(false); setCsvFile(null); setCsvListName('')
+    } catch {
+      setCsvError('Upload failed. Please try again.')
+    } finally {
+      setCsvBusy(false)
+    }
+  }
   const lastAdvanceRef = useRef(0)           // when we last advanced a step (ghost-click guard)
   const messageRef = useRef(null)
 
@@ -978,7 +1031,7 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
     })
   }
 
-  const contactListOptions = contactLists.map(cl => ({ value: cl.id, label: cl.name, count: cl.contactCount ?? cl.contact_count ?? 0, searchText: cl.name }))
+  const contactListOptions = [...extraLists, ...contactLists].map(cl => ({ value: cl.id, label: cl.name, count: cl.contactCount ?? cl.contact_count ?? 0, searchText: cl.name }))
   const phoneNumberOptions = phoneNumbers.map(pn => ({ value: pn.id, number: pn.phone_number || pn.phoneNumber, name: pn.custom_name || pn.prefix || '', searchText: `${pn.custom_name || ''} ${pn.phone_number || pn.phoneNumber || ''}` }))
 
   // ── Monday status-column filter ─────────────────────────────────────────────
@@ -1074,6 +1127,48 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
     return Object.keys(newErrors).length === 0
   }
 
+  // Save-as-draft: persist whatever's filled (only a name is required) as a
+  // draft campaign in the list, to finish & launch later. Clears local autosave.
+  const handleSaveDraft = async () => {
+    if (!formData.name.trim()) { setErrors({ name: 'Name the campaign to save a draft.' }); setStep(1); return }
+    setIsSubmitting(true)
+    setErrors({})
+    try {
+      const selectedPn = phoneNumbers.find(pn => pn.id === formData.phoneNumberId)
+      const senderNumber = selectedPn?.phone_number || selectedPn?.phoneNumber || ''
+      const res = await apiPost('/api/campaigns', {
+        draft: true,
+        name: formData.name,
+        message_template: formData.message,
+        sender_number: senderNumber,
+        source: formData.source,
+        contact_list_ids: formData.source === 'contacts' && formData.contactListId ? [formData.contactListId] : [],
+        scheduled_at: formData.scheduleType === 'scheduled' && formData.scheduleTime ? new Date(formData.scheduleTime).toISOString() : null,
+        daily_cap: formData.dailyLimitEnabled ? (Number(formData.dailyCap) || null) : null,
+        send_windows: formData.businessHoursOnly && bizHours ? [{ start: (bizHours.start || '09:00:00').slice(0, 5), end: (bizHours.end || '18:00:00').slice(0, 5) }] : null,
+        send_days: formData.businessHoursOnly && bizHours ? bizHours.days : null,
+        send_timezone: formData.businessHoursOnly && bizHours ? bizHours.tz : null,
+        recurring: !!(formData.recurring && formData.dailyLimitEnabled),
+      })
+      const data = await res.json()
+      if (!data.success) { setErrors({ submit: data.error || 'Failed to save draft' }); return }
+      if (formData.source === 'monday' && formData.mondayBoardId) {
+        const newId = data.campaign?.id || data.id
+        const allSelected = mondayItems.length > 0 && formData.mondayItemIds.length === mondayItems.length
+        if (newId) await fetchWithWorkspace(`/api/campaigns/${newId}/monday-link`, {
+          method: 'POST',
+          body: JSON.stringify({ board_id: formData.mondayBoardId, board_name: formData.mondayBoardName, group_ids: formData.mondayGroupIds, item_ids: allSelected ? [] : formData.mondayItemIds, phone_column_id: formData.mondayPhoneColumnId }),
+        }).catch(() => {})
+      }
+      clearDraft()
+      onCampaignCreated()
+    } catch {
+      setErrors({ submit: 'Failed to save draft. Please try again.' })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     // Safety net: NEVER create the campaign before the Review step. If a submit
@@ -1153,6 +1248,7 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
         }
       }
 
+      clearDraft()
       setCreated(true)
     } catch {
       setErrors({ submit: 'Failed to create campaign. Please try again.' })
@@ -1185,6 +1281,12 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
             <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
           </button>
           <h3 className="text-base sm:text-lg font-semibold text-[#131210]">New Campaign</h3>
+          {restoredRef.current && (
+            <span className="ml-2 inline-flex items-center gap-2 text-[11px] text-[#9B9890]">
+              <span className="px-2 py-0.5 rounded-full bg-[#EFEDE8] text-[#5C5A55]">Draft restored</span>
+              <button type="button" onClick={startOver} className="text-[#D63B1F] hover:underline">Start over</button>
+            </span>
+          )}
         </div>
         {/* Step indicator */}
         <div className="flex items-center gap-1 sm:gap-2 px-4 sm:px-8 pb-3 overflow-x-auto">
@@ -1284,6 +1386,30 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
                   renderOption={(o) => (<div><p className="text-sm font-medium text-[#131210]">{o.label}</p><p className="text-xs text-[#9B9890] mt-0.5">{o.count} contacts</p></div>)}
                 />
                 {errors.contactListId && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.contactListId}</p>}
+
+                {/* Upload a CSV → new reusable list, without leaving the wizard */}
+                {!csvOpen ? (
+                  <button type="button" onClick={() => { setCsvOpen(true); setCsvError('') }} className="mt-2.5 inline-flex items-center gap-1.5 text-xs font-medium text-[#D63B1F] hover:underline">
+                    <i className="fas fa-upload text-[11px]" /> Upload a CSV as a new list
+                  </button>
+                ) : (
+                  <div className="mt-3 p-3.5 border border-[#E3E1DB] rounded-lg bg-[#F7F6F3] space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold text-[#5C5A55]">Import contacts from CSV</p>
+                      <button type="button" onClick={() => { setCsvOpen(false); setCsvFile(null); setCsvError('') }} className="text-[#9B9890] hover:text-[#5C5A55]"><i className="fas fa-times text-xs" /></button>
+                    </div>
+                    <input type="text" value={csvListName} onChange={(e) => setCsvListName(e.target.value)} placeholder="New list name (defaults to file name)"
+                      className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20" />
+                    <input type="file" accept=".csv,text/csv" onChange={(e) => { setCsvFile(e.target.files?.[0] || null); setCsvError('') }}
+                      className="block w-full text-xs text-[#5C5A55] file:mr-3 file:px-3 file:py-1.5 file:rounded-md file:border-0 file:bg-[#EFEDE8] file:text-[#5C5A55] file:text-xs file:font-medium hover:file:bg-[#E3E1DB]" />
+                    <p className="text-[11px] text-[#9B9890]">CSV needs a <span className="font-medium">phone</span> column and a <span className="font-medium">name</span> column (first/last/business or “name”). Columns auto-detect.</p>
+                    {csvError && <p className="text-[11px] text-[#D63B1F]">{csvError}</p>}
+                    <button type="button" onClick={handleCsvImport} disabled={csvBusy || !csvFile}
+                      className="px-3.5 py-1.5 text-xs font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md disabled:opacity-50">
+                      {csvBusy ? <><i className="fas fa-spinner fa-spin mr-1.5" />Importing…</> : 'Import & use this list'}
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="space-y-4">
@@ -1756,6 +1882,12 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
           <button type="button" onClick={step === 1 ? onClose : goBack} className="px-5 py-2.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3] transition-colors">
             {step === 1 ? 'Cancel' : 'Back'}
           </button>
+          <div className="flex items-center gap-2">
+            {/* Save as draft — finish & launch later. Needs only a name. */}
+            <button type="button" onClick={handleSaveDraft} disabled={isSubmitting || !formData.name.trim()}
+              className="px-4 py-2.5 text-sm font-medium text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3] disabled:opacity-40 transition-colors">
+              Save as draft
+            </button>
           {step < 4 ? (
             <button type="button" onClick={goNext} className="px-6 py-2.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg transition-colors">
               Next
@@ -1765,6 +1897,7 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
               {isSubmitting ? <><i className="fas fa-spinner fa-spin mr-2"></i>Creating…</> : (formData.scheduleType === 'scheduled' ? 'Schedule Campaign' : 'Create & Send')}
             </button>
           )}
+          </div>
         </div>
       </form>
     </div>
@@ -2024,6 +2157,10 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
   const [name, setName] = useState('')
   const [senderNumber, setSenderNumber] = useState('')
   const [uploadState, setUploadState] = useState(null) // null | 'uploading' | { url, voicedropUrl, path, name }
+  // Audio Library — reusable saved recordings for this workspace.
+  const [library, setLibrary] = useState([])
+  const [libraryLoading, setLibraryLoading] = useState(false)
+  const [showLibrary, setShowLibrary] = useState(false)
   const [selectedListIds, setSelectedListIds] = useState([])
   const [selectedColumns, setSelectedColumns] = useState(['phone_number'])
   // Chunking removed from the UI — the throttle + calling windows now pace the
@@ -2143,6 +2280,20 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
   const [scanError, setScanError] = useState('')
   const [landlinesRemoved, setLandlinesRemoved] = useState(false)
   const [purgeState, setPurgeState] = useState(null)   // null | 'purging' | 'done'
+
+  // ── "Save selection as a reusable list" (post-scrub) ──────────────────────
+  // Lets the user bank the kept recipients — optionally only certain carrier
+  // types — as a new contact list. The copies carry their cached line_type, so
+  // the saved list is already scrubbed and never re-charges on a future scan.
+  const [saveListOpen, setSaveListOpen] = useState(false)
+  const [saveListName, setSaveListName] = useState('')
+  const [saveTypes, setSaveTypes] = useState(() => new Set(['mobile', 'voip', 'unknown']))
+  const [savingList, setSavingList] = useState(false)   // false | true
+  const [savedList, setSavedList] = useState(null)      // { name, inserted } | null
+  const [saveListError, setSaveListError] = useState('')
+  // Lists created from inside this modal — surfaced in the step-2 picker so the
+  // user can immediately reuse what they just saved without a page reload.
+  const [savedLists, setSavedLists] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const PAGE_SIZE = 100   // render 100 rows/page so 28k+ lists stay snappy
@@ -2161,6 +2312,33 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
   }
   const toggleColumn = (k) => {
     setSelectedColumns(prev => prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k])
+  }
+
+  // ── Audio Library (reuse previously uploaded/recorded audio) ────────────
+  const fetchLibrary = useCallback(async () => {
+    setLibraryLoading(true)
+    try {
+      const res = await apiGet('/api/voicemail-recordings')
+      const data = await res.json()
+      if (res.ok && data.success) setLibrary(data.recordings || [])
+    } catch { /* non-fatal — library just stays empty */ }
+    finally { setLibraryLoading(false) }
+  }, [])
+
+  // Load the library once when the modal mounts so "Choose from library" is ready.
+  useEffect(() => { fetchLibrary() }, [fetchLibrary])
+
+  // Pick a saved recording — reuse it directly, NO re-upload.
+  const useLibraryRecording = (rec) => {
+    setUploadState({ url: rec.url, voicedropUrl: rec.voicedrop_url, path: rec.path, name: rec.name })
+    setErrors(prev => ({ ...prev, audio: null }))
+    setShowLibrary(false)
+  }
+
+  const deleteLibraryRecording = async (id) => {
+    setLibrary(prev => prev.filter(r => r.id !== id))   // optimistic
+    try { await apiDelete(`/api/voicemail-recordings/${id}`) }
+    catch { fetchLibrary() }   // restore truth on failure
   }
 
   // ── Audio upload (cancelable) ──────────────────────────────────────────
@@ -2187,6 +2365,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
         return
       }
       setUploadState({ url: data.url, voicedropUrl: data.voicedrop_url, path: data.path, name: displayName || file.name })
+      fetchLibrary()   // the upload was auto-saved to the library — refresh so it appears
     } catch (err) {
       if (err?.name === 'AbortError') { setUploadState(null); return }   // cancelled
       setErrors(prev => ({ ...prev, audio: 'Upload failed. Please try again.' }))
@@ -2479,6 +2658,78 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
     } catch { setPurgeState(null); setScanError('Failed to remove from contacts') }
   }
 
+  // Carrier-type counts across the CURRENTLY selected (kept) recipients — drives
+  // the "save as list" filter. Falls back to "unknown" for un-scanned numbers.
+  const saveTypeCounts = useMemo(() => {
+    const c = { mobile: 0, voip: 0, landline: 0, unknown: 0 }
+    const seen = new Set()
+    for (const r of selectedRecipients) {
+      if (seen.has(r.phone)) continue
+      seen.add(r.phone)
+      const lt = (scan && scan.byPhone && scan.byPhone[r.phone]) || 'unknown'
+      c[lt] = (c[lt] || 0) + 1
+    }
+    return c
+  }, [selectedRecipients, scan])
+
+  // How many of the kept recipients would actually be saved given the type filter.
+  const saveCandidateCount = useMemo(() => {
+    if (!scan || !scan.byPhone) return new Set(selectedRecipients.map(r => r.phone)).size
+    const seen = new Set()
+    for (const r of selectedRecipients) {
+      if (seen.has(r.phone)) continue
+      const lt = scan.byPhone[r.phone] || 'unknown'
+      if (saveTypes.has(lt)) seen.add(r.phone)
+    }
+    return seen.size
+  }, [selectedRecipients, scan, saveTypes])
+
+  const toggleSaveType = (t) => setSaveTypes(prev => {
+    const n = new Set(prev); n.has(t) ? n.delete(t) : n.add(t); return n
+  })
+
+  // Lists shown in the step-2 picker: ones saved from inside this modal first,
+  // then the workspace's existing lists.
+  const pickableLists = useMemo(() => [...savedLists, ...contactLists], [savedLists, contactLists])
+
+  const handleSaveAsList = async () => {
+    const listName = saveListName.trim()
+    if (!listName) { setSaveListError('Name the list first.'); return }
+
+    // Final kept set, de-duped by phone and filtered by the chosen carrier types.
+    const seen = new Set()
+    const contactIds = []
+    for (const r of selectedRecipients) {
+      if (!r.contactId || seen.has(r.phone)) continue
+      if (scan && scan.byPhone) {
+        const lt = scan.byPhone[r.phone] || 'unknown'
+        if (!saveTypes.has(lt)) continue
+      }
+      seen.add(r.phone)
+      contactIds.push(r.contactId)
+    }
+    if (contactIds.length === 0) { setSaveListError('No contacts match the selected types.'); return }
+
+    setSavingList(true); setSaveListError(''); setSavedList(null)
+    try {
+      const res = await apiPost('/api/contact-lists/from-recipients', {
+        name: listName,
+        contactIds,
+        lineTypeByPhone: scan && scan.byPhone ? scan.byPhone : undefined,
+        includeLineTypes: scan && scan.byPhone ? [...saveTypes] : undefined,
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) { setSaveListError(data.error || 'Failed to save list.'); return }
+      setSavedList({ name: data.list.name, inserted: data.inserted })
+      setSavedLists(prev => [{ id: data.list.id, name: data.list.name, contact_count: data.inserted }, ...prev])
+      setSaveListName('')
+    } catch {
+      setSaveListError('Failed to save list. Please try again.')
+    } finally {
+      setSavingList(false)
+    }
+  }
+
   const handleLaunch = async () => {
     if (!validateStep(3)) return
     if (selectedRecipients.length === 0) {
@@ -2631,24 +2882,76 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
                 <label className="block text-xs font-medium text-[#5C5A55] mb-1.5">Voicemail audio</label>
                 <input ref={fileInputRef} type="file" accept="audio/*" onChange={handleFileChange} className="hidden" />
 
-                {/* Idle: upload OR record */}
+                {/* Idle: upload, record, OR reuse from the library */}
                 {!uploadState && !recording && (
-                  <div className="grid grid-cols-2 gap-2">
+                  <>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="px-4 py-6 border-2 border-dashed border-[#D4D1C9] rounded-lg text-sm text-[#5C5A55] hover:border-[#D63B1F] hover:bg-[#FFF8F6]"
+                      >
+                        <i className="fas fa-cloud-upload-alt mr-2" /> Upload audio
+                      </button>
+                      <button
+                        type="button"
+                        onClick={startRecording}
+                        className="px-4 py-6 border-2 border-dashed border-[#D4D1C9] rounded-lg text-sm text-[#5C5A55] hover:border-[#D63B1F] hover:bg-[#FFF8F6]"
+                      >
+                        <i className="fas fa-microphone mr-2 text-[#D63B1F]" /> Record now
+                      </button>
+                    </div>
+                    {/* Reuse a saved recording — no re-upload needed */}
                     <button
                       type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="px-4 py-6 border-2 border-dashed border-[#D4D1C9] rounded-lg text-sm text-[#5C5A55] hover:border-[#D63B1F] hover:bg-[#FFF8F6]"
+                      onClick={() => { setShowLibrary(v => !v); if (!library.length) fetchLibrary() }}
+                      className="mt-2 w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-[#E3E1DB] rounded-lg text-sm text-[#5C5A55] hover:bg-[#F7F6F3]"
                     >
-                      <i className="fas fa-cloud-upload-alt mr-2" /> Upload audio
+                      <i className="fas fa-folder-open text-[#D63B1F]" />
+                      Choose from library
+                      {library.length > 0 && <span className="text-[11px] text-[#9B9890]">({library.length})</span>}
+                      <i className={`fas fa-chevron-${showLibrary ? 'up' : 'down'} text-[10px] text-[#9B9890]`} />
                     </button>
-                    <button
-                      type="button"
-                      onClick={startRecording}
-                      className="px-4 py-6 border-2 border-dashed border-[#D4D1C9] rounded-lg text-sm text-[#5C5A55] hover:border-[#D63B1F] hover:bg-[#FFF8F6]"
-                    >
-                      <i className="fas fa-microphone mr-2 text-[#D63B1F]" /> Record now
-                    </button>
-                  </div>
+
+                    {showLibrary && (
+                      <div className="mt-2 border border-[#E3E1DB] rounded-lg overflow-hidden">
+                        {libraryLoading && (
+                          <p className="px-4 py-4 text-xs text-[#9B9890] text-center"><i className="fas fa-spinner fa-spin mr-1.5" />Loading saved recordings…</p>
+                        )}
+                        {!libraryLoading && library.length === 0 && (
+                          <p className="px-4 py-5 text-xs text-[#9B9890] text-center">No saved recordings yet. Audio you upload or record is saved here automatically for reuse.</p>
+                        )}
+                        {!libraryLoading && library.length > 0 && (
+                          <div className="max-h-64 overflow-y-auto divide-y divide-[#F0EEE9]">
+                            {library.map(rec => (
+                              <div key={rec.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-[#F7F6F3]">
+                                <i className="fas fa-music text-[#D63B1F] flex-shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-[#131210] truncate" title={rec.name}>{rec.name}</p>
+                                  {rec.url && <audio controls src={rec.url} className="w-full mt-1" style={{ height: 30 }} />}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => useLibraryRecording(rec)}
+                                  className="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-white bg-[#D63B1F] rounded-md hover:bg-[#c4351b]"
+                                >
+                                  Use
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => deleteLibraryRecording(rec.id)}
+                                  title="Remove from library"
+                                  className="flex-shrink-0 px-2 py-1.5 text-xs text-[#9B9890] hover:text-[#D63B1F]"
+                                >
+                                  <i className="fas fa-trash-alt" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
                 )}
 
                 {/* Recording in progress — live waveform reacts to your voice */}
@@ -2913,11 +3216,11 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
             <div className="space-y-5">
               <div>
                 <label className="block text-xs font-medium text-[#5C5A55] mb-2">Contact lists</label>
-                {contactLists.length === 0 ? (
+                {pickableLists.length === 0 ? (
                   <p className="text-xs text-[#9B9890]">No contact lists yet — import one in Contacts first.</p>
                 ) : (
                   <div className="border border-[#E3E1DB] rounded-lg max-h-44 overflow-y-auto">
-                    {contactLists.map(l => (
+                    {pickableLists.map(l => (
                       <label key={l.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-[#F7F6F3] border-b border-[#F0EEE9] last:border-b-0">
                         <input
                           type="checkbox"
@@ -3199,6 +3502,81 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
                   )
                 })()}
 
+                {/* ─── Save the kept selection as a reusable list ─── */}
+                {selectedRecipients.length > 0 && (
+                  <div className="bg-white border border-[#E3E1DB] rounded-lg p-3.5">
+                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                      <div className="min-w-0">
+                        <p className="text-[10px] uppercase tracking-wider text-[#5C5A55] font-semibold">Save as a contact list</p>
+                        <p className="text-[11px] text-[#9B9890] mt-0.5">
+                          Bank these {saveCandidateCount.toLocaleString()} contacts as a reusable list.
+                          {scan && scan.byPhone ? ' Carrier types are saved with them — re-scanning this list later is free.' : ''}
+                        </p>
+                      </div>
+                      {!saveListOpen && (
+                        <button type="button" onClick={() => { setSaveListOpen(true); setSavedList(null); setSaveListError('') }}
+                          className="flex-shrink-0 px-3 py-1.5 text-sm rounded-md border border-[#D4D1C9] text-[#131210] hover:bg-[#F7F6F3] flex items-center gap-2">
+                          <i className="fas fa-bookmark text-[11px]" /> Save as list
+                        </button>
+                      )}
+                    </div>
+
+                    {saveListOpen && (
+                      <div className="mt-3 space-y-3">
+                        {/* Carrier-type filter — only meaningful after a scan */}
+                        {scan && scan.byPhone && (
+                          <div>
+                            <p className="text-[11px] text-[#5C5A55] mb-1.5">Include which numbers?</p>
+                            <div className="flex flex-wrap gap-2">
+                              {[
+                                { k: 'mobile', label: 'Mobile', color: '#16A34A' },
+                                { k: 'voip', label: 'VoIP', color: '#2563EB' },
+                                { k: 'landline', label: 'Landline', color: '#D63B1F' },
+                                { k: 'unknown', label: 'Unknown', color: '#6B7280' },
+                              ].filter(t => saveTypeCounts[t.k] > 0).map(t => {
+                                const on = saveTypes.has(t.k)
+                                return (
+                                  <button key={t.k} type="button" onClick={() => toggleSaveType(t.k)}
+                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${on ? '' : 'opacity-50'}`}
+                                    style={{ color: t.color, background: on ? `${t.color}14` : '#F7F6F3', borderColor: on ? `${t.color}40` : '#E3E1DB' }}>
+                                    <i className={`fas ${on ? 'fa-check' : 'fa-plus'} text-[9px]`} />
+                                    {t.label} <strong>{saveTypeCounts[t.k].toLocaleString()}</strong>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          <input
+                            type="text"
+                            value={saveListName}
+                            onChange={(e) => { setSaveListName(e.target.value); setSaveListError('') }}
+                            placeholder="New list name…"
+                            className="flex-1 min-w-[200px] px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
+                          />
+                          <button type="button" onClick={handleSaveAsList} disabled={savingList || saveCandidateCount === 0}
+                            className="px-3 py-2 text-sm rounded-md bg-[#131210] text-white hover:bg-black disabled:opacity-50 flex items-center gap-2 whitespace-nowrap">
+                            {savingList ? <><i className="fas fa-spinner fa-spin" /> Saving…</> : <>Save {saveCandidateCount.toLocaleString()} contacts</>}
+                          </button>
+                          <button type="button" onClick={() => { setSaveListOpen(false); setSaveListError('') }}
+                            className="px-3 py-2 text-sm rounded-md border border-[#E3E1DB] text-[#5C5A55] hover:bg-[#F7F6F3]">
+                            Cancel
+                          </button>
+                        </div>
+                        {saveListError && <p className="text-xs text-red-600">{saveListError}</p>}
+                      </div>
+                    )}
+
+                    {savedList && (
+                      <p className="text-sm text-green-700 mt-2.5">
+                        <i className="fas fa-check-circle mr-1" /> Saved “{savedList.name}” with {savedList.inserted.toLocaleString()} contact{savedList.inserted === 1 ? '' : 's'} — it’s ready to reuse on the Audience step.
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {/* ─── Searchable, paginated, selectable recipient table ─── */}
                 <div className="min-w-0">
                   {/* Toolbar: search + bulk actions + selected count */}
@@ -3215,7 +3593,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
                     </div>
                     <button
                       type="button"
-                      onClick={() => setExcludedFor(pageRows, !pageAllSelected)}
+                      onClick={() => setExcludedFor(pageRows, pageAllSelected)}
                       className="px-3 py-2 text-xs text-[#5C5A55] border border-[#D4D1C9] rounded-md hover:bg-[#F7F6F3]"
                     >
                       {pageAllSelected ? 'Unselect page' : 'Select page'}
@@ -3372,23 +3750,31 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
                   <audio controls src={uploadState.url} className="w-full" style={{ height: 34 }} />
                 )}
 
-                {/* Cost — credits + their dollar value at the plan rate */}
+                {/* Cost — pay-as-you-send. Credits are charged per voicemail at
+                    the moment it's sent, NOT upfront. The figure below is the
+                    maximum if every recipient is sent; pausing stops the charges. */}
                 <div className="bg-[#131210] text-white rounded-lg p-4">
                   <div className="flex items-end justify-between gap-3 flex-wrap">
                     <div>
-                      <p className="text-[10px] uppercase tracking-wider text-white/50 font-semibold mb-1">Campaign cost</p>
+                      <p className="text-[10px] uppercase tracking-wider text-white/50 font-semibold mb-1">Estimated cost — if all are sent</p>
                       <p className="text-2xl font-semibold leading-none">{credits.toLocaleString()} <span className="text-base font-normal text-white/60">credits</span></p>
-                      <p className="text-[11px] text-white/50 mt-1">{vmCount.toLocaleString()} voicemail{vmCount === 1 ? '' : 's'} × {RVM_CREDITS_PER_VM} credits</p>
+                      <p className="text-[11px] text-white/50 mt-1">{vmCount.toLocaleString()} voicemail{vmCount === 1 ? '' : 's'} × {RVM_CREDITS_PER_VM} credits each</p>
                     </div>
                     <div className="text-right">
                       <p className="text-2xl font-semibold leading-none text-[#FF7A5C]">{usd(dollarValue)}</p>
                       <p className="text-[11px] text-white/50 mt-1">≈ at ${plan.rate.toFixed(2)}/credit · {plan.name}</p>
                     </div>
                   </div>
-                  <div className="mt-3 pt-3 border-t border-white/10 text-[11px] text-white/70 leading-relaxed">
-                    {overageCredits === 0
-                      ? <>Uses <strong className="text-white">{credits.toLocaleString()}</strong> of your <strong className="text-white">{balance.toLocaleString()}</strong> credits — <strong className="text-white">{leftAfter.toLocaleString()}</strong> left after this send.</>
-                      : <>Your balance is <strong className="text-white">{balance.toLocaleString()}</strong> — <strong className="text-[#FF7A5C]">{overageCredits.toLocaleString()} short</strong>. Top up before launching.</>}
+                  <div className="mt-3 pt-3 border-t border-white/10 text-[11px] text-white/70 leading-relaxed space-y-1.5">
+                    <p>
+                      <i className="fas fa-circle-info mr-1.5 text-white/40" />
+                      You're charged <strong className="text-white">{RVM_CREDITS_PER_VM} credits per voicemail</strong>, deducted <strong className="text-white">as each one is sent</strong> — not upfront. <strong className="text-white">Pause the campaign anytime</strong> to stop further charges; you only pay for voicemails actually sent.
+                    </p>
+                    <p>
+                      {overageCredits === 0
+                        ? <>Sending all {vmCount.toLocaleString()} would use <strong className="text-white">{credits.toLocaleString()}</strong> of your <strong className="text-white">{balance.toLocaleString()}</strong> credits — <strong className="text-white">{leftAfter.toLocaleString()}</strong> left after.</>
+                        : <>Your balance is <strong className="text-white">{balance.toLocaleString()}</strong> — <strong className="text-[#FF7A5C]">{overageCredits.toLocaleString()} short</strong> of sending the full list. The campaign auto-pauses when credits run out; top up to resume.</>}
+                    </p>
                   </div>
                 </div>
                 {errors.submit && (
@@ -3514,17 +3900,14 @@ function ViewRVMCampaignModal({ campaign: initialCampaign, contactLists, onClose
   const statusLabel = statusMap[campaign.status]?.label || campaign.status
   const statusClass = statusMap[campaign.status]?.cls || 'bg-[#EFEDE8] text-[#5C5A55]'
 
-  // Progress tracks dispatch (all handed to VoiceDrop). Delivered / Not
-  // delivered come from VoiceDrop's webhook as a per-row overlay.
-  // Prefer the recipients endpoint's UNCAPPED summary counts (accurate for
-  // 15k+ lists and before total_recipients is set); fall back to the campaign
-  // row's counters while the summary is still loading.
+  // Reporting tracks DISPATCH only — how many contacts we've handed to VoiceDrop.
+  // We deliberately don't surface Delivered / Not-delivered: VoiceDrop's delivery
+  // callbacks aren't reliably reported, so "Sent vs Remaining" is the only honest,
+  // accurate progress we can show. Prefer the recipients endpoint's UNCAPPED
+  // summary counts (accurate for 15k+ lists and before total_recipients is set);
+  // fall back to the campaign row's counters while the summary is still loading.
   const dispatched = Number(summary?.dispatched ?? campaign.sent_count ?? 0)   // handed to VoiceDrop
-  const delivered = Number(summary?.delivered ?? campaign.delivered_count ?? 0)
-  const failed = Number(summary?.failed ?? campaign.failed_count ?? 0)
   const total = Number(summary?.total ?? campaign.total_recipients ?? 0)
-  // Progress tracks DISPATCH (everything handed to VoiceDrop). Delivery
-  // confirmation overlays per-row but doesn't change the bar.
   const processed = dispatched
   const remaining = Math.max(0, total - processed)
   const pct = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0
@@ -3648,11 +4031,14 @@ function ViewRVMCampaignModal({ campaign: initialCampaign, contactLists, onClose
             </div>
           )}
 
-          <div className="grid grid-cols-3 gap-3">
+          {/* Simple progress — Sent vs Remaining. We intentionally do NOT show
+              Delivered / Not-delivered here: VoiceDrop's delivery callbacks are
+              not reliably reported, so those numbers would be misleading. "Sent"
+              = handed off to VoiceDrop (the real, accurate signal we have). */}
+          <div className="grid grid-cols-2 gap-3">
             {[
-              { label: 'Sent', value: dispatched, icon: 'fa-paper-plane', color: 'text-green-600' },
-              { label: 'Delivered', value: delivered, icon: 'fa-check-circle', color: 'text-green-600' },
-              { label: 'Not delivered', value: failed, icon: 'fa-times-circle', color: 'text-[#D63B1F]' },
+              { label: 'Sent contacts', value: processed, icon: 'fa-paper-plane', color: 'text-green-600' },
+              { label: 'Remaining contacts', value: remaining, icon: 'fa-hourglass-half', color: 'text-[#9B9890]' },
             ].map(item => (
               <div key={item.label} className="bg-[#F7F6F3] border border-[#E3E1DB] rounded-lg p-3 text-center">
                 <i className={`fas ${item.icon} ${item.color} text-sm mb-1`}></i>
@@ -3862,14 +4248,46 @@ function ErrorModal({ title, message, onClose }) {
 }
 
 function DeleteConfirmationModal({ campaignName, onConfirm, onCancel }) {
+  // Require the user to type the exact campaign name before deleting, so a stray
+  // click can't wipe a campaign. Match is trimmed but case-sensitive.
+  const [typed, setTyped] = useState('')
+  const target = String(campaignName ?? '').trim()
+  const matches = typed.trim() === target && target.length > 0
+
+  const handleConfirm = () => { if (matches) onConfirm() }
+
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-sm">
         <div className="px-5 py-4 border-b border-[#E3E1DB]"><h3 className="text-sm font-semibold text-[#131210]">Delete Campaign</h3></div>
-        <div className="px-5 py-4"><p className="text-sm text-[#5C5A55]">Delete <span className="font-medium text-[#131210]">"{campaignName}"</span>? This cannot be undone.</p></div>
+        <div className="px-5 py-4 space-y-3">
+          <p className="text-sm text-[#5C5A55]">
+            This will permanently delete <span className="font-medium text-[#131210]">&ldquo;{campaignName}&rdquo;</span>. This cannot be undone.
+          </p>
+          <div>
+            <label className="block text-xs text-[#5C5A55] mb-1.5">
+              Type <span className="font-semibold text-[#131210]">{campaignName}</span> to confirm
+            </label>
+            <input
+              type="text"
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleConfirm() }}
+              autoFocus
+              placeholder="Enter campaign name"
+              className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
+            />
+          </div>
+        </div>
         <div className="px-5 py-3 border-t border-[#E3E1DB] flex justify-end gap-2">
           <button onClick={onCancel} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
-          <button onClick={onConfirm} className="px-3 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c4351b] rounded-md">Delete</button>
+          <button
+            onClick={handleConfirm}
+            disabled={!matches}
+            className={`px-3 py-1.5 text-sm font-medium text-white rounded-md transition-colors ${matches ? 'bg-[#D63B1F] hover:bg-[#c4351b]' : 'bg-[#E3A799] cursor-not-allowed'}`}
+          >
+            Delete
+          </button>
         </div>
       </div>
     </div>

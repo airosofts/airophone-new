@@ -33,6 +33,32 @@ export default function Integrations() {
   const [success, setSuccess] = useState('')
   const [disconnecting, setDisconnecting] = useState(false)
   const [confirmDisconnect, setConfirmDisconnect] = useState(false)
+  // App-level board allowlist (Monday OAuth itself grants all boards).
+  const [boards, setBoards] = useState(null)        // [{ id, name, enabled }]
+  const [boardsSaving, setBoardsSaving] = useState(false)
+  const [boardsSaved, setBoardsSaved] = useState(false)
+
+  useEffect(() => {
+    if (!status?.connected) { setBoards(null); return }
+    fetchWithWorkspace('/api/integrations/monday/boards?all=true')
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d?.boards)) setBoards(d.boards.map(b => ({ id: String(b.id), name: b.name, enabled: b.enabled !== false }))) })
+      .catch(() => {})
+  }, [status?.connected])
+
+  const toggleBoard = (id) => setBoards(bs => bs.map(b => b.id === id ? { ...b, enabled: !b.enabled } : b))
+  const setAllBoards = (on) => setBoards(bs => bs.map(b => ({ ...b, enabled: on })))
+  const saveBoards = async () => {
+    if (!boards) return
+    setBoardsSaving(true)
+    try {
+      await fetchWithWorkspace('/api/integrations/monday/boards', {
+        method: 'POST',
+        body: JSON.stringify({ boardIds: boards.filter(b => b.enabled).map(b => b.id) }),
+      })
+      setBoardsSaved(true); setTimeout(() => setBoardsSaved(false), 2000)
+    } finally { setBoardsSaving(false) }
+  }
 
   const load = useCallback(async () => {
     try {
@@ -159,6 +185,48 @@ export default function Integrations() {
         <p className="text-[11px] text-[#9B9890] mt-3 leading-relaxed">
           Once connected, you&rsquo;ll see a <span className="font-medium text-[#5C5A55]">Source</span> option when creating a campaign — pick a board, choose which groups to include, and Monday columns become message placeholders.
         </p>
+
+        {/* Board allowlist — choose which boards AiroPhone can use */}
+        {status?.connected && (
+          <div className="mt-4 pt-4 border-t border-[#E3E1DB]">
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <p className="text-xs font-semibold text-[#5C5A55]">Boards available to this workspace</p>
+              {boards && boards.length > 0 && (
+                <button onClick={saveBoards} disabled={boardsSaving}
+                  className="text-xs font-medium px-3 py-1.5 rounded-md bg-[#D63B1F] text-white hover:opacity-90 disabled:opacity-50">
+                  {boardsSaving ? 'Saving…' : boardsSaved ? 'Saved ✓' : 'Save'}
+                </button>
+              )}
+            </div>
+            <p className="text-[11px] text-[#9B9890] mb-2.5 leading-relaxed">
+              Monday connects every board on the account. Choose which ones AiroPhone may use in Automations, Campaigns and follow-up status — the rest stay hidden.
+            </p>
+            {boards === null ? (
+              <p className="text-[11px] text-[#9B9890]">Loading boards…</p>
+            ) : boards.length === 0 ? (
+              <p className="text-[11px] text-[#9B9890]">No boards found on this account.</p>
+            ) : (
+              <>
+                <div className="flex items-center gap-3 mb-1.5 text-[11px]">
+                  <button type="button" onClick={() => setAllBoards(true)} className="text-[#D63B1F] hover:underline">Select all</button>
+                  <button type="button" onClick={() => setAllBoards(false)} className="text-[#9B9890] hover:underline">Clear</button>
+                  <span className="text-[#9B9890] ml-auto">{boards.filter(b => b.enabled).length} of {boards.length} enabled</span>
+                </div>
+                <div className="max-h-56 overflow-y-auto border border-[#E3E1DB] rounded-lg divide-y divide-[#F0EEE9]">
+                  {boards.map(b => (
+                    <label key={b.id} className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-[#F7F6F3]">
+                      <input type="checkbox" checked={b.enabled} onChange={() => toggleBoard(b.id)} className="accent-[#D63B1F]" />
+                      <span className="text-sm text-[#131210] truncate">{b.name}</span>
+                    </label>
+                  ))}
+                </div>
+                {boards.every(b => !b.enabled) && (
+                  <p className="text-[11px] text-[#D63B1F] mt-1.5">No boards selected — Monday won&rsquo;t appear as an option until you enable at least one.</p>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Disconnect confirmation */}

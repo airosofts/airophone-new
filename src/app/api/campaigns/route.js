@@ -112,14 +112,17 @@ export async function POST(request) {
       send_days,
       daily_cap,
       recurring,
+      draft,   // Save-as-draft: only `name` is required; finish & launch later.
     } = body
+
+    const isDraft = !!draft
 
     // Monday-sourced campaigns get their recipients from a board (linked right
     // after creation via /campaigns/[id]/monday-link), not from contact lists —
     // so the contact-list validation and counting below don't apply to them.
     const isMondaySource = source === 'monday'
 
-    // Validate required fields
+    // Validate required fields (a draft only needs a name).
     if (!name?.trim()) {
       return NextResponse.json(
         { error: 'Campaign name is required' },
@@ -127,18 +130,13 @@ export async function POST(request) {
       )
     }
 
-    if (!message_template?.trim()) {
-      return NextResponse.json(
-        { error: 'Message template is required' },
-        { status: 400 }
-      )
-    }
-
-    if (!sender_number?.trim()) {
-      return NextResponse.json(
-        { error: 'Sender phone number is required' },
-        { status: 400 }
-      )
+    if (!isDraft) {
+      if (!message_template?.trim()) {
+        return NextResponse.json({ error: 'Message template is required' }, { status: 400 })
+      }
+      if (!sender_number?.trim()) {
+        return NextResponse.json({ error: 'Sender phone number is required' }, { status: 400 })
+      }
     }
 
     let totalRecipients = 0
@@ -146,15 +144,8 @@ export async function POST(request) {
     if (isMondaySource) {
       // Recipient count is unknown until send time (items are pulled from
       // Monday then). Leave it at 0 — the start route reflects the real count.
-    } else {
-      if (!contact_list_ids || contact_list_ids.length === 0) {
-        return NextResponse.json(
-          { error: 'At least one contact list must be selected' },
-          { status: 400 }
-        )
-      }
-
-      // Get total recipients count from selected contact lists (workspace-filtered)
+    } else if (contact_list_ids && contact_list_ids.length > 0) {
+      // Count recipients from selected contact lists (workspace-filtered).
       const { data: contacts, error: contactsError } = await supabaseAdmin
         .from('contacts')
         .select('id', { count: 'exact' })
@@ -171,20 +162,21 @@ export async function POST(request) {
 
       totalRecipients = contacts?.length || 0
 
-      if (totalRecipients === 0) {
-        return NextResponse.json(
-          { error: 'Selected contact lists have no contacts' },
-          { status: 400 }
-        )
+      // A real (non-draft) campaign must actually have recipients.
+      if (!isDraft && totalRecipients === 0) {
+        return NextResponse.json({ error: 'Selected contact lists have no contacts' }, { status: 400 })
       }
+    } else if (!isDraft) {
+      // Non-draft contacts campaign with no list selected.
+      return NextResponse.json({ error: 'At least one contact list must be selected' }, { status: 400 })
     }
 
     // Create campaign
     const campaignData = {
       name: name.trim(),
-      message_template: message_template.trim(),
-      sender_number: sender_number.trim(),
-      contact_list_ids: contact_list_ids,
+      message_template: (message_template || '').trim(),
+      sender_number: (sender_number || '').trim() || null,
+      contact_list_ids: contact_list_ids || [],
       delay_between_messages: delay_between_messages || 1000,
       scheduled_at: scheduled_at || null,
       throttle_count: throttle_count || null,

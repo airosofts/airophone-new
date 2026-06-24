@@ -1,5 +1,20 @@
 @import "tailwindcss";
 
+/* Tailwind v4 dropped the default `cursor: pointer` on buttons — restore it for
+   clickable elements so they read as clickable (finger), while non-interactive
+   areas keep the default arrow. In @layer base so utility classes
+   (cursor-col-resize, cursor-grab, etc.) and inline styles still win. */
+@layer base {
+  button:not(:disabled):not([aria-disabled="true"]),
+  [role="button"]:not([aria-disabled="true"]),
+  a[href],
+  label[for],
+  summary,
+  select:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
 /* ══════════════════════════════════════════
    AIROPHONE BRAND TOKENS
    Font: Plus Jakarta Sans (primary), JetBrains Mono (mono)

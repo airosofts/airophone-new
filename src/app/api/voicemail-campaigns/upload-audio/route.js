@@ -72,11 +72,36 @@ export async function POST(request) {
     sizeBytes: file.size,
   })
 
+  // Save to the workspace Audio Library so it can be reused on future campaigns
+  // without re-uploading. Best-effort — never fail the upload if the library
+  // insert hiccups (e.g. table not yet migrated).
+  let recordingId = null
+  try {
+    const { data: rec, error: recErr } = await supabaseAdmin
+      .from('voicemail_recordings')
+      .insert({
+        workspace_id: workspace.workspaceId,
+        created_by: user.userId,
+        name: file.name || `Recording ${new Date().toISOString().slice(0, 10)}`,
+        storage_path: storagePath,
+        playback_url: playbackUrl || null,
+        voicedrop_url: voicedropUrl,
+        size_bytes: file.size,
+      })
+      .select('id')
+      .single()
+    if (recErr) console.error('[voicemails:upload] library save failed (non-fatal):', recErr.message)
+    else recordingId = rec?.id || null
+  } catch (e) {
+    console.error('[voicemails:upload] library save threw (non-fatal):', e.message)
+  }
+
   return NextResponse.json({
     success: true,
     url: playbackUrl,            // used for in-app audio player
     voicedrop_url: voicedropUrl, // used as recording_url when sending RVMs
     path: storagePath,
     sizeBytes: file.size,
+    recordingId,                 // library row id (null if the save was skipped)
   })
 }

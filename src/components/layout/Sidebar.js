@@ -527,6 +527,7 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
             return (
               <button
                 key={phone.id}
+                className="group"
                 draggable
                 onDragStart={(e) => { setDragId(phone.id); e.dataTransfer.effectAllowed = 'move' }}
                 onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }}
@@ -535,7 +536,8 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
                 onClick={() => handlePhoneNumberClick(phone.phoneNumber)}
                 style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '5px 16px', border: 'none', cursor: 'grab',
+                  padding: '5px 16px', border: 'none',
+                  cursor: isDragging ? 'grabbing' : 'pointer',
                   background: isSelected ? '#F7F6F3' : 'transparent',
                   opacity: isDragging ? 0.45 : 1,
                   textAlign: 'left', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
@@ -544,8 +546,10 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
                 onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = '#F7F6F3' }}
                 onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
               >
-                {/* Drag grip — signals the row is reorderable */}
-                <svg width="8" height="14" viewBox="0 0 8 14" fill="#C8C5BD" style={{ flexShrink: 0, marginLeft: -2 }} aria-hidden>
+                {/* Drag grip — only visible on hover; signals the row is reorderable */}
+                <svg width="8" height="14" viewBox="0 0 8 14" fill="#C8C5BD" aria-hidden
+                  className="opacity-0 group-hover:opacity-100 transition-opacity"
+                  style={{ flexShrink: 0, marginLeft: -2, cursor: 'grab' }}>
                   <circle cx="2" cy="2" r="1"/><circle cx="6" cy="2" r="1"/>
                   <circle cx="2" cy="7" r="1"/><circle cx="6" cy="7" r="1"/>
                   <circle cx="2" cy="12" r="1"/><circle cx="6" cy="12" r="1"/>
