@@ -2245,7 +2245,9 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
   const resolvedDailyCap = dailyLimitEnabled && dailyLimit > 0 ? Math.floor(dailyLimit) : null
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isSavingDraft, setIsSavingDraft] = useState(false)
   const [created, setCreated] = useState(false)
+  const [savedAsDraft, setSavedAsDraft] = useState(false)
   const fileInputRef = useRef(null)
 
   // Preview data (fetched lazily when Step 2 / Step 3 are visible)
@@ -2730,6 +2732,35 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
     }
   }
 
+  // The full campaign payload — shared by Launch and Save-as-draft. The backend
+  // always creates the row as `status: 'draft'`; the difference is whether we
+  // then call /start.
+  const buildCampaignPayload = () => ({
+    name: name.trim(),
+    recordingUrl: uploadState.voicedropUrl || uploadState.url,
+    recordingPath: uploadState.path,
+    voicedropRecordingUrl: uploadState.voicedropUrl || null,
+    senderNumber,
+    contactListIds: selectedListIds,
+    phoneColumns: selectedColumns,
+    chunkSize: chunkSize > 0 ? chunkSize : 0,
+    chunkIndex: chunkSize > 0 ? chunkIndex : 0,
+    throttleCount: resolvedThrottleCount,
+    throttleWindowSeconds: resolvedThrottleWindowSeconds,
+    sendWindows: resolvedSendWindows,
+    sendTimezone: resolvedTimezone,
+    sendDays: resolvedSendDays,
+    dailyCap: resolvedDailyCap,
+    excludeStatuses,
+    monitorNumbers,
+    startsAt: resolvedStartsAt,
+    explicitRecipients: selectedRecipients.map(r => ({
+      phone: r.phone,
+      contactId: r.contactId,
+      sourceColumn: r.sourceColumn,
+    })),
+  })
+
   const handleLaunch = async () => {
     if (!validateStep(3)) return
     if (selectedRecipients.length === 0) {
@@ -2739,32 +2770,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
     setIsSubmitting(true)
     setErrors({})
     try {
-      const payload = {
-        name: name.trim(),
-        recordingUrl: uploadState.voicedropUrl || uploadState.url,
-        recordingPath: uploadState.path,
-        voicedropRecordingUrl: uploadState.voicedropUrl || null,
-        senderNumber,
-        contactListIds: selectedListIds,
-        phoneColumns: selectedColumns,
-        chunkSize: chunkSize > 0 ? chunkSize : 0,
-        chunkIndex: chunkSize > 0 ? chunkIndex : 0,
-        throttleCount: resolvedThrottleCount,
-        throttleWindowSeconds: resolvedThrottleWindowSeconds,
-        sendWindows: resolvedSendWindows,
-        sendTimezone: resolvedTimezone,
-        sendDays: resolvedSendDays,
-        dailyCap: resolvedDailyCap,
-        excludeStatuses,
-        monitorNumbers,
-        startsAt: resolvedStartsAt,
-        explicitRecipients: selectedRecipients.map(r => ({
-          phone: r.phone,
-          contactId: r.contactId,
-          sourceColumn: r.sourceColumn,
-        })),
-      }
-      const response = await apiPost('/api/voicemail-campaigns', payload)
+      const response = await apiPost('/api/voicemail-campaigns', buildCampaignPayload())
       const data = await response.json()
       if (!data.success) { setErrors({ submit: data.error || 'Failed to create campaign' }); return }
       // Auto-launch (matches legacy behavior).
@@ -2782,16 +2788,45 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
     }
   }
 
+  // Everything a draft needs to be launchable later (the View modal's "Launch"
+  // re-sends the already-queued recipients — there's no re-edit step, so we
+  // require a complete, ready-to-send config before allowing a draft save).
+  const canSaveDraft = (
+    !!name.trim() && !!senderNumber &&
+    !!uploadState && uploadState !== 'uploading' &&
+    selectedListIds.length > 0 && selectedColumns.length > 0 &&
+    selectedRecipients.length > 0
+  )
+  const handleSaveDraft = async () => {
+    if (!canSaveDraft) return
+    setIsSavingDraft(true)
+    setErrors({})
+    try {
+      // Same payload as Launch, but we DON'T call /start — the row stays a draft.
+      const response = await apiPost('/api/voicemail-campaigns', buildCampaignPayload())
+      const data = await response.json()
+      if (!data.success) { setErrors({ submit: data.error || 'Failed to save draft' }); return }
+      setSavedAsDraft(true)
+      setCreated(true)
+    } catch {
+      setErrors({ submit: 'Failed to save draft. Please try again.' })
+    } finally {
+      setIsSavingDraft(false)
+    }
+  }
+
   // ── Success state ──────────────────────────────────────────────────────
   if (created) {
     return (
       <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
         <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-sm">
           <div className="px-5 py-8 text-center">
-            <div className="w-10 h-10 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-3"><i className="fas fa-check text-green-600"></i></div>
-            <h3 className="text-sm font-semibold text-[#131210] mb-1">Voicemail campaign launched</h3>
+            <div className="w-10 h-10 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-3"><i className={`fas ${savedAsDraft ? 'fa-bookmark text-[#5C5A55]' : 'fa-check text-green-600'}`}></i></div>
+            <h3 className="text-sm font-semibold text-[#131210] mb-1">{savedAsDraft ? 'Saved as draft' : 'Voicemail campaign launched'}</h3>
             <p className="text-xs text-[#9B9890] mb-4">
-              {`Dispatching to ${selectedRecipients.length.toLocaleString()} ${selectedRecipients.length === 1 ? 'recipient' : 'recipients'} via the queue. You can close this tab — open the campaign to watch progress.`}
+              {savedAsDraft
+                ? `${selectedRecipients.length.toLocaleString()} ${selectedRecipients.length === 1 ? 'recipient is' : 'recipients are'} queued and ready. Nothing has been sent yet — open the campaign and press Launch whenever you're ready.`
+                : `Dispatching to ${selectedRecipients.length.toLocaleString()} ${selectedRecipients.length === 1 ? 'recipient' : 'recipients'} via the queue. You can close this tab — open the campaign to watch progress.`}
             </p>
             <button onClick={onCreated} className="px-4 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md">View Campaigns</button>
           </div>
@@ -3788,13 +3823,27 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
 
       {/* Sticky bottom bar — matches the SMS New Campaign page */}
       <footer className="bg-[#FFFFFF] border-t border-[#E3E1DB] flex-shrink-0 px-4 sm:px-8 py-3 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={step === 1 ? onClose : goBack}
-          className="px-4 py-2 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3] transition-colors"
-        >
-          {step === 1 ? 'Cancel' : 'Back'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={step === 1 ? onClose : goBack}
+            className="px-4 py-2 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3] transition-colors"
+          >
+            {step === 1 ? 'Cancel' : 'Back'}
+          </button>
+          {/* Save as draft — stash a complete, ready-to-send campaign without
+              launching it. Disabled until everything needed to launch is set,
+              since a draft is launched (not re-edited) from the campaign list. */}
+          <button
+            type="button"
+            onClick={handleSaveDraft}
+            disabled={!canSaveDraft || isSavingDraft || isSubmitting}
+            title={canSaveDraft ? 'Save without sending — launch it later from the campaign list' : 'Add a name, sender number, audio, contact list and recipients to save a draft'}
+            className="px-4 py-2 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3] transition-colors disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-2"
+          >
+            {isSavingDraft ? <><i className="fas fa-spinner fa-spin text-xs" />Saving…</> : <><i className="fas fa-bookmark text-xs" />Save as draft</>}
+          </button>
+        </div>
         {step < 4 ? (
           <button
             type="button"
