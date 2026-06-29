@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import SearchableDropdown from '@/components/SearchableDropdown'
 import { getCurrentUser } from '@/lib/auth'
-import { apiGet, apiPost, apiDelete, fetchWithWorkspace } from '@/lib/api-client'
+import { apiGet, apiPost, apiPut, apiDelete, fetchWithWorkspace } from '@/lib/api-client'
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz'
 import { estimateSendSchedule } from '@/lib/scheduling'
 import { CONTACT_STATUSES, CONTACT_STATUS_MAP, DEFAULT_EXCLUDED_STATUSES } from '@/lib/contact-status'
@@ -74,6 +74,69 @@ const DEFAULT_OVERAGE = { name: 'your plan', rate: 0.04 }   // conservative fall
 // ISO weekday (1=Mon..7=Sun) helpers for business-day display.
 const WEEKDAY_LABELS = { 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat', 7: 'Sun' }
 const hhmm = (t) => String(t || '').slice(0, 5)   // "09:00:00" → "09:00"
+
+// Reverse-map a saved voicemail_campaigns row back into the RVM wizard's UI
+// state so a DRAFT can be reopened and edited. The wizard stores schedule/throttle
+// as UI *modes*; the row stores the *resolved* values — so we infer the closest
+// mode. Recipients are NOT restored here: once the lists/columns are prefilled the
+// preview effect re-derives the audience (Step 3), where the user re-confirms it.
+function deriveRvmWizardInit(c) {
+  const D = {
+    name: '', senderNumber: '', uploadState: null,
+    selectedListIds: [], selectedColumns: ['phone_number'],
+    throttleMode: 'recommended', presetId: 'small', throttleCount: 100, throttleWindowValue: 15, throttleUnit: 'minute',
+    whenMode: 'now', startAtLocal: '', sendTimezone: 'America/New_York',
+    dailyLimitEnabled: false, dailyLimit: 500,
+    monitorInput: '', excludeStatuses: DEFAULT_EXCLUDED_STATUSES,
+  }
+  if (!c) return D
+
+  const uploadState = (c.recording_url || c.voicedrop_recording_url)
+    ? { url: c.recording_url || c.voicedrop_recording_url, voicedropUrl: c.voicedrop_recording_url || null, path: c.recording_path || null, name: c.recording_name || 'Saved recording' }
+    : null
+
+  // Throttle → mode. null count = "max"; otherwise "manual" with the saved
+  // count and the largest clean unit for the window.
+  let throttleMode = 'manual', throttleCount = 100, throttleWindowValue = 15, throttleUnit = 'minute'
+  if (c.throttle_count == null) {
+    throttleMode = 'max'
+  } else {
+    throttleCount = c.throttle_count
+    const sec = c.throttle_window_seconds || 3600
+    if (sec % 86400 === 0)      { throttleWindowValue = sec / 86400; throttleUnit = 'day' }
+    else if (sec % 3600 === 0)  { throttleWindowValue = sec / 3600;  throttleUnit = 'hour' }
+    else                        { throttleWindowValue = Math.max(1, Math.round(sec / 60)); throttleUnit = 'minute' }
+  }
+
+  // Schedule → when. send_windows present ⇒ best/business; else future start ⇒
+  // later; else now.
+  const sendTimezone = c.send_timezone || 'America/New_York'
+  let whenMode = 'now', startAtLocal = ''
+  const w = Array.isArray(c.send_windows) ? c.send_windows : null
+  if (w && w.length > 0) {
+    const norm = w.map(x => `${hhmm(x.start)}-${hhmm(x.end)}`).join(',')
+    const bestNorm = SCHEDULE_PRESETS.best.map(x => `${x.start}-${x.end}`).join(',')
+    whenMode = norm === bestNorm ? 'best' : 'business'
+  } else if (c.starts_at && new Date(c.starts_at).getTime() > Date.now()) {
+    whenMode = 'later'
+    try { startAtLocal = formatInTimeZone(new Date(c.starts_at), sendTimezone, "yyyy-MM-dd'T'HH:mm") } catch {}
+  }
+
+  return {
+    name: c.name || '',
+    senderNumber: c.sender_number || '',
+    uploadState,
+    selectedListIds: Array.isArray(c.contact_list_ids) ? c.contact_list_ids : [],
+    selectedColumns: Array.isArray(c.phone_columns) && c.phone_columns.length ? c.phone_columns : ['phone_number'],
+    throttleMode, presetId: 'small', throttleCount, throttleWindowValue, throttleUnit,
+    whenMode, startAtLocal, sendTimezone,
+    dailyLimitEnabled: !!(c.daily_cap && c.daily_cap > 0),
+    dailyLimit: c.daily_cap && c.daily_cap > 0 ? c.daily_cap : 500,
+    monitorInput: Array.isArray(c.monitor_numbers) ? c.monitor_numbers.join('\n') : '',
+    excludeStatuses: Array.isArray(c.exclude_statuses) ? c.exclude_statuses : [],
+  }
+}
+
 function formatDays(days) {
   if (!Array.isArray(days) || days.length === 0 || days.length === 7) return 'every day'
   const key = [...days].sort((a, b) => a - b).join(',')
@@ -112,6 +175,7 @@ export default function CampaignsPage() {
   const [showCreateRVM, setShowCreateRVM] = useState(false)
   const [showViewRVM, setShowViewRVM] = useState(false)
   const [selectedRVMCampaign, setSelectedRVMCampaign] = useState(null)
+  const [editRVMCampaign, setEditRVMCampaign] = useState(null)   // draft being edited in the wizard
   const [rvmDeleteConfirm, setRvmDeleteConfirm] = useState(null)
   const [rvmSearchTerm, setRvmSearchTerm] = useState('')
   const [rvmStatusFilter, setRvmStatusFilter] = useState('all')
@@ -762,14 +826,15 @@ export default function CampaignsPage() {
         />
       )}
 
-      {showCreateRVM && (
+      {(showCreateRVM || editRVMCampaign) && (
         <CreateRVMCampaignModal
           contactLists={contactLists}
           phoneNumbers={phoneNumbers}
           subscription={subscription}
           creditBalance={creditBalance}
-          onClose={() => setShowCreateRVM(false)}
-          onCreated={() => { setShowCreateRVM(false); fetchRVMCampaigns() }}
+          editCampaign={editRVMCampaign}
+          onClose={() => { setShowCreateRVM(false); setEditRVMCampaign(null) }}
+          onCreated={() => { setShowCreateRVM(false); setEditRVMCampaign(null); fetchRVMCampaigns() }}
         />
       )}
 
@@ -778,6 +843,7 @@ export default function CampaignsPage() {
           campaign={selectedRVMCampaign}
           contactLists={contactLists}
           onClose={() => { setShowViewRVM(false); setSelectedRVMCampaign(null) }}
+          onEdit={() => { setShowViewRVM(false); setEditRVMCampaign(selectedRVMCampaign); setSelectedRVMCampaign(null) }}
           onLaunch={() => handleLaunchRVMCampaign(selectedRVMCampaign.id)}
           onDelete={() => setRvmDeleteConfirm({ campaignId: selectedRVMCampaign.id, campaignName: selectedRVMCampaign.name })}
         />
@@ -2149,20 +2215,23 @@ function ViewCampaignModal({ campaign, contactLists, phoneNumbers, isTrial, onCl
   )
 }
 
-function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, creditBalance = 0, onClose, onCreated }) {
+function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, creditBalance = 0, onClose, onCreated, editCampaign = null }) {
   // Step 1 (Basics): name, sender, audio
   // Step 2 (Audience): contact lists + phone columns
   // Step 3 (Chunks & Preview): chunk size + chunk picker + recipient sample
+  // When editing a draft, every field below is seeded from the saved row.
+  const isEdit = !!editCampaign
+  const _init = useMemo(() => deriveRvmWizardInit(editCampaign), [editCampaign])
   const [step, setStep] = useState(1)
-  const [name, setName] = useState('')
-  const [senderNumber, setSenderNumber] = useState('')
-  const [uploadState, setUploadState] = useState(null) // null | 'uploading' | { url, voicedropUrl, path, name }
+  const [name, setName] = useState(() => _init.name)
+  const [senderNumber, setSenderNumber] = useState(() => _init.senderNumber)
+  const [uploadState, setUploadState] = useState(() => _init.uploadState) // null | 'uploading' | { url, voicedropUrl, path, name }
   // Audio Library — reusable saved recordings for this workspace.
   const [library, setLibrary] = useState([])
   const [libraryLoading, setLibraryLoading] = useState(false)
   const [showLibrary, setShowLibrary] = useState(false)
-  const [selectedListIds, setSelectedListIds] = useState([])
-  const [selectedColumns, setSelectedColumns] = useState(['phone_number'])
+  const [selectedListIds, setSelectedListIds] = useState(() => _init.selectedListIds)
+  const [selectedColumns, setSelectedColumns] = useState(() => _init.selectedColumns)
   // Chunking removed from the UI — the throttle + calling windows now pace the
   // whole list automatically. chunkSize stays 0 (= send whole list) so all the
   // `chunkSize > 0` branches below are inert.
@@ -2174,11 +2243,11 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
   //   'max'         → no throttle (send as fast as allowed)
   // All three resolve to (resolvedThrottleCount, resolvedThrottleWindowSeconds)
   // — the same two fields the backend sweeper enforces.
-  const [throttleMode, setThrottleMode] = useState('recommended')
-  const [presetId, setPresetId] = useState('small')
-  const [throttleCount, setThrottleCount] = useState(100)         // manual mode
-  const [throttleWindowValue, setThrottleWindowValue] = useState(15)
-  const [throttleUnit, setThrottleUnit] = useState('minute')
+  const [throttleMode, setThrottleMode] = useState(() => _init.throttleMode)
+  const [presetId, setPresetId] = useState(() => _init.presetId)
+  const [throttleCount, setThrottleCount] = useState(() => _init.throttleCount)         // manual mode
+  const [throttleWindowValue, setThrottleWindowValue] = useState(() => _init.throttleWindowValue)
+  const [throttleUnit, setThrottleUnit] = useState(() => _init.throttleUnit)
   const unitToSeconds = (u) => (u === 'day' ? 86400 : u === 'hour' ? 3600 : 60)
   const manualWindowSeconds = Math.max(60, throttleWindowValue * unitToSeconds(throttleUnit))
 
@@ -2199,9 +2268,9 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
   //   'best'     → only 10–12 & 2–4 each day (best callback windows)
   //   'business' → only 9–5 each day
   // Each maps to (starts_at, send_windows); the throttle paces the rate within.
-  const [whenMode, setWhenMode] = useState('now')
-  const [startAtLocal, setStartAtLocal] = useState('')   // "YYYY-MM-DDTHH:MM"
-  const [sendTimezone, setSendTimezone] = useState('America/New_York')
+  const [whenMode, setWhenMode] = useState(() => _init.whenMode)
+  const [startAtLocal, setStartAtLocal] = useState(() => _init.startAtLocal)   // "YYYY-MM-DDTHH:MM"
+  const [sendTimezone, setSendTimezone] = useState(() => _init.sendTimezone)
 
   // Workspace business hours (from Settings) — powers the "Business hours"
   // option so it mirrors exactly what's configured there (hours, days, tz).
@@ -2240,8 +2309,8 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
   }
 
   // Optional per-day cap (works in every speed mode, including No throttle).
-  const [dailyLimitEnabled, setDailyLimitEnabled] = useState(false)
-  const [dailyLimit, setDailyLimit] = useState(500)
+  const [dailyLimitEnabled, setDailyLimitEnabled] = useState(() => _init.dailyLimitEnabled)
+  const [dailyLimit, setDailyLimit] = useState(() => _init.dailyLimit)
   const resolvedDailyCap = dailyLimitEnabled && dailyLimit > 0 ? Math.floor(dailyLimit) : null
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -2256,14 +2325,14 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
   const [totalRecipients, setTotalRecipients] = useState(0)
   // Contact statuses to skip (call-outcome filter). Pre-checks the "don't
   // contact" set; the user can adjust on the Audience step.
-  const [excludeStatuses, setExcludeStatuses] = useState(DEFAULT_EXCLUDED_STATUSES)
+  const [excludeStatuses, setExcludeStatuses] = useState(() => _init.excludeStatuses)
   const [excludedByStatus, setExcludedByStatus] = useState(0)
   const toggleExcludeStatus = (id) =>
     setExcludeStatuses(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id])
 
   // Monitor / canary numbers — get the voicemail once per day so you can confirm
   // the drip fired. Raw textarea (one per line / comma); parsed for the payload.
-  const [monitorInput, setMonitorInput] = useState('')
+  const [monitorInput, setMonitorInput] = useState(() => _init.monitorInput)
   const monitorNumbers = monitorInput.split(/[\n,]+/).map(s => s.trim()).filter(Boolean)
   // Full recipient list for the currently selected chunk (capped at 50k server-side).
   // Step 3 paginates this client-side and lets the user search + per-row toggle.
@@ -2770,19 +2839,23 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
     setIsSubmitting(true)
     setErrors({})
     try {
-      const response = await apiPost('/api/voicemail-campaigns', buildCampaignPayload())
+      // Editing a draft → update it in place; otherwise create a new campaign.
+      const response = isEdit
+        ? await apiPut(`/api/voicemail-campaigns/${editCampaign.id}`, buildCampaignPayload())
+        : await apiPost('/api/voicemail-campaigns', buildCampaignPayload())
       const data = await response.json()
-      if (!data.success) { setErrors({ submit: data.error || 'Failed to create campaign' }); return }
+      if (!data.success) { setErrors({ submit: data.error || 'Failed to save campaign' }); return }
+      const launchId = isEdit ? editCampaign.id : data.campaign.id
       // Auto-launch (matches legacy behavior).
-      const startRes = await apiPost(`/api/voicemail-campaigns/${data.campaign.id}/start`, {})
+      const startRes = await apiPost(`/api/voicemail-campaigns/${launchId}/start`, {})
       const startData = await startRes.json()
       if (!startRes.ok || !startData.success) {
-        setErrors({ submit: startData.message || startData.error || 'Created as draft — could not start. Open it and press Launch to retry.' })
+        setErrors({ submit: startData.message || startData.error || 'Saved as draft — could not start. Open it and press Launch to retry.' })
         return
       }
       setCreated(true)
     } catch {
-      setErrors({ submit: 'Failed to create campaign. Please try again.' })
+      setErrors({ submit: 'Failed to launch campaign. Please try again.' })
     } finally {
       setIsSubmitting(false)
     }
@@ -2803,7 +2876,10 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
     setErrors({})
     try {
       // Same payload as Launch, but we DON'T call /start — the row stays a draft.
-      const response = await apiPost('/api/voicemail-campaigns', buildCampaignPayload())
+      // Editing an existing draft updates it in place.
+      const response = isEdit
+        ? await apiPut(`/api/voicemail-campaigns/${editCampaign.id}`, buildCampaignPayload())
+        : await apiPost('/api/voicemail-campaigns', buildCampaignPayload())
       const data = await response.json()
       if (!data.success) { setErrors({ submit: data.error || 'Failed to save draft' }); return }
       setSavedAsDraft(true)
@@ -2822,7 +2898,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
         <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-sm">
           <div className="px-5 py-8 text-center">
             <div className="w-10 h-10 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-3"><i className={`fas ${savedAsDraft ? 'fa-bookmark text-[#5C5A55]' : 'fa-check text-green-600'}`}></i></div>
-            <h3 className="text-sm font-semibold text-[#131210] mb-1">{savedAsDraft ? 'Saved as draft' : 'Voicemail campaign launched'}</h3>
+            <h3 className="text-sm font-semibold text-[#131210] mb-1">{savedAsDraft ? (isEdit ? 'Draft updated' : 'Saved as draft') : 'Voicemail campaign launched'}</h3>
             <p className="text-xs text-[#9B9890] mb-4">
               {savedAsDraft
                 ? `${selectedRecipients.length.toLocaleString()} ${selectedRecipients.length === 1 ? 'recipient is' : 'recipients are'} queued and ready. Nothing has been sent yet — open the campaign and press Launch whenever you're ready.`
@@ -2848,7 +2924,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
           <button type="button" onClick={onClose} className="p-2 -ml-2 text-[#9B9890] hover:text-[#5C5A55] hover:bg-[#F7F6F3] rounded-lg transition-colors">
             <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
           </button>
-          <h3 className="text-base sm:text-lg font-semibold text-[#131210]">New voicemail campaign</h3>
+          <h3 className="text-base sm:text-lg font-semibold text-[#131210]">{isEdit ? 'Edit voicemail campaign' : 'New voicemail campaign'}</h3>
         </div>
         {/* Stepper */}
         <div className="flex items-center gap-1 sm:gap-2 px-4 sm:px-8 pb-3 overflow-x-auto">
@@ -3869,7 +3945,7 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
   )
 }
 
-function ViewRVMCampaignModal({ campaign: initialCampaign, contactLists, onClose, onLaunch, onDelete }) {
+function ViewRVMCampaignModal({ campaign: initialCampaign, contactLists, onClose, onEdit, onLaunch, onDelete }) {
   // Live mirror of the campaign row. Polls while open so the progress counters
   // (sent_count / failed_count) and status (running/paused/completed) stay
   // current as the sweeper processes the queue — no refresh needed, and the
@@ -4190,13 +4266,24 @@ function ViewRVMCampaignModal({ campaign: initialCampaign, contactLists, onClose
 
         <div className="border-t border-[#E3E1DB] px-5 py-3.5 flex flex-wrap items-center gap-2 flex-shrink-0">
           {campaign.status === 'draft' && (
-            <button
-              onClick={handleLaunch}
-              disabled={isLaunching}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-semibold text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md transition-colors disabled:opacity-50"
-            >
-              {isLaunching ? <><i className="fas fa-spinner fa-spin text-xs"></i> Launching…</> : <><i className="fas fa-rocket text-xs"></i> Launch Campaign</>}
-            </button>
+            <>
+              <button
+                onClick={handleLaunch}
+                disabled={isLaunching}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-semibold text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md transition-colors disabled:opacity-50"
+              >
+                {isLaunching ? <><i className="fas fa-spinner fa-spin text-xs"></i> Launching…</> : <><i className="fas fa-rocket text-xs"></i> Launch Campaign</>}
+              </button>
+              {onEdit && (
+                <button
+                  onClick={onEdit}
+                  disabled={isLaunching}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-medium text-[#5C5A55] border border-[#D4D1C9] rounded-md hover:bg-[#F7F6F3] transition-colors disabled:opacity-50"
+                >
+                  <i className="fas fa-pen text-xs"></i> Edit
+                </button>
+              )}
+            </>
           )}
           {(campaign.status === 'running' || campaign.status === 'paused') && (
             <button

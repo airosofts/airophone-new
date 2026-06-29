@@ -23,6 +23,24 @@ const WEBHOOK_URL = `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.airophone
 const SEND_GAP_MS = 400
 const sleep = (ms) => new Promise(r => setTimeout(r, ms))
 
+// ── Concurrency / pacing ────────────────────────────────────────────────────
+// VoiceDrop delivers each ringless voicemail as a REAL outbound call on the
+// workspace's Telnyx trunk, which has a hard concurrent-call cap (commonly 10).
+// The per-hour throttle only bounds the hourly TOTAL — it happily lets the whole
+// hour's budget burst in the first minute, so 50–100 calls go in-flight at once
+// and Telnyx rejects the overflow with "Concurrent Call Limit Reached". Those
+// rejected drops silently fail (and used to take monitor numbers down with them).
+//
+// Fix: pace INITIATIONS per rolling minute so in-flight calls stay under the
+// trunk cap. Two gates, both counted over a trailing 60s window:
+//   • per-workspace — the trunk is shared by all the workspace's campaigns, so
+//     the concurrency ceiling is per-workspace. Default 8/min keeps well under a
+//     10-concurrent trunk even if a drop lasts the better part of a minute.
+//   • per-campaign  — spread the user's hourly throttle EVENLY (100/hr → ~2/min)
+//     instead of bursting it, so a single campaign never floods the trunk.
+const PACE_WINDOW_MS = 60_000
+const MAX_SENDS_PER_MINUTE = Number(process.env.RVM_MAX_SENDS_PER_MINUTE) || 8
+
 // A network-level failure (couldn't reach the voicemail provider at all) is
 // transient — re-queue and retry on a later tick instead of permanently failing
 // the recipient. After this many attempts we give up and mark it failed so a
@@ -173,6 +191,40 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
     dailyAllowanceByCampaign.set(c.id, Math.max(0, c.daily_cap - (sentToday || 0)))
   }
 
+  // Pacing allowances over the trailing 60s — the real defense against blowing
+  // past the trunk's concurrent-call cap (see PACE_WINDOW notes up top).
+  const paceSinceIso = new Date(Date.now() - PACE_WINDOW_MS).toISOString()
+
+  // Per-campaign: spread the hourly throttle evenly instead of bursting it.
+  const campaignPaceByCampaign = new Map()
+  for (const c of (campaigns || [])) {
+    if (!c.throttle_count || c.throttle_count <= 0) { campaignPaceByCampaign.set(c.id, Infinity); continue }
+    const windowSec = c.throttle_window_seconds && c.throttle_window_seconds > 0 ? c.throttle_window_seconds : 3600
+    const evenPerMinute = Math.max(1, Math.ceil(c.throttle_count * 60 / windowSec))
+    const { count: sent60 } = await supabaseAdmin
+      .from('voicemail_campaign_sends')
+      .select('id', { count: 'exact', head: true })
+      .eq('campaign_id', c.id)
+      .in('status', DISPATCHED)
+      .gte('sent_at', paceSinceIso)
+    campaignPaceByCampaign.set(c.id, Math.max(0, evenPerMinute - (sent60 || 0)))
+  }
+
+  // Per-workspace: the Telnyx trunk is shared across the workspace's campaigns,
+  // so the hard concurrency ceiling is per-workspace. Remaining = cap − sent in
+  // the last minute by ANY of the workspace's campaigns.
+  const workspaceIds = [...new Set((campaigns || []).map(c => c.workspace_id).filter(Boolean))]
+  const wsPaceRemaining = new Map()
+  for (const wsId of workspaceIds) {
+    const { count: wsSent60 } = await supabaseAdmin
+      .from('voicemail_campaign_sends')
+      .select('id', { count: 'exact', head: true })
+      .eq('workspace_id', wsId)
+      .in('status', DISPATCHED)
+      .gte('sent_at', paceSinceIso)
+    wsPaceRemaining.set(wsId, Math.max(0, MAX_SENDS_PER_MINUTE - (wsSent60 || 0)))
+  }
+
   // Resolve the recording URL per running campaign once.
   const urlByCampaign = new Map()
   for (const c of (campaigns || [])) {
@@ -188,7 +240,9 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
   }
 
   let sent = 0, failed = 0, skipped = 0, requeued = 0
+  let pacedOut = 0   // rows held back purely by the per-minute pace gate
   let firstSend = true
+  const processedByWorkspace = new Map()
 
   for (const row of rows) {
     const campaign = campaignById.get(row.campaign_id)
@@ -210,19 +264,34 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
       continue
     }
 
-    // Throttle + daily-cap gate: the row may dispatch only if it's under BOTH
-    // the trailing-window throttle allowance AND today's remaining daily cap.
-    // Anything beyond either is left 'queued' for a later tick / the next day.
+    // Throttle + daily-cap gate: the row may dispatch only if it's under the
+    // trailing-window throttle allowance, today's remaining daily cap, AND the
+    // evenly-spread per-minute pace (so the hourly budget can't burst). Anything
+    // beyond is left 'queued' for a later tick / the next day.
     const allowance = Math.min(
       allowanceByCampaign.get(row.campaign_id) ?? Infinity,
       dailyAllowanceByCampaign.get(row.campaign_id) ?? Infinity,
+      campaignPaceByCampaign.get(row.campaign_id) ?? Infinity,
     )
     const usedSoFar = processedByCampaign.get(row.campaign_id) || 0
     if (usedSoFar >= allowance) {
+      // If the ONLY thing holding it back is the per-minute pace, flag it so the
+      // inline drainer knows to stop and let the cron pace the rest.
+      if (usedSoFar >= (campaignPaceByCampaign.get(row.campaign_id) ?? Infinity)) pacedOut++
       skipped++
       continue
     }
+
+    // Per-workspace concurrency ceiling: never put more calls in-flight on the
+    // shared Telnyx trunk than it can hold. Counted across ALL the workspace's
+    // campaigns this minute.
+    const wsId = row.workspace_id
+    const wsRemaining = wsPaceRemaining.get(wsId) ?? Infinity
+    const wsUsed = processedByWorkspace.get(wsId) || 0
+    if (wsUsed >= wsRemaining) { pacedOut++; skipped++; continue }
+
     processedByCampaign.set(row.campaign_id, usedSoFar + 1)
+    processedByWorkspace.set(wsId, wsUsed + 1)
 
     // Atomic claim — only send if still 'queued' (prevents double-dispatch when
     // the inline kick and the cron overlap).
@@ -393,7 +462,7 @@ export async function sweepRvmQueue({ batchSize = 50, campaignId = null } = {}) 
     await finalizeRvmCampaign(id)
   }
 
-  return { picked: rows.length, sent, failed, skipped, requeued }
+  return { picked: rows.length, sent, failed, skipped, requeued, pacedOut }
 }
 
 // Sweep all 'running' campaigns through finalizeRvmCampaign — completes those
@@ -462,12 +531,14 @@ export async function sendMonitorHeartbeats() {
     const recordingUrl = await resolveRecordingUrl(c)
     if (!recordingUrl) continue
 
+    let anySent = false
     for (const phone of nums) {
       try {
         const conversation = await getOrCreateConversation(phone, c.sender_number, c.workspace_id, c.created_by)
         if (!conversation?.id) continue
-        const result = await sendStaticVoicemail({ recordingUrl, from: c.sender_number, to: phone, statusWebhookUrl: WEBHOOK_URL })
+        const result = await sendMonitorVoicemail({ recordingUrl, from: c.sender_number, to: phone })
         if (!result.ok) { console.warn('[rvm:monitor] send failed', { campaignId: c.id, phone, msg: result.data?.message }); continue }
+        anySent = true
         await supabaseAdmin.from('messages').insert({
           conversation_id: conversation.id,
           direction: 'outbound',
@@ -486,7 +557,32 @@ export async function sendMonitorHeartbeats() {
         console.error('[rvm:monitor] error', { campaignId: c.id, phone, error: e.message })
       }
     }
+
+    // If NOTHING landed, release today's claim so a later tick retries instead of
+    // staying silent for the whole day. Failed sends don't deduct credits, so
+    // retrying is safe. (This is exactly what swallowed Roland's monitor drop.)
+    if (!anySent) {
+      await supabaseAdmin.from('voicemail_campaigns')
+        .update({ monitor_last_sent_at: null })
+        .eq('id', c.id)
+        .eq('monitor_last_sent_at', now.toISOString())
+      console.warn('[rvm:monitor] all monitor sends failed — released day claim for retry', { campaignId: c.id })
+    }
   }
+}
+
+// Send a monitor/canary voicemail with a couple of retries — a monitor drop is a
+// single confirmation send, so a transient trunk/provider hiccup shouldn't make
+// it vanish. Returns the last sendStaticVoicemail result.
+async function sendMonitorVoicemail({ recordingUrl, from, to }) {
+  let result = { ok: false, data: {} }
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    result = await sendStaticVoicemail({ recordingUrl, from, to, statusWebhookUrl: WEBHOOK_URL })
+    if (result.ok) return result
+    // 429 (rate/concurrency) and transient errors are worth a brief backoff.
+    await sleep(SEND_GAP_MS * attempt * 2)
+  }
+  return result
 }
 
 // Fire the monitor/canary voicemail to ONE campaign's monitor numbers IMMEDIATELY
@@ -520,16 +616,19 @@ export async function sendMonitorNow(campaignId) {
   if (!recordingUrl) { console.warn('[rvm:monitor-now] no recording url', { campaignId }); return }
 
   // Claim today's heartbeat up front so the cron doesn't ALSO fire today.
+  const claimStamp = new Date().toISOString()
   await supabaseAdmin.from('voicemail_campaigns')
-    .update({ monitor_last_sent_at: new Date().toISOString() })
+    .update({ monitor_last_sent_at: claimStamp })
     .eq('id', c.id)
 
+  let anySent = false
   for (const phone of nums) {
     try {
       const conversation = await getOrCreateConversation(phone, c.sender_number, c.workspace_id, c.created_by)
       if (!conversation?.id) continue
-      const result = await sendStaticVoicemail({ recordingUrl, from: c.sender_number, to: phone, statusWebhookUrl: WEBHOOK_URL })
+      const result = await sendMonitorVoicemail({ recordingUrl, from: c.sender_number, to: phone })
       if (!result.ok) { console.warn('[rvm:monitor-now] send failed', { campaignId, phone, msg: result.data?.message }); continue }
+      anySent = true
       await supabaseAdmin.from('messages').insert({
         conversation_id: conversation.id,
         direction: 'outbound',
@@ -547,6 +646,17 @@ export async function sendMonitorNow(campaignId) {
     } catch (e) {
       console.error('[rvm:monitor-now] error', { campaignId, phone, error: e.message })
     }
+  }
+
+  // Every launch-monitor send failed — release the claim so the cron's daily
+  // heartbeat retries (next time it's inside a calling window) instead of the
+  // monitor number silently getting nothing all day.
+  if (!anySent) {
+    await supabaseAdmin.from('voicemail_campaigns')
+      .update({ monitor_last_sent_at: null })
+      .eq('id', c.id)
+      .eq('monitor_last_sent_at', claimStamp)
+    console.warn('[rvm:monitor-now] all launch monitor sends failed — released claim for cron retry', { campaignId })
   }
 }
 
@@ -576,6 +686,15 @@ export async function drainCampaignInline(campaignId, { batchSize = 25, maxBatch
     // are spaced out and a brief blip has time to recover.
     if (res.sent === 0 && res.requeued > 0) {
       console.warn('[rvm:inline] provider unreachable — deferring retries to cron', { campaignId, ...res })
+      return
+    }
+    // A full batch produced no sends and wasn't a network re-queue → every row
+    // was held back by a gate (per-minute pace/concurrency, daily cap, calling
+    // window, or claimed by an overlapping sweep). Looping would just spin (and
+    // pacing out would risk bursting the trunk), so hand the rest to the cron,
+    // which paces one minute at a time.
+    if (res.sent === 0 && res.requeued === 0 && res.picked > 0) {
+      console.log('[rvm:inline] nothing dispatchable this tick — cron will continue', { campaignId, ...res })
       return
     }
     console.log('[rvm:inline] batch', { campaignId, ...res })

@@ -392,7 +392,18 @@ export default function InboxPage() {
 
   // Play notification sound on new inbound messages (any conversation)
   const lastConvTimestampRef = useRef(null)
+  // The phone line the baseline above belongs to. `conversations` is scoped to
+  // the SELECTED number, so switching numbers loads a different conversation set
+  // whose newest inbound message is often more recent than the previous line's
+  // baseline — which used to fire the tone spuriously. When the line changes we
+  // re-baseline silently so only genuinely new inbound messages ring.
+  const soundLineRef = useRef(null)
   useEffect(() => {
+    const line = selectedPhoneNumber?.phoneNumber || null
+    if (soundLineRef.current !== line) {
+      soundLineRef.current = line
+      lastConvTimestampRef.current = null   // re-baseline for the new line; don't play
+    }
     if (!conversations.length) return
     // Find the most recent inbound lastMessage timestamp across all conversations
     let newestInbound = null
@@ -404,17 +415,17 @@ export default function InboxPage() {
       }
     }
     if (!newestInbound) return
-    // On first load, just record the timestamp without playing
+    // First snapshot for this line: record the timestamp without playing.
     if (lastConvTimestampRef.current === null) {
       lastConvTimestampRef.current = newestInbound
       return
     }
-    // Play sound and show toast if there's a newer inbound message
+    // Play sound only if there's a strictly newer inbound message on THIS line.
     if (newestInbound > lastConvTimestampRef.current) {
       lastConvTimestampRef.current = newestInbound
       playMessageTone()
     }
-  }, [conversations])
+  }, [conversations, selectedPhoneNumber?.phoneNumber])
 
   const handleConversationSelect = (conversation) => {
     setActiveConversation(conversation.id)
