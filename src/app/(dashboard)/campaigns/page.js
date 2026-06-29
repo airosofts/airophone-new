@@ -3533,6 +3533,27 @@ function CreateRVMCampaignModal({ contactLists, phoneNumbers, subscription, cred
                   </div>
                 )}
 
+                {/* Monitor / canary lines — a reminder of who gets the daily
+                    confirmation drip, separate from the recipient list below. */}
+                {monitorNumbers.length > 0 && (
+                  <div className="bg-white border border-[#E3E1DB] rounded-lg p-3.5">
+                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                      <div className="min-w-0">
+                        <p className="text-[10px] uppercase tracking-wider text-[#5C5A55] font-semibold">Monitor {monitorNumbers.length === 1 ? 'line' : 'lines'}</p>
+                        <p className="text-[11px] text-[#9B9890] mt-0.5">Gets the voicemail once at launch, then once per day while running — separate from the {selectedRecipients.length.toLocaleString()} recipients below.</p>
+                      </div>
+                      <span className="flex-shrink-0 text-[11px] text-[#9B9890]">{(monitorNumbers.length * 2).toLocaleString()} credits/day</span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {monitorNumbers.map((p, i) => (
+                        <span key={p + i} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono text-[#131210] bg-[#F7F6F3] border border-[#E3E1DB]">
+                          <i className="fas fa-satellite-dish text-[10px] text-[#9B9890]" />{p}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* ─── Landline scrub (Telnyx carrier lookup) ─── */}
                 {selectedRecipients.length > 0 && (() => {
                   const uniqueCount = uniqueSelectedCount
@@ -4209,6 +4230,20 @@ function ViewRVMCampaignModal({ campaign: initialCampaign, contactLists, onClose
               </p>
             </div>
           </div>
+
+          {Array.isArray(campaign.monitor_numbers) && campaign.monitor_numbers.length > 0 && (
+            <div>
+              <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-2">Monitor {campaign.monitor_numbers.length === 1 ? 'line' : 'lines'}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {campaign.monitor_numbers.map((p, i) => (
+                  <span key={p + i} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono text-[#131210] bg-[#F7F6F3] border border-[#E3E1DB]">
+                    <i className="fas fa-satellite-dish text-[10px] text-[#9B9890]" />{p}
+                  </span>
+                ))}
+              </div>
+              <p className="text-[11px] text-[#9B9890] mt-1.5">Receives the voicemail at launch and once per day while running — separate from the recipient list.</p>
+            </div>
+          )}
 
           {campaign.recording_url && (
             <div>
