@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { formatInTimeZone } from 'date-fns-tz'
 import { format, differenceInHours, isToday, isYesterday, parseISO } from 'date-fns'
 import VoiceNotePlayer from './VoiceNotePlayer'
+import Avatar from './avatar'
+import { isOnline } from '@/lib/presence'
 
 // Official delivery error codes → human-readable reasons.
 // Kept in sync with upstream messaging error code reference. Language is
@@ -89,7 +91,7 @@ function lookupErrorReason(code, fallback) {
   return ERROR_REASONS[c] || fallback || `Error code ${c}`
 }
 
-export default function MessageBubble({ message, user }) {
+export default function MessageBubble({ message, user, members, contactName, contactSeed }) {
   const [showDeliveryDetails, setShowDeliveryDetails] = useState(false)
   const isOutbound = message.direction === 'outbound'
   const isOptimistic = message.isOptimistic
@@ -255,9 +257,45 @@ export default function MessageBubble({ message, user }) {
     }
   }
 
+  // Who sent this message. Outbound senders land in different columns depending
+  // on the path:
+  //   • AI follow-up   → is_followup (+ followup_stage), no user
+  //   • AI reply       → ai_model, no user
+  //   • manual send    → user_id = the teammate
+  //   • campaign / RVM → sent_by  = the creator
+  // Automated markers win over an incidental user id, so an AI/follow-up message
+  // never reads as a person. A teammate we can resolve shows their name + live
+  // presence; anything else falls back to the workspace brand.
+  const senderMember = isOutbound
+    ? (members?.[message.sent_by] || members?.[message.user_id] || null)
+    : null
+  const isFollowup = isOutbound && !!message.is_followup
+  const isAiReply = isOutbound && !isFollowup && !!message.ai_model
+  const isBot = isFollowup || isAiReply
+  const brandName = user?.workspaceName || 'Your team'
+
+  let senderName
+  if (!isOutbound) senderName = contactName || 'Contact'
+  else if (isFollowup) senderName = `Auto follow-up${message.followup_stage ? ` · stage ${message.followup_stage}` : ''}`
+  else if (isAiReply) senderName = 'AI assistant'
+  else if (senderMember) senderName = senderMember.name
+  else senderName = brandName
+
+  const senderPhoto = (isOutbound && !isBot) ? (senderMember?.avatar || null) : null
+  const senderSeed = isOutbound ? (senderMember?.name || senderName) : (contactSeed || contactName || '')
+  const senderOnline = senderMember ? isOnline(senderMember.lastSeen) : undefined
+
   return (
-    <div className={`flex ${isOutbound ? 'justify-end' : 'justify-start'} group`}>
+    <div className={`flex items-end gap-2 ${isOutbound ? 'justify-end' : 'justify-start'} group`}>
+      {/* Sender avatar — inbound on the left, outbound on the right */}
+      <div className={`shrink-0 mb-6 ${isOutbound ? 'order-2' : 'order-1'}`}>
+        <Avatar name={senderName} seed={senderSeed} phone={isOutbound ? undefined : contactSeed} photoUrl={senderPhoto} bot={isBot} size={24} online={senderOnline} title={senderName} />
+      </div>
       <div className={`max-w-[85%] sm:max-w-md md:max-w-lg ${isOutbound ? 'order-1' : 'order-2'}`}>
+        {/* Sender name */}
+        <div className={`px-1 mb-0.5 text-[11px] font-medium text-[#9B9890] ${isOutbound ? 'text-right' : 'text-left'}`}>
+          {senderName}
+        </div>
         {/* Message Bubble */}
         <div className="relative">
           <div

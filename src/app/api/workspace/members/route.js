@@ -16,7 +16,7 @@ export async function GET(request) {
 
     const { data, error } = await supabaseAdmin
       .from('workspace_members')
-      .select('id, role, is_active, created_at, users(id, name, email, profile_photo_url)')
+      .select('id, role, is_active, created_at, users(id, name, email, profile_photo_url, last_seen)')
       .eq('workspace_id', workspace.workspaceId)
       .eq('is_active', true)
       .order('created_at', { ascending: true })
@@ -31,6 +31,7 @@ export async function GET(request) {
       avatar: m.users?.profile_photo_url || null,
       role: m.role,
       joinedAt: m.created_at,
+      lastSeen: m.users?.last_seen || null,
     }))
 
     // Fetch pending invites (graceful fail if table doesn't exist yet)

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { apiPost, apiPut, fetchWithWorkspace } from '@/lib/api-client'
@@ -14,6 +14,7 @@ import TasksView from '@/components/inbox/TasksView'
 import TaskDetailPanel from '@/components/inbox/TaskDetailPanel'
 import CreateTaskModal from '@/components/inbox/CreateTaskModal'
 import { useRealtimeConversations, useRealtimeMessages, usePhoneNumbers } from '@/hooks/useRealtime'
+import { usePresence } from '@/hooks/usePresence'
 import { useCallContext } from '@/contexts/CallContext'
 import SkeletonLoader from '@/components/ui/skeleton-loader'
 
@@ -59,6 +60,31 @@ export default function InboxPage() {
 
 
   const { phoneNumbers, setPhoneNumbers } = usePhoneNumbers(workspaceId)
+
+  // Workspace members — used to attribute each message to its sender and to show
+  // who's managing a chat in the ChatWindow header.
+  const [members, setMembers] = useState([])
+  useEffect(() => {
+    if (!workspaceId) return
+    let cancelled = false
+    const load = () => fetchWithWorkspace('/api/workspace/members')
+      .then(r => r.json())
+      .then(d => { if (!cancelled && Array.isArray(d?.members)) setMembers(d.members) })
+      .catch(() => {})
+    load()
+    // Roster refresh only catches added/removed members — presence is live below.
+    const handle = setInterval(load, 120000)
+    return () => { cancelled = true; clearInterval(handle) }
+  }, [workspaceId])
+
+  // Live presence (Supabase Realtime). Merge each member's current last_seen so
+  // the chat header + message avatars show real-time online/offline dots. Re-spreads
+  // on the hook's timer so offline is re-evaluated too.
+  const { presence } = usePresence(workspaceId)
+  const membersWithPresence = useMemo(
+    () => members.map(m => ({ ...m, lastSeen: presence[m.userId] ?? m.lastSeen })),
+    [members, presence]
+  )
 
   const [selectedConversation, setSelectedConversation] = useState(null)
   const [isCreatingNewConversation, setIsCreatingNewConversation] = useState(false)
@@ -405,6 +431,16 @@ export default function InboxPage() {
       lastConvTimestampRef.current = null   // re-baseline for the new line; don't play
     }
     if (!conversations.length) return
+    // Guard against the number-switch race: useRealtimeConversations keeps the
+    // PREVIOUS line's conversations in state until its async refetch resolves,
+    // but `line` above already points at the new number. If we baseline/compare
+    // now, we'd record the old line's newest-inbound timestamp as this line's
+    // baseline, then ring when the fresh (often more recent) list arrives — a
+    // spurious tone with no new message. Each conversation carries `from_number`
+    // (the line it belongs to); skip until the loaded set matches this line.
+    const normalizeLine = (p) => p ? p.replace(/\D/g, '').replace(/^1/, '') : ''
+    const loadedLine = conversations[0]?.from_number
+    if (loadedLine && normalizeLine(loadedLine) !== normalizeLine(line)) return
     // Find the most recent inbound lastMessage timestamp across all conversations
     let newestInbound = null
     for (const conv of conversations) {
@@ -921,6 +957,7 @@ export default function InboxPage() {
                 onBlockContact={handleBlockContact}
                 onDeleteConversation={handleDeleteConversation}
                 onAssignScenario={handleAssignScenario}
+                members={membersWithPresence}
               />
             </TaskDetailPanel>
           </div>
@@ -1391,6 +1428,7 @@ export default function InboxPage() {
                 onBlockContact={handleBlockContact}
                 onDeleteConversation={handleDeleteConversation}
                 onAssignScenario={handleAssignScenario}
+                members={membersWithPresence}
               />
             </div>
 

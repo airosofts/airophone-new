@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { getAvatarColor, getInitials } from '@/lib/avatar-color'
 import { CONTACT_STATUS_MAP } from '@/lib/contact-status'
 
@@ -28,6 +28,119 @@ export default function ConversationList({
   const [hoverRect, setHoverRect] = useState(null)
   const actionBarRef = useRef(null)
   const hoverClearTimer = useRef(null)
+
+  // ── Multi-select + keyboard navigation ──────────────────────────────────
+  // selectedIds/anchorId drive checkbox + shift-range selection; focusedId is the
+  // arrow-key cursor. anchor/focus are stored as IDS (not indices) so they survive
+  // the list reordering when a new message bumps a conversation to the top.
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const [anchorId, setAnchorId] = useState(null)
+  const [focusedId, setFocusedId] = useState(null)
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const rowsRef = useRef(null)
+  const selectionActive = selectedIds.size > 0
+  // Drives the adaptive read/unread toggle: if any selected thread is unread we
+  // offer "Mark read", otherwise "Mark unread".
+  const selectedAnyUnread = selectionActive && conversations.some(c => selectedIds.has(c.id) && c.unreadCount > 0)
+
+  const idxOf = (id) => conversations.findIndex(c => c.id === id)
+  const buildRange = (aIdx, bIdx) => {
+    const lo = Math.min(aIdx, bIdx), hi = Math.max(aIdx, bIdx)
+    const s = new Set()
+    for (let i = lo; i <= hi; i++) if (conversations[i]) s.add(conversations[i].id)
+    return s
+  }
+  const toggleId = (id) => setSelectedIds(prev => {
+    const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n
+  })
+  const clearSelection = () => { setSelectedIds(new Set()); setAnchorId(null); setConfirmBulkDelete(false) }
+
+  const scrollRowIntoView = (index) => {
+    const el = rowsRef.current?.querySelector(`[data-conv-index="${index}"]`)
+    el?.scrollIntoView({ block: 'nearest' })
+  }
+
+  // Row interactions: plain click opens; Shift = range from anchor; Cmd/Ctrl = toggle.
+  const handleRowClick = (e, index, conversation) => {
+    closeContextMenu()
+    if (e.shiftKey) {
+      e.preventDefault()
+      const aIdx = anchorId != null ? idxOf(anchorId) : index
+      if (anchorId == null) setAnchorId(conversation.id)
+      setSelectedIds(buildRange(aIdx < 0 ? index : aIdx, index))
+      setFocusedId(conversation.id)
+      return
+    }
+    if (e.metaKey || e.ctrlKey) {
+      toggleId(conversation.id)
+      setAnchorId(conversation.id)
+      setFocusedId(conversation.id)
+      return
+    }
+    clearSelection()
+    setAnchorId(conversation.id)
+    setFocusedId(conversation.id)
+    onConversationSelect(conversation)
+  }
+
+  const handleCheckboxClick = (e, index, conversation) => {
+    e.stopPropagation()
+    if (e.shiftKey && anchorId != null) {
+      const range = buildRange(idxOf(anchorId), index)
+      setSelectedIds(prev => { const n = new Set(prev); range.forEach(id => n.add(id)); return n })
+    } else {
+      toggleId(conversation.id)
+      setAnchorId(conversation.id)
+    }
+    setFocusedId(conversation.id)
+  }
+
+  // Run a per-conversation action over the whole selection, then clear.
+  const runBulk = async (fn) => {
+    if (!fn || selectedIds.size === 0) return
+    setBulkBusy(true)
+    const ids = [...selectedIds]
+    try { await Promise.all(ids.map(id => fn(id))) }
+    finally { setBulkBusy(false); clearSelection() }
+  }
+
+  // Arrow Up/Down move the cursor (and open on plain arrow); Shift+Arrow extends
+  // the selection. Ignored while typing in an input/textarea.
+  useEffect(() => {
+    const onKey = (e) => {
+      const t = e.target
+      if (e.key === 'Escape') { if (selectedIds.size > 0) clearSelection(); return }
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+      // Arrows still navigate when a text field is EMPTY (the composer auto-focuses
+      // when a chat opens) — but once you're typing, arrows edit the text instead.
+      const inField = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)
+      const fieldHasText = t && (t.isContentEditable || (typeof t.value === 'string' && t.value.length > 0))
+      if (inField && fieldHasText) return
+      if (!conversations.length) return
+      e.preventDefault()
+      const dir = e.key === 'ArrowDown' ? 1 : -1
+      const curIdx = focusedId != null ? idxOf(focusedId)
+        : (selectedConversation ? idxOf(selectedConversation.id) : -1)
+      const nextIdx = curIdx < 0
+        ? (dir > 0 ? 0 : conversations.length - 1)
+        : Math.max(0, Math.min(conversations.length - 1, curIdx + dir))
+      const nextConv = conversations[nextIdx]
+      if (!nextConv) return
+      setFocusedId(nextConv.id)
+      if (e.shiftKey) {
+        const aIdx = anchorId != null ? idxOf(anchorId) : (curIdx < 0 ? nextIdx : curIdx)
+        if (anchorId == null) setAnchorId(conversations[aIdx]?.id ?? nextConv.id)
+        setSelectedIds(buildRange(aIdx, nextIdx))
+      } else {
+        setAnchorId(nextConv.id)
+        onConversationSelect(nextConv)
+      }
+      scrollRowIntoView(nextIdx)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [conversations, focusedId, anchorId, selectedIds, selectedConversation, onConversationSelect])
 
   const clearHover = () => {
     hoverClearTimer.current = setTimeout(() => {
@@ -200,6 +313,19 @@ export default function ConversationList({
   }
 
   // ── Shared styles ──
+  const bulkIconBtn = {
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    width: 30, height: 30, borderRadius: 8, border: 'none',
+    background: 'transparent', color: '#fff', cursor: 'pointer',
+  }
+  const bulkDangerBtn = {
+    border: 'none', borderRadius: 8, padding: '5px 10px',
+    background: '#D63B1F', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+  }
+  const bulkGhostBtn = {
+    border: '1px solid rgba(255,255,255,0.22)', borderRadius: 8, padding: '5px 10px',
+    background: 'transparent', color: '#fff', fontSize: 12, fontWeight: 500, cursor: 'pointer',
+  }
   const menuItemStyle = {
     width: '100%', padding: '8px 14px', textAlign: 'left',
     fontSize: 13, border: 'none', cursor: 'pointer',
@@ -220,7 +346,7 @@ export default function ConversationList({
         />
       )}
 
-      <div>
+      <div ref={rowsRef}>
         {/* New conversation row */}
         {isCreatingNew && (
           <div style={{ borderBottom: '1px solid #E3E1DB' }}>
@@ -241,8 +367,10 @@ export default function ConversationList({
           </div>
         )}
 
-        {conversations.map((conversation) => {
+        {conversations.map((conversation, index) => {
           const isSelected = selectedConversation?.id === conversation.id
+          const isChecked = selectedIds.has(conversation.id)
+          const isFocused = focusedId === conversation.id
           const hasUnread = conversation.unreadCount > 0
           const displayName = (conversation.contact_first_name || conversation.contact_last_name)
             ? [conversation.contact_first_name, conversation.contact_last_name].filter(Boolean).join(' ')
@@ -252,33 +380,56 @@ export default function ConversationList({
 
           const callSnippet = getCallSnippet(conversation)
           const activityTime = getLastActivityTime(conversation)
+          // Checked wins (blue), then the open conversation / arrow cursor (grey).
+          const rowBg = isChecked ? '#EAF0FE' : (isSelected || isFocused) ? '#F7F6F3' : 'transparent'
 
           return (
             <div
               key={conversation.id}
+              data-conv-index={index}
               onContextMenu={(e) => handleContextMenu(e, conversation)}
-              onClick={() => { closeContextMenu(); onConversationSelect(conversation) }}
+              onClick={(e) => handleRowClick(e, index, conversation)}
               onMouseEnter={(e) => {
                 cancelClearHover()
                 const rect = e.currentTarget.getBoundingClientRect()
                 setHoveredConv(conversation)
                 setHoverRect(rect)
-                e.currentTarget.style.background = '#F7F6F3'
+                if (!isChecked) e.currentTarget.style.background = '#F7F6F3'
               }}
               onMouseLeave={(e) => {
                 clearHover()
-                e.currentTarget.style.background = isSelected ? '#F7F6F3' : 'transparent'
+                e.currentTarget.style.background = rowBg
               }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 11,
                 padding: '11px 14px',
                 borderBottom: '1px solid #E3E1DB',
                 cursor: 'pointer',
-                background: isSelected ? '#F7F6F3' : 'transparent',
+                background: rowBg,
+                boxShadow: isFocused ? 'inset 3px 0 0 #2563EB' : 'none',
                 transition: 'background 0.12s',
                 willChange: 'background-color',
+                userSelect: 'none',
               }}
             >
+              {/* Select checkbox — only while a multi-select is active. Start one
+                  with Shift-click (range) or Cmd/Ctrl-click (toggle) on a row. */}
+              {selectionActive && (
+                <div
+                  onClick={(e) => handleCheckboxClick(e, index, conversation)}
+                  style={{ display: 'flex', alignItems: 'center', flexShrink: 0, cursor: 'pointer', padding: 1 }}
+                  title="Select"
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    readOnly
+                    tabIndex={-1}
+                    style={{ width: 15, height: 15, accentColor: '#2563EB', cursor: 'pointer', pointerEvents: 'none' }}
+                  />
+                </div>
+              )}
+
               {/* Avatar */}
               <div style={{ position: 'relative', flexShrink: 0 }}>
                 <div style={{
@@ -368,6 +519,54 @@ export default function ConversationList({
             </div>
           )
         })}
+
+        {/* ── Bulk action bar — sticks to the bottom of the list while selecting ── */}
+        {selectionActive && (
+          <div style={{
+            position: 'sticky', bottom: 12, zIndex: 20,
+            margin: '0 12px', display: 'flex', justifyContent: 'center',
+            pointerEvents: 'none',
+          }}>
+            <div style={{
+              pointerEvents: 'auto',
+              display: 'flex', alignItems: 'center', gap: 4,
+              background: '#131210', color: '#fff',
+              borderRadius: 12, padding: '6px 8px 6px 12px',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.22)',
+              fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+              opacity: bulkBusy ? 0.7 : 1,
+            }}>
+              <span style={{ fontSize: 12.5, fontWeight: 600, marginRight: 4, whiteSpace: 'nowrap' }}>
+                {selectedIds.size} selected
+              </span>
+              {confirmBulkDelete ? (
+                <>
+                  <span style={{ fontSize: 12, color: '#E3E1DB', margin: '0 4px' }}>Delete {selectedIds.size}?</span>
+                  <button disabled={bulkBusy} onClick={() => runBulk(onDeleteConversation)} style={bulkDangerBtn}>Delete</button>
+                  <button disabled={bulkBusy} onClick={() => setConfirmBulkDelete(false)} style={bulkGhostBtn}>Cancel</button>
+                </>
+              ) : (
+                <>
+                  {/* Same icons as the context / hover menus. One adaptive read/unread
+                      toggle (envelope), mark-as-done (circle-check), delete (trash). */}
+                  <button disabled={bulkBusy} title={selectedAnyUnread ? 'Mark read' : 'Mark unread'} onClick={() => runBulk(selectedAnyUnread ? onMarkAsRead : onMarkAsUnread)} style={bulkIconBtn}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                  </button>
+                  <button disabled={bulkBusy} title="Mark as done" onClick={() => runBulk(onMarkAsDone)} style={bulkIconBtn}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                  </button>
+                  <button disabled={bulkBusy} title="Delete" onClick={() => setConfirmBulkDelete(true)} style={bulkIconBtn}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                  </button>
+                  <div style={{ width: 1, height: 18, background: 'rgba(255,255,255,0.18)', margin: '0 2px' }} />
+                  <button disabled={bulkBusy} title="Clear selection" onClick={clearSelection} style={bulkIconBtn}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Hover action bar ── */}

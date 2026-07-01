@@ -1,16 +1,27 @@
 // components/inbox/ChatWindow.js - Modern SaaS redesign with mobile optimization
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import MessageBubble from '../ui/message-bubble'
 import CallBubble from '../ui/call-bubble'
 import CallInterface from '../calling/CallInterface'
 import ScheduleModal from './ScheduleModal'
+import Avatar from '../ui/avatar'
+import { isOnline } from '@/lib/presence'
+import { useTypingIndicator } from '@/hooks/useTypingIndicator'
 import { apiPost, apiGet, apiDelete, fetchWithWorkspace } from '@/lib/api-client'
 import { getAvatarColor, getInitials } from '@/lib/avatar-color'
 
 // Small curated emoji set for the composer picker (no heavy dependency).
 const EMOJIS = ['😀','😁','😂','🤣','😊','😍','😘','😎','🤩','🥳','🙌','👍','👎','👏','🙏','💪','🔥','✨','🎉','✅','❌','⚠️','💯','❤️','🧡','💛','💚','💙','💜','🤝','📞','📱','💬','📩','⏰','📅','💰','🏠','🚗','👋','🤔','😅','😉','🙂','😇','🥹','😢','😡']
+
+// "Michael is typing…" — uses first names, collapses 3+.
+function typingLabel(users) {
+  const first = (n) => (n || 'Someone').trim().split(/\s+/)[0]
+  if (users.length === 1) return `${first(users[0].name)} is typing…`
+  if (users.length === 2) return `${first(users[0].name)} and ${first(users[1].name)} are typing…`
+  return `${users.length} people are typing…`
+}
 
 export default function ChatWindow({
   conversation,
@@ -34,7 +45,8 @@ export default function ChatWindow({
   onPinConversation,
   onBlockContact,
   onDeleteConversation,
-  onAssignScenario
+  onAssignScenario,
+  members = [],
 }) {
   const [newMessage, setNewMessage] = useState('')
   const [sending, setSending] = useState(false)
@@ -46,6 +58,20 @@ export default function ChatWindow({
   const [scheduled, setScheduled] = useState([])   // pending scheduled messages for this conversation
   const messagesEndRef = useRef(null)
   const textareaRef = useRef(null)
+
+  // Live "X is typing…" for teammates on the same conversation.
+  const { typingUsers, notifyTyping, notifyStop } = useTypingIndicator(conversation?.id, user)
+  const stopTypingTimer = useRef(null)
+  // On each keystroke: broadcast typing (throttled) and (re)arm a stop ping for
+  // ~3s after the last change. An empty box stops immediately.
+  const handleComposerChange = (e) => {
+    const val = e.target.value
+    setNewMessage(val)
+    if (!val) { notifyStop(); if (stopTypingTimer.current) clearTimeout(stopTypingTimer.current); return }
+    notifyTyping()
+    if (stopTypingTimer.current) clearTimeout(stopTypingTimer.current)
+    stopTypingTimer.current = setTimeout(() => notifyStop(), 3000)
+  }
   const moreMenuRef = useRef(null)
   const fileInputRef = useRef(null)
   const emojiRef = useRef(null)
@@ -174,6 +200,8 @@ export default function ChatWindow({
     const staged = attachments
     setNewMessage('')
     setAttachments([])
+    if (stopTypingTimer.current) clearTimeout(stopTypingTimer.current)
+    notifyStop()
 
     // Upload any staged attachments → public URLs (for Telnyx MMS + our bubble).
     let media = []
@@ -503,6 +531,22 @@ export default function ChatWindow({
     ? [conversation.contact_first_name, conversation.contact_last_name].filter(Boolean).join(' ')
     : (conversation.name || formatPhoneNumber(conversation.phone_number))
   const initials = getInitials(displayName, conversation.phone_number)
+
+  // Resolve message senders (message.sent_by) to workspace members.
+  const memberById = useMemo(() => {
+    const map = {}
+    for (const m of (members || [])) if (m?.userId) map[m.userId] = m
+    return map
+  }, [members])
+
+  // The people "managing" this chat = every teammate who has sent a message in
+  // it. Shown as stacked avatars in the header (like quo).
+  const participants = useMemo(() => {
+    const ids = [...new Set((messages || [])
+      .filter(m => m.direction === 'outbound' && (m.sent_by || m.user_id))
+      .map(m => m.sent_by || m.user_id))]
+    return ids.map(id => memberById[id]).filter(Boolean)
+  }, [messages, memberById])
   const isOnCall = callHook?.getCurrentCallNumber && callHook.getCurrentCallNumber() === conversation.phone_number
   const isWebRTCReady = callHook?.isRegistered && !callHook?.isInitializing
 
@@ -512,7 +556,7 @@ export default function ChatWindow({
       <div className="flex flex-col flex-1 min-w-0 relative">
         {/* Header */}
         <div className="bg-[#FFFFFF] border-b border-[#E3E1DB] sticky top-0 z-10">
-          <div className="px-4 py-3">
+          <div className="px-4 py-2.5">
             <div className="flex items-center justify-between gap-3">
               {/* Left: Back button (mobile) + Avatar + Info */}
               <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -532,7 +576,7 @@ export default function ChatWindow({
                 {/* Avatar */}
                 <div className="relative flex-shrink-0">
                   <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-semibold"
+                    className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-semibold"
                     style={{ backgroundColor: getAvatarColor(conversation.phone_number) }}
                   >
                     {initials}
@@ -540,11 +584,11 @@ export default function ChatWindow({
                 </div>
 
                 {/* Contact Info */}
-                <div className="flex-1 min-w-0">
-                  <h2 className="text-base font-semibold text-[#131210] truncate">
+                <div className="flex-1 min-w-0 leading-tight">
+                  <h2 className="text-[15px] font-semibold text-[#131210] truncate">
                     {displayName}
                   </h2>
-                  <p className="text-sm text-[#5C5A55] truncate">
+                  <p className="text-xs text-[#5C5A55] truncate">
                     {conversation.phone_number}
                   </p>
                 </div>
@@ -552,6 +596,22 @@ export default function ChatWindow({
 
               {/* Right: Action Buttons */}
               <div className="flex items-center gap-0.5 shrink-0">
+                {/* Who's managing this chat — teammates who've messaged here */}
+                {participants.length > 0 && (
+                  <div
+                    className="hidden sm:flex items-center -space-x-1.5 mr-1"
+                    title={`Managed by ${participants.map(p => p.name).join(', ')}`}
+                  >
+                    {participants.slice(0, 3).map((p) => (
+                      <Avatar key={p.userId} name={p.name} seed={p.name} photoUrl={p.avatar} size={24} ring online={isOnline(p.lastSeen)} title={`${p.name}${isOnline(p.lastSeen) ? ' · active now' : ''}`} />
+                    ))}
+                    {participants.length > 3 && (
+                      <div className="w-6 h-6 rounded-full bg-[#EFEDE8] text-[#5C5A55] text-[10px] font-semibold flex items-center justify-center ring-2 ring-white">
+                        +{participants.length - 3}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {/* Call */}
                 <button
                   onClick={handleCallClick}
@@ -676,7 +736,7 @@ export default function ChatWindow({
             {messages.map((item) => (
               item._type === 'call'
                 ? <CallBubble key={`call-${item.id}`} call={item} />
-                : <MessageBubble key={item.id} message={item} user={user} />
+                : <MessageBubble key={item.id} message={item} user={user} members={memberById} contactName={displayName} contactSeed={conversation.phone_number} />
             ))}
 
             {/* Pending scheduled messages — shown at the bottom (they're future). */}
@@ -705,6 +765,18 @@ export default function ChatWindow({
             <div ref={messagesEndRef} />
           </div>
         </div>
+
+        {/* Typing indicator — a teammate composing on this same conversation */}
+        {typingUsers.length > 0 && (
+          <div className="px-4 md:px-5 pb-1 flex items-center gap-1.5 text-[12px] text-[#9B9890]">
+            <span className="flex items-center gap-[3px]">
+              {[0, 1, 2].map(i => (
+                <span key={i} className="w-1.5 h-1.5 rounded-full bg-[#9B9890] animate-pulse" style={{ animationDelay: `${i * 160}ms` }} />
+              ))}
+            </span>
+            <span>{typingLabel(typingUsers)}</span>
+          </div>
+        )}
 
         {/* Input Area */}
         <div className="bg-[#FFFFFF] border-t border-[#E3E1DB] sticky bottom-0 z-10">
@@ -822,7 +894,7 @@ export default function ChatWindow({
                 ref={textareaRef}
                 rows={1}
                 value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
+                onChange={handleComposerChange}
                 onClick={() => onMarkAsRead?.(conversation.id)}
                 onKeyDown={handleKeyDown}
                 onInput={handleTextareaInput}

@@ -9,6 +9,8 @@ import { apiGet, apiPost } from '@/lib/api-client'
 import { validateAndUpgradeSession } from '@/lib/session-validator'
 import NotificationPanel from './NotificationPanel'
 import { supabase } from '@/lib/supabase'
+import Avatar from '@/components/ui/avatar'
+import { usePresence } from '@/hooks/usePresence'
 
 /* ── Brand SVG icons for nav (matching v2.2 design) ── */
 const NAV_ICONS = {
@@ -83,6 +85,8 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
   const [phoneNumbers, setPhoneNumbers] = useState([])
   const [loading, setLoading] = useState(true)
   const [unreadCounts, setUnreadCounts] = useState({})
+  const [members, setMembers] = useState([])   // team roster (names/avatars)
+  const { isOnline: presenceOnline } = usePresence(user?.workspaceId)   // live online/offline
   const [dragId, setDragId] = useState(null)
   const [sidebarWidth, setSidebarWidth] = useState(216)   // resizable; persists per browser
   const unreadChannelRef = useRef(null)
@@ -158,6 +162,34 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
     if (w) setSidebarWidth(w)
   }, [])
   useEffect(() => { localStorage.setItem('sidebar.width', String(sidebarWidth)) }, [sidebarWidth])
+
+  // ── Presence ──────────────────────────────────────────────────────────────
+  // Heartbeat: tell the server we're active every 45s (and immediately, and
+  // whenever the tab regains focus). "Online" is last_seen within 2 minutes.
+  useEffect(() => {
+    if (!user?.workspaceId) return
+    let stopped = false
+    const beat = () => { if (!document.hidden) apiPost('/api/presence/heartbeat', {}).catch(() => {}) }
+    beat()
+    const handle = setInterval(() => { if (!stopped) beat() }, 45000)
+    const onVis = () => { if (!document.hidden) beat() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => { stopped = true; clearInterval(handle); document.removeEventListener('visibilitychange', onVis) }
+  }, [user?.workspaceId])
+
+  // Team roster (names/avatars). Presence is handled live by usePresence, so this
+  // only needs an occasional refresh to catch members added/removed.
+  useEffect(() => {
+    if (!user?.workspaceId) return
+    let cancelled = false
+    const load = () => apiGet('/api/workspace/members')
+      .then(r => r.json())
+      .then(d => { if (!cancelled && Array.isArray(d?.members)) setMembers(d.members) })
+      .catch(() => {})
+    load()
+    const handle = setInterval(load, 120000)
+    return () => { cancelled = true; clearInterval(handle) }
+  }, [user?.workspaceId])
   const startSidebarResize = (e) => {
     e.preventDefault()
     const startX = e.clientX, startW = sidebarWidth
@@ -594,6 +626,51 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
             <p style={{ padding: '5px 16px', fontSize: '11.5px', color: '#9B9890' }}>No phone numbers yet</p>
           )}
         </div>
+
+        {/* My Team — roster with live presence (green = active now) */}
+        {members.length > 0 && (
+          <>
+            <div style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: 9, color: '#9B9890',
+              letterSpacing: '0.08em', textTransform: 'uppercase',
+              padding: '16px 16px 5px',
+            }}>
+              My Team
+            </div>
+            <div>
+              {[...members]
+                .sort((a, b) => {
+                  if (a.userId === user?.userId) return -1
+                  if (b.userId === user?.userId) return 1
+                  const ao = presenceOnline(a.userId, a.lastSeen), bo = presenceOnline(b.userId, b.lastSeen)
+                  if (ao !== bo) return ao ? -1 : 1   // online first
+                  return (a.name || '').localeCompare(b.name || '')
+                })
+                .map((m) => {
+                  const isYou = m.userId === user?.userId
+                  const online = presenceOnline(m.userId, m.lastSeen)
+                  return (
+                    <div
+                      key={m.userId || m.id}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 16px' }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = '#F7F6F3' }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                    >
+                      <Avatar name={m.name} seed={m.name} photoUrl={m.avatar} size={22} online={online} title={m.name} />
+                      <div style={{
+                        flex: 1, minWidth: 0, fontSize: '11.5px', color: '#5C5A55',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+                      }}>
+                        {m.name}{isYou && <span style={{ color: '#9B9890' }}> · You</span>}
+                      </div>
+                    </div>
+                  )
+                })}
+            </div>
+          </>
+        )}
       </nav>
     </div>
   )

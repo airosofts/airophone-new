@@ -25,21 +25,24 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms))
 
 // ── Concurrency / pacing ────────────────────────────────────────────────────
 // VoiceDrop delivers each ringless voicemail as a REAL outbound call on the
-// workspace's Telnyx trunk, which has a hard concurrent-call cap (commonly 10).
-// The per-hour throttle only bounds the hourly TOTAL — it happily lets the whole
-// hour's budget burst in the first minute, so 50–100 calls go in-flight at once
-// and Telnyx rejects the overflow with "Concurrent Call Limit Reached". Those
-// rejected drops silently fail (and used to take monitor numbers down with them).
+// workspace's Telnyx trunk, which has a hard concurrent-call cap. The per-hour
+// throttle only bounds the hourly TOTAL — it happily lets the whole hour's budget
+// burst in the first minute, so many calls go in-flight at once and Telnyx rejects
+// the overflow with "Concurrent Call Limit Reached". Those rejected drops silently
+// fail (and used to take monitor numbers down with them).
 //
 // Fix: pace INITIATIONS per rolling minute so in-flight calls stay under the
 // trunk cap. Two gates, both counted over a trailing 60s window:
 //   • per-workspace — the trunk is shared by all the workspace's campaigns, so
-//     the concurrency ceiling is per-workspace. Default 8/min keeps well under a
-//     10-concurrent trunk even if a drop lasts the better part of a minute.
+//     the concurrency ceiling is per-workspace. Telnyx raised our voicedrop-trunk
+//     cap from 10 → 100 concurrent (2026-07-01), so the default is 80/min: with a
+//     ~60s drop, concurrency ≈ sends/min, leaving ~20 channels of headroom under
+//     100. Tune via RVM_MAX_SENDS_PER_MINUTE (raise it only if Telnyx raises the
+//     trunk cap again).
 //   • per-campaign  — spread the user's hourly throttle EVENLY (100/hr → ~2/min)
 //     instead of bursting it, so a single campaign never floods the trunk.
 const PACE_WINDOW_MS = 60_000
-const MAX_SENDS_PER_MINUTE = Number(process.env.RVM_MAX_SENDS_PER_MINUTE) || 8
+const MAX_SENDS_PER_MINUTE = Number(process.env.RVM_MAX_SENDS_PER_MINUTE) || 80
 
 // A network-level failure (couldn't reach the voicemail provider at all) is
 // transient — re-queue and retry on a later tick instead of permanently failing
