@@ -40,7 +40,7 @@ export function useTypingIndicator(conversationId, me) {
       if (!uid || uid === myId) return
       setTypingUsers(prev => prev.some(u => u.userId === uid)
         ? prev
-        : [...prev, { userId: uid, name: payload.name || 'Someone' }])
+        : [...prev, { userId: uid, name: payload.name || 'Someone', avatar: payload.avatar || null }])
       const m = expiryRef.current
       if (m.has(uid)) clearTimeout(m.get(uid))
       m.set(uid, setTimeout(() => dropTyper(uid), TYPING_TTL_MS))
@@ -69,7 +69,7 @@ export function useTypingIndicator(conversationId, me) {
     const now = Date.now()
     if (now - lastSentRef.current < 2000) return
     lastSentRef.current = now
-    ch.send({ type: 'broadcast', event: 'typing', payload: { userId: myId, name: me?.name } })
+    ch.send({ type: 'broadcast', event: 'typing', payload: { userId: myId, name: me?.name, avatar: me?.profile_photo_url || me?.avatar || null } })
   }, [myId, me?.name])
 
   // Call when the user stops (blur / send / cleared input).

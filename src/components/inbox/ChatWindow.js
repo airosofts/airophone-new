@@ -59,6 +59,32 @@ export default function ChatWindow({
   const messagesEndRef = useRef(null)
   const textareaRef = useRef(null)
 
+  // AI conversation summary (Groq) — floating, dismissible.
+  const [summaryOpen, setSummaryOpen] = useState(false)
+  const [summary, setSummary] = useState(null)
+  const [summaryLoading, setSummaryLoading] = useState(false)
+  const [summaryError, setSummaryError] = useState('')
+  useEffect(() => { setSummaryOpen(false); setSummary(null); setSummaryError('') }, [conversation?.id])
+
+  const runSummary = async () => {
+    if (!conversation?.id) return
+    setSummaryLoading(true); setSummaryError('')
+    try {
+      const res = await apiPost('/api/ai/summarize-conversation', { conversationId: conversation.id })
+      const data = await res.json()
+      if (!res.ok || !data.summary) { setSummaryError(data.error || 'Could not summarize'); return }
+      setSummary(data.summary)
+    } catch { setSummaryError('Could not reach the summary service') }
+    finally { setSummaryLoading(false) }
+  }
+  const toggleSummary = () => {
+    setSummaryOpen(open => {
+      const next = !open
+      if (next && !summary && !summaryLoading) runSummary()
+      return next
+    })
+  }
+
   // Live "X is typing…" for teammates on the same conversation.
   const { typingUsers, notifyTyping, notifyStop } = useTypingIndicator(conversation?.id, user)
   const stopTypingTimer = useRef(null)
@@ -612,6 +638,17 @@ export default function ChatWindow({
                     )}
                   </div>
                 )}
+                {/* AI summary */}
+                <button
+                  onClick={toggleSummary}
+                  title="AI summary of this chat"
+                  className={`p-2 rounded-lg transition-colors ${summaryOpen ? 'text-[#8b5cf6] bg-[#f3efff]' : 'text-[#5C5A55] hover:text-[#131210] hover:bg-[#F7F6F3]'}`}
+                >
+                  <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M10 3l1.5 4.2L15.7 8.7 11.5 10.2 10 14.5 8.5 10.2 4.3 8.7 8.5 7.2z" />
+                    <path d="M17.5 13l.85 2.4 2.4.85-2.4.85-.85 2.4-.85-2.4L14.25 16.25l2.4-.85z" />
+                  </svg>
+                </button>
                 {/* Call */}
                 <button
                   onClick={handleCallClick}
@@ -730,6 +767,37 @@ export default function ChatWindow({
           </div>
         </div>
 
+        {/* AI summary — floats over the top of the thread, dismissible, doesn't push content */}
+        {summaryOpen && (
+          <div className="absolute right-3 top-2 z-30 w-[min(380px,calc(100%-24px))]">
+            <div className="bg-white border border-[#E3E1DB] rounded-xl shadow-[0_12px_32px_rgba(19,18,16,0.16)] overflow-hidden">
+              <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-[#F0EEE9]">
+                <svg className="w-4 h-4 text-[#8b5cf6]" viewBox="0 0 24 24" fill="currentColor"><path d="M10 3l1.5 4.2L15.7 8.7 11.5 10.2 10 14.5 8.5 10.2 4.3 8.7 8.5 7.2z" /><path d="M17.5 13l.85 2.4 2.4.85-2.4.85-.85 2.4-.85-2.4L14.25 16.25l2.4-.85z" /></svg>
+                <span className="text-[13px] font-semibold text-[#131210] flex-1">Conversation summary</span>
+                {!summaryLoading && (
+                  <button onClick={runSummary} title="Regenerate" className="p-1 text-[#9B9890] hover:text-[#5C5A55] rounded hover:bg-[#F7F6F3]">
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 4v6h-6M1 20v-6h6" /><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" /></svg>
+                  </button>
+                )}
+                <button onClick={() => setSummaryOpen(false)} title="Close" className="p-1 text-[#9B9890] hover:text-[#5C5A55] rounded hover:bg-[#F7F6F3]">
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <div className="px-3.5 py-3 max-h-[46vh] overflow-y-auto">
+                {summaryLoading ? (
+                  <div className="flex items-center gap-2 text-[13px] text-[#9B9890] py-2">
+                    <i className="fas fa-spinner fa-spin" /> Reading the conversation…
+                  </div>
+                ) : summaryError ? (
+                  <div className="text-[13px] text-[#D63B1F]">{summaryError} <button onClick={runSummary} className="underline ml-1">Retry</button></div>
+                ) : (
+                  <p className="text-[13px] leading-relaxed text-[#131210] whitespace-pre-wrap">{summary}</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Messages Area - Instant like OpenPhone, NO loading or empty state */}
         <div className="flex-1 overflow-y-auto bg-[#FFFFFF]">
           <div className="p-4 space-y-2">
@@ -768,13 +836,16 @@ export default function ChatWindow({
 
         {/* Typing indicator — a teammate composing on this same conversation */}
         {typingUsers.length > 0 && (
-          <div className="px-4 md:px-5 pb-1 flex items-center gap-1.5 text-[12px] text-[#9B9890]">
-            <span className="flex items-center gap-[3px]">
-              {[0, 1, 2].map(i => (
-                <span key={i} className="w-1.5 h-1.5 rounded-full bg-[#9B9890] animate-pulse" style={{ animationDelay: `${i * 160}ms` }} />
-              ))}
-            </span>
-            <span>{typingLabel(typingUsers)}</span>
+          <div className="px-4 md:px-5 pb-2 pt-0.5">
+            <div className="inline-flex items-center gap-2 pl-1 pr-3 py-1 rounded-full bg-[#f3efff] border border-[#e2d9ff]">
+              <Avatar name={typingUsers[0].name} seed={typingUsers[0].name} photoUrl={typingUsers[0].avatar} size={22} />
+              <span className="flex items-center gap-[3px]">
+                {[0, 1, 2].map(i => (
+                  <span key={i} className="typing-dot w-1.5 h-1.5 rounded-full bg-[#8b5cf6]" style={{ animationDelay: `${i * 180}ms` }} />
+                ))}
+              </span>
+              <span className="text-[12.5px] font-semibold text-[#6d4bd0]">{typingLabel(typingUsers)}</span>
+            </div>
           </div>
         )}
 
