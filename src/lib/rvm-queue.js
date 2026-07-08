@@ -554,7 +554,7 @@ export async function sendMonitorHeartbeats() {
           telnyx_message_id: result?.data?.voice_drop_id || null,
           sent_by: c.created_by,
         })
-        await supabaseAdmin.rpc('deduct_wallet_credits', { p_workspace_id: c.workspace_id, p_amount: CREDITS_PER_RVM }).catch(() => {})
+        await supabaseAdmin.rpc('deduct_wallet_credits', { p_workspace_id: c.workspace_id, p_amount: CREDITS_PER_RVM })
         console.log('[rvm:monitor] heartbeat sent', { campaignId: c.id, phone })
       } catch (e) {
         console.error('[rvm:monitor] error', { campaignId: c.id, phone, error: e.message })
@@ -644,7 +644,7 @@ export async function sendMonitorNow(campaignId) {
         telnyx_message_id: result?.data?.voice_drop_id || null,
         sent_by: c.created_by,
       })
-      await supabaseAdmin.rpc('deduct_wallet_credits', { p_workspace_id: c.workspace_id, p_amount: CREDITS_PER_RVM }).catch(() => {})
+      await supabaseAdmin.rpc('deduct_wallet_credits', { p_workspace_id: c.workspace_id, p_amount: CREDITS_PER_RVM })
       console.log('[rvm:monitor-now] launch monitor sent', { campaignId, phone })
     } catch (e) {
       console.error('[rvm:monitor-now] error', { campaignId, phone, error: e.message })

@@ -739,7 +739,6 @@ export default function CampaignsPage() {
                         <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Status</th>
                         <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Sender</th>
                         <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Sent</th>
-                        <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Delivered</th>
                         <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Failed</th>
                         <th className="px-5 py-3 text-left text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Created</th>
                         <th className="px-5 py-3 text-right text-[11px] font-semibold text-[#9B9890] uppercase tracking-wider">Actions</th>
@@ -757,7 +756,6 @@ export default function CampaignsPage() {
                             <td className="px-5 py-3"><span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${status.className}`}>{status.label}</span></td>
                             <td className="px-5 py-3 text-sm text-[#5C5A55]">{campaign.sender_number}</td>
                             <td className="px-5 py-3 text-sm text-[#5C5A55]">{campaign.sent_count ?? 0}</td>
-                            <td className="px-5 py-3 text-sm text-[#5C5A55]">{campaign.delivered_count ?? 0}</td>
                             <td className="px-5 py-3 text-sm text-[#5C5A55]">{campaign.failed_count ?? 0}</td>
                             <td className="px-5 py-3 text-sm text-[#9B9890] whitespace-nowrap">{formatDate(campaign.created_at)}</td>
                             <td className="px-5 py-3 text-right">

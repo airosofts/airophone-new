@@ -96,18 +96,31 @@ export async function sweepSmsCampaignQueue({ batchSize = 50 } = {}) {
       const conv = await getOrCreateConversation(row.to_number, c.sender_number, c.workspace_id, c.created_by)
       const result = await telnyx.sendMessage(c.sender_number, row.to_number, row.body || '')
       if (result.success) {
-        const { data: msg } = await supabaseAdmin.from('messages').insert({
-          conversation_id: conv.id, telnyx_message_id: result.messageId, direction: 'outbound',
-          from_number: c.sender_number, to_number: row.to_number, body: row.body, status: 'sent', sent_by: c.created_by,
-        }).select('id').single()
-        await supabaseAdmin.from('campaign_messages').update({ status: 'sent', message_id: msg?.id, sent_at: new Date().toISOString() }).eq('id', row.id)
-        if (!rateCache.has(c.workspace_id)) rateCache.set(c.workspace_id, await getWorkspaceMessageRate(c.workspace_id))
-        await supabaseAdmin.rpc('deduct_message_cost', {
-          p_user_id: c.created_by, p_workspace_id: c.workspace_id, p_message_count: 1, p_cost_per_message: rateCache.get(c.workspace_id),
-          p_description: `Campaign SMS to ${row.to_number}`, p_campaign_id: c.id, p_message_id: msg?.id, p_recipient_phone: row.to_number,
-        }).catch(() => {})
-        await supabaseAdmin.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conv.id)
+        // The message is out the door — record it as sent first, then treat
+        // billing and conversation bookkeeping as best-effort. A bookkeeping
+        // failure must never flip a delivered message back to 'failed'.
+        let msgId = null
+        try {
+          const { data: msg } = await supabaseAdmin.from('messages').insert({
+            conversation_id: conv.id, telnyx_message_id: result.messageId, direction: 'outbound',
+            from_number: c.sender_number, to_number: row.to_number, body: row.body, status: 'sent', sent_by: c.created_by,
+          }).select('id').single()
+          msgId = msg?.id
+        } catch (e) {
+          console.error('[sms-queue] message insert failed (send succeeded):', e.message)
+        }
+        await supabaseAdmin.from('campaign_messages').update({ status: 'sent', message_id: msgId, sent_at: new Date().toISOString() }).eq('id', row.id)
         sent++
+        try {
+          if (!rateCache.has(c.workspace_id)) rateCache.set(c.workspace_id, await getWorkspaceMessageRate(c.workspace_id))
+          await supabaseAdmin.rpc('deduct_message_cost', {
+            p_user_id: c.created_by, p_workspace_id: c.workspace_id, p_message_count: 1, p_cost_per_message: rateCache.get(c.workspace_id),
+            p_description: `Campaign SMS to ${row.to_number}`, p_campaign_id: c.id, p_message_id: msgId, p_recipient_phone: row.to_number,
+          })
+          await supabaseAdmin.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conv.id)
+        } catch (e) {
+          console.error('[sms-queue] post-send bookkeeping failed (send succeeded):', e.message)
+        }
       } else {
         await supabaseAdmin.from('campaign_messages').update({ status: 'failed', error_message: result.error }).eq('id', row.id); failed++
       }
