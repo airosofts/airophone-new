@@ -16,6 +16,19 @@ const MONDAY_ERRORS = {
   db_write_failed:          'Connected to Monday but could not save the connection. Try again.',
 }
 
+const SHEETS_ERRORS = {
+  access_denied:            'You denied access on Google.',
+  missing_code_or_state:    'Google returned an incomplete response. Please try again.',
+  state_cookie_missing:     'Your session expired before Google redirected back. Please try again.',
+  state_cookie_corrupt:     'Your session data was corrupted. Please try again.',
+  state_mismatch:           'Security check failed (state mismatch). Please try again.',
+  state_missing_context:    'Workspace context was lost. Please try again.',
+  token_exchange_failed:    'Google rejected the authorization code. Try connecting again.',
+  token_network_error:      "Couldn't reach Google's API. Try again in a moment.",
+  server_misconfigured:     'Google integration is not configured on the server. Contact support.',
+  db_write_failed:          'Connected to Google but could not save the connection. Try again.',
+}
+
 function MondayLogo({ size = 28 }) {
   // Three colored dots — Monday's signature mark, simplified
   return (
@@ -27,12 +40,27 @@ function MondayLogo({ size = 28 }) {
   )
 }
 
+function SheetsLogo({ size = 28 }) {
+  // Simplified Google Sheets mark — green page with a white grid
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
+      <path d="M8 2h12l6 6v20a2 2 0 01-2 2H8a2 2 0 01-2-2V4a2 2 0 012-2z" fill="#0F9D58" />
+      <path d="M20 2l6 6h-6V2z" fill="#87CEAC" />
+      <path d="M11 14h10v9H11v-9zm2 2v1.5h2.5V16H13zm4.5 0v1.5H20V16h-2.5zM13 19.5V21h2.5v-1.5H13zm4.5 0V21H20v-1.5h-2.5z" fill="#FFFFFF" />
+    </svg>
+  )
+}
+
 export default function Integrations() {
   const [status, setStatus] = useState(null) // null = loading, {connected: bool, ...}
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [disconnecting, setDisconnecting] = useState(false)
   const [confirmDisconnect, setConfirmDisconnect] = useState(false)
+  // Google Sheets connection — same lifecycle as the Monday card.
+  const [sheetsStatus, setSheetsStatus] = useState(null)
+  const [sheetsDisconnecting, setSheetsDisconnecting] = useState(false)
+  const [confirmSheetsDisconnect, setConfirmSheetsDisconnect] = useState(false)
   // App-level board allowlist (Monday OAuth itself grants all boards).
   const [boards, setBoards] = useState(null)        // [{ id, name, enabled }]
   const [boardsSaving, setBoardsSaving] = useState(false)
@@ -69,21 +97,35 @@ export default function Integrations() {
       console.error('[integrations] load failed:', e)
       setStatus({ connected: false })
     }
+    try {
+      const res = await fetchWithWorkspace('/api/integrations/google-sheets')
+      const data = await res.json()
+      setSheetsStatus(data)
+    } catch (e) {
+      console.error('[integrations] sheets load failed:', e)
+      setSheetsStatus({ connected: false })
+    }
   }, [])
 
-  // Pick up redirect-back flags from the OAuth callback and clean the URL.
+  // Pick up redirect-back flags from the OAuth callbacks and clean the URL.
   useEffect(() => {
     if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
     const connected = params.get('monday_connected')
     const errCode = params.get('monday_error')
+    const sheetsConnected = params.get('sheets_connected')
+    const sheetsErrCode = params.get('sheets_error')
 
-    if (connected || errCode) {
+    if (connected || errCode || sheetsConnected || sheetsErrCode) {
       if (connected) setSuccess('Monday connected.')
+      if (sheetsConnected) setSuccess('Google Sheets connected.')
       if (errCode) setError(MONDAY_ERRORS[errCode] || `Couldn't connect (${errCode}).`)
+      if (sheetsErrCode) setError(SHEETS_ERRORS[sheetsErrCode] || `Couldn't connect Google Sheets (${sheetsErrCode}).`)
       // Strip the params so a refresh doesn't re-show the banner.
       params.delete('monday_connected')
       params.delete('monday_error')
+      params.delete('sheets_connected')
+      params.delete('sheets_error')
       const next = window.location.pathname + (params.toString() ? '?' + params.toString() : '')
       window.history.replaceState({}, '', next)
     }
@@ -94,6 +136,10 @@ export default function Integrations() {
   const handleConnect = () => {
     // Browser navigates directly — server route handles auth + redirect to Monday.
     window.location.href = '/api/integrations/monday/oauth/start'
+  }
+
+  const handleSheetsConnect = () => {
+    window.location.href = '/api/integrations/google-sheets/oauth/start'
   }
 
   const handleDisconnect = async () => {
@@ -114,7 +160,26 @@ export default function Integrations() {
     }
   }
 
+  const handleSheetsDisconnect = async () => {
+    setSheetsDisconnecting(true)
+    setError('')
+    try {
+      const res = await fetchWithWorkspace('/api/integrations/google-sheets', { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Disconnect failed')
+      setSheetsStatus({ connected: false })
+      setSuccess('Google Sheets disconnected.')
+      setTimeout(() => setSuccess(''), 3000)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSheetsDisconnecting(false)
+      setConfirmSheetsDisconnect(false)
+    }
+  }
+
   const isLoading = status === null
+  const isSheetsLoading = sheetsStatus === null
 
   return (
     <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg">
@@ -227,7 +292,88 @@ export default function Integrations() {
             )}
           </div>
         )}
+
+        {/* Google Sheets card */}
+        <div className="flex items-center gap-4 p-4 rounded-lg border border-[#E3E1DB] bg-[#FFFFFF] mt-4">
+          <div className="shrink-0 w-10 h-10 rounded-lg bg-[#F7F6F3] flex items-center justify-center">
+            <SheetsLogo size={24} />
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-semibold text-[#131210] truncate">Google Sheets</p>
+              {sheetsStatus?.connected && (
+                <span className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded bg-[rgba(31,140,74,0.08)] text-[#1F8C4A] border border-[rgba(31,140,74,0.18)]">
+                  Connected
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-[#9B9890] mt-0.5 truncate">
+              {isSheetsLoading
+                ? 'Checking connection…'
+                : sheetsStatus?.connected
+                  ? <>Account: <span className="text-[#5C5A55] font-medium">{sheetsStatus.account_name || '—'}</span></>
+                  : 'Send campaigns from any sheet. New rows can trigger automated texts.'}
+            </p>
+          </div>
+
+          <div className="shrink-0">
+            {isSheetsLoading ? (
+              <div className="text-xs text-[#9B9890]">…</div>
+            ) : sheetsStatus?.connected ? (
+              <button
+                onClick={() => setConfirmSheetsDisconnect(true)}
+                className="text-xs px-3 py-1.5 rounded-md border border-[#E3E1DB] text-[#5C5A55] hover:bg-[#F7F6F3] transition-colors"
+              >
+                Disconnect
+              </button>
+            ) : (
+              <button
+                onClick={handleSheetsConnect}
+                className="text-xs font-medium px-3 py-1.5 rounded-md bg-[#D63B1F] text-white hover:opacity-90 transition-opacity"
+              >
+                Connect
+              </button>
+            )}
+          </div>
+        </div>
+
+        <p className="text-[11px] text-[#9B9890] mt-3 leading-relaxed">
+          Once connected, pick <span className="font-medium text-[#5C5A55]">Google Sheet</span> as a campaign source or build an automation that texts every new row. The header row becomes message placeholders like <span className="font-mono">{'{{first_name}}'}</span>.
+        </p>
       </div>
+
+      {/* Google Sheets disconnect confirmation */}
+      {confirmSheetsDisconnect && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-[#FFFFFF] rounded-lg shadow-xl max-w-sm w-full mx-4">
+            <div className="px-5 py-4 border-b border-[#E3E1DB]">
+              <h3 className="text-sm font-semibold text-[#131210]">Disconnect Google Sheets?</h3>
+            </div>
+            <div className="px-5 py-4">
+              <p className="text-sm text-[#5C5A55]">
+                Campaigns and automations linked to sheets will stop pulling fresh rows. You can reconnect any time.
+              </p>
+            </div>
+            <div className="px-5 py-3 border-t border-[#E3E1DB] flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmSheetsDisconnect(false)}
+                disabled={sheetsDisconnecting}
+                className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSheetsDisconnect}
+                disabled={sheetsDisconnecting}
+                className="px-3 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md disabled:opacity-60"
+              >
+                {sheetsDisconnecting ? 'Disconnecting…' : 'Disconnect'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Disconnect confirmation */}
       {confirmDisconnect && (

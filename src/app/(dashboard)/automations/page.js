@@ -26,6 +26,16 @@ function MondayLogo({ size = 22 }) {
   )
 }
 
+function SheetsLogo({ size = 22 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
+      <path d="M8 2h12l6 6v20a2 2 0 01-2 2H8a2 2 0 01-2-2V4a2 2 0 012-2z" fill="#0F9D58" />
+      <path d="M20 2l6 6h-6V2z" fill="#87CEAC" />
+      <path d="M11 14h10v9H11v-9zm2 2v1.5h2.5V16H13zm4.5 0v1.5H20V16h-2.5zM13 19.5V21h2.5v-1.5H13zm4.5 0V21H20v-1.5h-2.5z" fill="#FFFFFF" />
+    </svg>
+  )
+}
+
 const inputCls = 'w-full px-3 py-2.5 border border-[#D4D1C9] rounded-lg text-sm bg-[#FFFFFF] focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F]'
 const labelCls = 'block text-sm font-medium text-[#5C5A55] mb-1.5'
 
@@ -76,6 +86,7 @@ export default function AutomationsPage() {
   const [automations, setAutomations] = useState([])
   const [loading, setLoading] = useState(true)
   const [mondayConnected, setMondayConnected] = useState(null)
+  const [sheetsConnected, setSheetsConnected] = useState(null)
   const [phoneNumbers, setPhoneNumbers] = useState([])
   const [showCreate, setShowCreate] = useState(false)
   const [busyId, setBusyId] = useState(null)
@@ -86,13 +97,15 @@ export default function AutomationsPage() {
 
   const load = useCallback(async () => {
     try {
-      const [aRes, mRes, pRes] = await Promise.all([
+      const [aRes, mRes, sRes, pRes] = await Promise.all([
         fetchWithWorkspace('/api/automations').then(r => r.json()),
         fetchWithWorkspace('/api/integrations/monday').then(r => r.json()),
+        fetchWithWorkspace('/api/integrations/google-sheets').then(r => r.json()),
         fetchWithWorkspace('/api/phone-numbers').then(r => r.json()),
       ])
       setAutomations(aRes?.automations || [])
       setMondayConnected(!!mRes?.connected)
+      setSheetsConnected(!!sRes?.connected)
       setPhoneNumbers(pRes?.phoneNumbers || [])
     } catch (e) {
       console.error('[automations] load failed:', e)
@@ -144,22 +157,23 @@ export default function AutomationsPage() {
           <h1 className="text-xl font-semibold text-[#131210]">Automations</h1>
           <button
             onClick={() => router.push('/automations/new')}
-            disabled={!mondayConnected}
-            title={mondayConnected ? '' : 'Connect Monday.com first'}
+            disabled={!mondayConnected && !sheetsConnected}
+            title={(mondayConnected || sheetsConnected) ? '' : 'Connect Monday.com or Google Sheets first'}
             className="px-4 py-2 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             + New Automation
           </button>
         </div>
         <p className="text-sm text-[#9B9890] mb-6">
-          Text new Monday leads automatically — the moment a board event fires.
+          Text new leads automatically — the moment a Monday board event fires or a row lands in a Google Sheet.
         </p>
 
-        {mondayConnected === false && (
+        {mondayConnected === false && sheetsConnected === false && (
           <div className="mb-6 flex items-center gap-3 px-4 py-3 rounded-lg bg-[rgba(214,59,31,0.06)] border border-[rgba(214,59,31,0.16)]">
             <MondayLogo size={20} />
+            <SheetsLogo size={18} />
             <p className="text-sm text-[#5C5A55]">
-              Connect <a href="/settings?section=integrations" className="text-[#D63B1F] font-medium hover:underline">Monday.com</a> in
+              Connect <a href="/settings?section=integrations" className="text-[#D63B1F] font-medium hover:underline">Monday.com or Google Sheets</a> in
               Settings → Integrations before creating an automation.
             </p>
           </div>
@@ -172,7 +186,7 @@ export default function AutomationsPage() {
             <div className="flex justify-center mb-3"><MondayLogo size={32} /></div>
             <p className="text-sm font-medium text-[#131210]">No automations yet</p>
             <p className="text-xs text-[#9B9890] mt-1">
-              Create one to auto-text leads as they land on a Monday board.
+              Create one to auto-text leads as they land on a Monday board or in a Google Sheet.
             </p>
           </div>
         ) : (
@@ -182,15 +196,18 @@ export default function AutomationsPage() {
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <MondayLogo size={18} />
+                      {a.source === 'sheets' ? <SheetsLogo size={17} /> : <MondayLogo size={18} />}
                       <p className="text-sm font-semibold text-[#131210] truncate">{a.name}</p>
                       <span className={`text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded ${a.is_active ? 'bg-[rgba(31,140,74,0.08)] text-[#1F8C4A]' : 'bg-[#EFEDE8] text-[#9B9890]'}`}>
                         {a.is_active ? 'Active' : 'Paused'}
                       </span>
                     </div>
                     <p className="text-xs text-[#9B9890] mt-1.5">
-                      Board <span className="text-[#5C5A55]">{a.board_name || a.board_id}</span>
-                      {' · '}{TRIGGER_LABELS[a.trigger_event] || a.trigger_event}
+                      {a.source === 'sheets' ? (
+                        <>Sheet <span className="text-[#5C5A55]">{[a.spreadsheet_name, a.sheet_name].filter(Boolean).join(' — ') || a.spreadsheet_id}</span>{' · '}New row added</>
+                      ) : (
+                        <>Board <span className="text-[#5C5A55]">{a.board_name || a.board_id}</span>{' · '}{TRIGGER_LABELS[a.trigger_event] || a.trigger_event}</>
+                      )}
                       {' · '}{a.message_mode === 'ai' ? 'AI-written message' : 'Template message'}
                     </p>
                     <p className="text-xs text-[#9B9890] mt-0.5">
@@ -233,7 +250,9 @@ export default function AutomationsPage() {
       <ConfirmDialog
         open={!!pendingDelete}
         title="Delete automation?"
-        message={pendingDelete ? `"${pendingDelete.name}" will be removed and its Monday webhook deleted. This cannot be undone.` : ''}
+        message={pendingDelete ? (pendingDelete.source === 'sheets'
+          ? `"${pendingDelete.name}" and its send history will be removed. This cannot be undone.`
+          : `"${pendingDelete.name}" will be removed and its Monday webhook deleted. This cannot be undone.`) : ''}
         confirmLabel="Delete"
         destructive
         busy={pendingDelete && busyId === pendingDelete.id}

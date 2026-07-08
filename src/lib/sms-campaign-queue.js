@@ -159,6 +159,7 @@ async function finalizeOrRecur(campaigns) {
         await supabaseAdmin.from('campaign_messages').delete().eq('campaign_id', c.id)
         const rows = recipients.map(r => ({
           campaign_id: c.id, contact_id: r.key.contact_id || null, monday_item_id: r.key.monday_item_id || null,
+          sheet_row_id: r.key.sheet_row_id || null,
           to_number: r.phone, body: hydrateTemplate(c.message_template, r.vars), status: 'queued',
         }))
         for (let i = 0; i < rows.length; i += 500) await supabaseAdmin.from('campaign_messages').insert(rows.slice(i, i + 500))

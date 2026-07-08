@@ -46,23 +46,35 @@ export async function GET(request) {
       if (lists) lists.forEach(l => { contactListMap[l.id] = l.name })
     }
 
-    // Resolve Monday board links — a Monday-sourced campaign has no contact
-    // list, so the UI shows the board name instead.
+    // Resolve Monday board / Google Sheet links — a linked campaign has no
+    // contact list, so the UI shows the board/sheet name instead.
     const campaignIds = (campaigns || []).map(c => c.id)
     let mondayLinkMap = {}
+    let sheetsLinkMap = {}
     if (campaignIds.length > 0) {
       const { data: links } = await supabaseAdmin
         .from('campaign_monday_links')
         .select('campaign_id, board_name')
         .in('campaign_id', campaignIds)
       if (links) links.forEach(l => { mondayLinkMap[l.campaign_id] = l.board_name })
+
+      const { data: sLinks } = await supabaseAdmin
+        .from('campaign_sheets_links')
+        .select('campaign_id, spreadsheet_name, sheet_name')
+        .in('campaign_id', campaignIds)
+      if (sLinks) sLinks.forEach(l => {
+        sheetsLinkMap[l.campaign_id] = [l.spreadsheet_name, l.sheet_name].filter(Boolean).join(' — ')
+      })
     }
 
     const campaignsWithNames = (campaigns || []).map(c => ({
       ...c,
       contact_list_names: (c.contact_list_ids || []).map(id => contactListMap[id]).filter(Boolean),
-      source: mondayLinkMap[c.id] !== undefined ? 'monday' : 'contacts',
+      source: mondayLinkMap[c.id] !== undefined ? 'monday'
+        : sheetsLinkMap[c.id] !== undefined ? 'sheets'
+        : 'contacts',
       monday_board_name: mondayLinkMap[c.id] || null,
+      sheet_name: sheetsLinkMap[c.id] || null,
     }))
 
     return NextResponse.json({
@@ -117,10 +129,11 @@ export async function POST(request) {
 
     const isDraft = !!draft
 
-    // Monday-sourced campaigns get their recipients from a board (linked right
-    // after creation via /campaigns/[id]/monday-link), not from contact lists —
-    // so the contact-list validation and counting below don't apply to them.
-    const isMondaySource = source === 'monday'
+    // Monday- and Sheets-sourced campaigns get their recipients from a board /
+    // sheet (linked right after creation via /campaigns/[id]/monday-link or
+    // /sheets-link), not from contact lists — so the contact-list validation
+    // and counting below don't apply to them.
+    const isMondaySource = source === 'monday' || source === 'sheets'
 
     // Validate required fields (a draft only needs a name).
     if (!name?.trim()) {

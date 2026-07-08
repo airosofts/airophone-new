@@ -6,8 +6,7 @@ import telnyx from '@/lib/telnyx'
 import { normalizePhoneNumber } from '@/lib/phone-utils'
 import { getUserFromRequest, getWorkspaceFromRequest } from '@/lib/session-helper'
 import { getWorkspaceMessageRate, calculateMessageCost } from '@/lib/pricing'
-import { listAllItems, extractPhone, columnTitleToPlaceholder, listColumns } from '@/lib/monday'
-import { fetchAllContacts } from '@/lib/contacts-fetch'
+import { resolveCampaignRecipients, hydrateTemplate } from '@/lib/campaign-recipients'
 
 export async function POST(request, { params }) {
   try {
@@ -64,102 +63,19 @@ export async function POST(request, { params }) {
       )
     }
 
-    // ── Load recipients from either Monday or the contacts table ───────────
-    // If a campaign_monday_links row exists, source items from Monday and
-    // ignore contact_list_ids entirely. Otherwise fall back to the existing
-    // contacts path. Either way we end up with a unified `recipients` array.
-    const { data: mondayLink } = await supabaseAdmin
-      .from('campaign_monday_links')
-      .select('board_id, group_ids, item_ids, phone_column_id')
-      .eq('campaign_id', campaignId)
-      .maybeSingle()
-
-    let recipients = []   // [{ key: {contact_id|monday_item_id}, phone, vars, displayName }]
-    const seenPhones = new Set()
-
-    if (mondayLink) {
-      let items, columns
-      try {
-        columns = await listColumns(workspace.workspaceId, mondayLink.board_id)
-        items = await listAllItems(workspace.workspaceId, mondayLink.board_id, {
-          groupIds: mondayLink.group_ids,
-        })
-      } catch (err) {
-        console.error('[campaign/start] Monday fetch failed:', err.message)
-        return NextResponse.json(
-          { error: 'Failed to fetch Monday items. Reconnect Monday or check the board still exists.' },
-          { status: 502 }
-        )
-      }
-
-      // Pre-compute column id → placeholder slug map for fast lookup
-      const colSlugById = new Map(columns.map(c => [c.id, columnTitleToPlaceholder(c.title)]))
-
-      // item_ids null/empty == "all items"; otherwise restrict to the picked rows.
-      const allowedItemIds =
-        Array.isArray(mondayLink.item_ids) && mondayLink.item_ids.length > 0
-          ? new Set(mondayLink.item_ids.map(String))
-          : null
-
-      for (const item of items) {
-        if (allowedItemIds && !allowedItemIds.has(String(item.id))) continue
-        const phoneCv = item.column_values.find(cv => cv.id === mondayLink.phone_column_id)
-        const rawPhone = extractPhone(phoneCv)
-        const normalized = normalizePhoneNumber(rawPhone)
-        if (!normalized || seenPhones.has(normalized)) continue
-        seenPhones.add(normalized)
-
-        const vars = { name: item.name || '' }
-        for (const cv of item.column_values) {
-          const slug = colSlugById.get(cv.id)
-          if (slug) vars[slug] = cv.text || ''
-        }
-
-        recipients.push({
-          key: { monday_item_id: String(item.id) },
-          phone: normalized,
-          vars,
-          displayName: item.name || null,
-        })
-      }
-    } else {
-      // Get ALL contacts from selected lists — page past PostgREST's 1000-row
-      // cap so a 15k list isn't silently truncated to 1,000 recipients.
-      let rawContacts = []
-      try {
-        rawContacts = await fetchAllContacts({
-          workspaceId: workspace.workspaceId,
-          contactListIds: campaign.contact_list_ids,
-          columns: '*',
-        })
-      } catch (contactsError) {
-        console.error('Error fetching contacts:', contactsError)
-        return NextResponse.json(
-          { error: 'Failed to fetch contacts' },
-          { status: 500 }
-        )
-      }
-
-      for (const c of (rawContacts || [])) {
-        const normalized = normalizePhoneNumber(c.phone_number)
-        if (!normalized || seenPhones.has(normalized)) continue
-        seenPhones.add(normalized)
-        recipients.push({
-          key: { contact_id: c.id },
-          phone: normalized,
-          vars: {
-            first_name: c.first_name || '',
-            last_name: c.last_name || '',
-            business_name: c.business_name || '',
-            phone: c.phone_number || '',
-            email: c.email || '',
-            city: c.city || '',
-            state: c.state || '',
-            country: c.country || '',
-          },
-          displayName: c.business_name || null,
-        })
-      }
+    // ── Load recipients from Monday, Google Sheets, or the contacts table ──
+    // resolveCampaignRecipients checks campaign_monday_links first, then
+    // campaign_sheets_links, then falls back to contact_list_ids — the same
+    // resolution the recurring re-enqueue uses.
+    let recipients = []   // [{ key: {contact_id|monday_item_id|sheet_row_id}, phone, vars, displayName }]
+    try {
+      recipients = await resolveCampaignRecipients(campaign, workspace.workspaceId)
+    } catch (err) {
+      console.error('[campaign/start] recipient resolution failed:', err.message)
+      return NextResponse.json(
+        { error: 'Failed to fetch recipients from the campaign source. Check the integration is still connected and the board/sheet exists.' },
+        { status: 502 }
+      )
     }
 
     // Kept for downstream code that reads `contacts.length` (cost check uses it).
@@ -229,6 +145,7 @@ export async function POST(request, { params }) {
       campaign_id: campaign.id,
       contact_id: r.key.contact_id || null,
       monday_item_id: r.key.monday_item_id || null,
+      sheet_row_id: r.key.sheet_row_id || null,
       to_number: r.phone,
       body: hydrateTemplate(campaign.message_template, r.vars),
       status: 'queued',
@@ -267,13 +184,4 @@ export async function POST(request, { params }) {
       { status: 500 }
     )
   }
-}
-
-function hydrateTemplate(template, vars) {
-  if (!template) return ''
-  // Support both legacy single-brace {first_name} (contacts path) and
-  // double-brace {{first_name}} (Monday path). Unknown keys become empty string.
-  return template
-    .replace(/\{\{(\w+)\}\}/g, (_, k) => (vars[k] ?? ''))
-    .replace(/\{(\w+)\}/g, (_, k) => (vars[k] ?? ''))
 }

@@ -9,6 +9,7 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
 import { processAutomationItem } from '@/lib/monday-automation'
 import { processRecipeRun } from '@/lib/monday-recipe-process'
+import { sweepSheetsAutomations } from '@/lib/sheets-automation'
 import { isInBusinessHours, nextBusinessTime, nextOutsideBusinessTime, businessHoursMode } from '@/lib/scheduling'
 
 const MAX_WAIT_MIN = 120   // stop retrying a lead whose phone never arrives
@@ -53,8 +54,9 @@ export async function POST(request) {
     // recipe (not the old webhook automations), so we must NOT short-circuit
     // before processPendingRecipeRuns or scheduled/pending recipe sends never go.
     const recipeResult = await processPendingRecipeRuns({ cutoff: Date.now() - MAX_WAIT_MIN * 60 * 1000 })
-    console.log('[process-pending] no legacy rows; recipe sweep:', recipeResult)
-    return NextResponse.json({ ok: true, pending: 0, sent: 0, gaveUp: 0, recipe: recipeResult })
+    const sheetsResult = await sweepSheetsAutomations().catch(e => ({ error: e.message }))
+    console.log('[process-pending] no legacy rows; recipe sweep:', recipeResult, 'sheets sweep:', sheetsResult)
+    return NextResponse.json({ ok: true, pending: 0, sent: 0, gaveUp: 0, recipe: recipeResult, sheets: sheetsResult })
   }
   console.log('[process-pending] picked up rows', rows.map(r => ({ id: r.id, status: r.status, scheduled_at: r.scheduled_at })))
 
@@ -171,6 +173,11 @@ export async function POST(request) {
   // retry until the phone fills or MAX_WAIT_MIN elapses.
   const recipeResult = await processPendingRecipeRuns({ cutoff })
 
+  // ── Google Sheets automations ─────────────────────────────────────────────
+  // Sheets has no webhooks, so this sweep both discovers new rows (poll) and
+  // sends due pending/scheduled rows.
+  const sheetsResult = await sweepSheetsAutomations().catch(e => ({ error: e.message }))
+
   return NextResponse.json({
     ok: true,
     processed: rows.length,
@@ -178,6 +185,7 @@ export async function POST(request) {
     gaveUp,
     stillPending,
     recipe: recipeResult,
+    sheets: sheetsResult,
   })
 }
 

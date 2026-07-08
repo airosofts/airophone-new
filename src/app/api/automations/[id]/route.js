@@ -26,13 +26,100 @@ async function loadOwned(id, workspaceId) {
   return data
 }
 
+async function loadOwnedSheets(id, workspaceId) {
+  const { data } = await supabaseAdmin
+    .from('sheets_automations')
+    .select('*')
+    .eq('id', id)
+    .eq('workspace_id', workspaceId)
+    .maybeSingle()
+  return data
+}
+
+// Edit/toggle a Google Sheets automation. Same editable surface as Monday,
+// except the phone column is a letter ('phone_column') and the spreadsheet /
+// tab are locked (the send ledger is keyed to them — change = recreate).
+async function patchSheetsAutomation(automation, body) {
+  const update = { updated_at: new Date().toISOString() }
+
+  if (typeof body.is_active === 'boolean') update.is_active = body.is_active
+
+  if (typeof body.name === 'string') {
+    const n = body.name.trim()
+    if (!n) return NextResponse.json({ error: 'Name cannot be empty' }, { status: 400 })
+    update.name = n
+  }
+  if (typeof body.phone_column === 'string' && body.phone_column.trim()) {
+    update.phone_column = body.phone_column.trim()
+  }
+  if (typeof body.sender_phone_number_id === 'string' && body.sender_phone_number_id.trim()) {
+    update.sender_phone_number_id = body.sender_phone_number_id.trim()
+  }
+  if (body.send_delay_seconds !== undefined) {
+    const n = Number(body.send_delay_seconds)
+    if (!Number.isFinite(n) || n < 0) return NextResponse.json({ error: 'send_delay_seconds must be a non-negative number' }, { status: 400 })
+    update.send_delay_seconds = Math.min(MAX_DELAY_SEC, Math.floor(n))
+  }
+  if (body.business_hours_mode !== undefined) {
+    if (!['anytime', 'within', 'outside'].includes(body.business_hours_mode)) {
+      return NextResponse.json({ error: 'business_hours_mode must be anytime, within, or outside' }, { status: 400 })
+    }
+    update.business_hours_mode = body.business_hours_mode
+  }
+
+  if (typeof body.message_mode === 'string') {
+    if (!VALID_MODES.includes(body.message_mode)) {
+      return NextResponse.json({ error: 'Invalid message_mode' }, { status: 400 })
+    }
+    update.message_mode = body.message_mode
+    if (body.message_mode === 'template') {
+      const t = String(body.message_template || '').trim()
+      if (!t) return NextResponse.json({ error: 'message_template is required for template mode' }, { status: 400 })
+      update.message_template = t
+      update.ai_instructions = null
+    } else {
+      const ai = String(body.ai_instructions || '').trim()
+      if (!ai) return NextResponse.json({ error: 'ai_instructions are required for ai mode' }, { status: 400 })
+      update.ai_instructions = ai
+      update.message_template = null
+    }
+  } else {
+    if (typeof body.message_template === 'string' && automation.message_mode === 'template') {
+      update.message_template = body.message_template.trim()
+    }
+    if (typeof body.ai_instructions === 'string' && automation.message_mode === 'ai') {
+      update.ai_instructions = body.ai_instructions.trim()
+    }
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('sheets_automations')
+    .update(update)
+    .eq('id', automation.id)
+    .select()
+    .single()
+
+  if (error) {
+    console.error('[automations PATCH sheets] db error:', error)
+    return NextResponse.json({ error: 'Failed to update automation' }, { status: 500 })
+  }
+  return NextResponse.json({ success: true, automation: { ...data, source: 'sheets' } })
+}
+
 export async function PATCH(request, { params }) {
   const user = getUserFromRequest(request)
   if (!user?.workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { id } = await params
   const automation = await loadOwned(id, user.workspaceId)
-  if (!automation) return NextResponse.json({ error: 'Automation not found' }, { status: 404 })
+  if (!automation) {
+    const sheetsAutomation = await loadOwnedSheets(id, user.workspaceId)
+    if (sheetsAutomation) {
+      const body = await request.json().catch(() => ({}))
+      return patchSheetsAutomation(sheetsAutomation, body)
+    }
+    return NextResponse.json({ error: 'Automation not found' }, { status: 404 })
+  }
 
   const body = await request.json().catch(() => ({}))
   const update = { updated_at: new Date().toISOString() }
@@ -117,7 +204,23 @@ export async function DELETE(request, { params }) {
 
   const { id } = await params
   const automation = await loadOwned(id, user.workspaceId)
-  if (!automation) return NextResponse.json({ error: 'Automation not found' }, { status: 404 })
+  if (!automation) {
+    // A Google Sheets automation has no webhook — just delete the row (the
+    // send ledger cascades).
+    const sheetsAutomation = await loadOwnedSheets(id, user.workspaceId)
+    if (sheetsAutomation) {
+      const { error } = await supabaseAdmin
+        .from('sheets_automations')
+        .delete()
+        .eq('id', id)
+      if (error) {
+        console.error('[automations DELETE sheets] db error:', error)
+        return NextResponse.json({ error: 'Failed to delete automation' }, { status: 500 })
+      }
+      return NextResponse.json({ success: true })
+    }
+    return NextResponse.json({ error: 'Automation not found' }, { status: 404 })
+  }
 
   // Remove the webhook from Monday — best-effort. If it fails (token expired,
   // webhook already gone) we still delete our row; a dangling Monday webhook

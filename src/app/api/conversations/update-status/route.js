@@ -41,12 +41,15 @@ export async function POST(request) {
       )
     }
 
-    // Two-way Monday sync: when the conversation moves to a "done" state,
-    // update the configured column on the source Monday item.
+    // Two-way sync: when the conversation moves to a "done" state, update the
+    // configured column/cell on the source Monday item or Google Sheet row.
+    // Each writeback is a no-op when the conversation didn't come from that source.
     if (status === 'closed' || status === 'done' || status === 'archived') {
       try {
         const { runWriteback } = await import('@/lib/monday-writeback')
         runWriteback(conversationId, 'done').catch(() => {})
+        const { runSheetsWriteback } = await import('@/lib/sheets-writeback')
+        runSheetsWriteback(conversationId, 'done').catch(() => {})
       } catch { /* keep going — writeback is non-critical */ }
     }
 

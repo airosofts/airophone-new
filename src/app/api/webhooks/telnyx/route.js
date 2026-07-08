@@ -239,12 +239,14 @@ async function handleIncomingMessage(event) {
       })
     }
 
-    // Two-way Monday sync: if this conversation originated from a Monday
-    // automation, update the configured column on the source item (e.g.
+    // Two-way sync: if this conversation originated from a Monday or Google
+    // Sheets automation, update the configured column/cell on the source (e.g.
     // status → Engaged, Last Contact → today). Best-effort; never throws.
     try {
       const { runWriteback } = await import('@/lib/monday-writeback')
       runWriteback(conversation.id, 'reply').catch(() => {})
+      const { runSheetsWriteback } = await import('@/lib/sheets-writeback')
+      runSheetsWriteback(conversation.id, 'reply').catch(() => {})
     } catch { /* keep going — writeback is non-critical */ }
 
     // Deduct credit for received message

@@ -570,6 +570,8 @@ export default function CampaignsPage() {
                             <span className="truncate hidden xs:block">
                               {campaign.source === 'monday'
                                 ? (campaign.monday_board_name || 'Monday board')
+                                : campaign.source === 'sheets'
+                                ? (campaign.sheet_name || 'Google Sheet')
                                 : (campaign.contact_list_names?.join(', ') || '—')}
                             </span>
                           </div>
@@ -611,6 +613,11 @@ export default function CampaignsPage() {
                                 <span className="inline-flex items-center gap-1.5">
                                   {campaign.monday_board_name || 'Monday board'}
                                   <span className="text-[10px] font-mono uppercase tracking-wider text-[#9B9890] bg-[#EFEDE8] px-1.5 py-0.5 rounded">Monday</span>
+                                </span>
+                              ) : campaign.source === 'sheets' ? (
+                                <span className="inline-flex items-center gap-1.5">
+                                  {campaign.sheet_name || 'Google Sheet'}
+                                  <span className="text-[10px] font-mono uppercase tracking-wider text-[#9B9890] bg-[#EFEDE8] px-1.5 py-0.5 rounded">Sheet</span>
                                 </span>
                               ) : (campaign.contact_list_names?.join(', ') || 'Unknown')}
                             </td>
@@ -883,12 +890,17 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
     businessHoursOnly: false,
     recurring: false,
     // Phase 2 — Monday source
-    source: 'contacts',          // 'contacts' | 'monday'
+    source: 'contacts',          // 'contacts' | 'monday' | 'sheets'
     mondayBoardId: '', mondayBoardName: '',
     mondayGroupIds: [],          // empty array == "all groups"
     mondayPhoneColumnId: '',
     mondayItemIds: [],           // selected rows; all-selected == "all items"
     mondayFilters: [],           // [{ columnId, values: [] }] — AND across, OR within
+    // Phase 3 — Google Sheets source
+    sheetSpreadsheetId: '', sheetSpreadsheetName: '',
+    sheetTabId: null, sheetTabName: '',
+    sheetPhoneColumn: '',
+    sheetRowIds: [],             // selected rows; all-selected == "all rows"
   }
   // Preserve in-progress work: restore the autosaved draft if there is one.
   const DRAFT_KEY = 'campaign.wizard.draft'
@@ -1075,6 +1087,109 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.source, formData.mondayBoardId, formData.mondayGroupIds.join(','), formData.mondayPhoneColumnId, mondayGroups.map(g => g.id).join(',')])
 
+  // Google Sheets integration state
+  const [sheetsConnected, setSheetsConnected] = useState(false)
+  const [sheetsSpreadsheets, setSheetsSpreadsheets] = useState([])
+  const [sheetsTabs, setSheetsTabs] = useState([])
+  const [sheetsColumns, setSheetsColumns] = useState([])
+  const [sheetsRows, setSheetsRows] = useState([])
+  const [sheetsRowSearch, setSheetsRowSearch] = useState('')
+  const [sheetsRowPage, setSheetsRowPage] = useState(0)   // paginate the picker so 1000s of rows don't all render
+  const [sheetsLoading, setSheetsLoading] = useState({ spreadsheets: false, tabs: false, columns: false, rows: false })
+
+  // Fetch connection status on mount — gates whether the Sheets source option is shown.
+  useEffect(() => {
+    let alive = true
+    fetchWithWorkspace('/api/integrations/google-sheets')
+      .then(r => r.json())
+      .then(d => { if (alive) setSheetsConnected(!!d?.connected) })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [])
+
+  // Prefetch spreadsheets as soon as we know Sheets is connected — same
+  // rationale as the Monday boards prefetch above.
+  useEffect(() => {
+    if (!sheetsConnected || sheetsSpreadsheets.length > 0) return
+    setSheetsLoading(p => ({ ...p, spreadsheets: true }))
+    fetchWithWorkspace('/api/integrations/google-sheets/spreadsheets')
+      .then(r => r.json())
+      .then(d => setSheetsSpreadsheets(d?.spreadsheets || []))
+      .catch(() => setSheetsSpreadsheets([]))
+      .finally(() => setSheetsLoading(p => ({ ...p, spreadsheets: false })))
+  }, [sheetsConnected, sheetsSpreadsheets.length])
+
+  // Fetch tabs when a spreadsheet is selected. Reset first so stale tabs from
+  // a previously-picked spreadsheet can't slip through.
+  useEffect(() => {
+    if (!formData.sheetSpreadsheetId) {
+      setSheetsTabs([]); setSheetsColumns([])
+      return
+    }
+    setSheetsLoading(p => ({ ...p, tabs: true }))
+    setSheetsTabs([])
+    fetchWithWorkspace(`/api/integrations/google-sheets/spreadsheets/${formData.sheetSpreadsheetId}/tabs`)
+      .then(r => r.json())
+      .then(d => setSheetsTabs(d?.tabs || []))
+      .catch(() => setSheetsTabs([]))
+      .finally(() => setSheetsLoading(p => ({ ...p, tabs: false })))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.sheetSpreadsheetId])
+
+  // Fetch columns when a tab is selected. Auto-select the first phone-looking
+  // column if the user hasn't picked one yet (mirrors the Monday behavior).
+  useEffect(() => {
+    if (!formData.sheetSpreadsheetId || !formData.sheetTabName) {
+      setSheetsColumns([])
+      return
+    }
+    setSheetsLoading(p => ({ ...p, columns: true }))
+    setSheetsColumns([])
+    fetchWithWorkspace(`/api/integrations/google-sheets/spreadsheets/${formData.sheetSpreadsheetId}/columns?sheet=${encodeURIComponent(formData.sheetTabName)}`)
+      .then(r => r.json())
+      .then(d => {
+        const cols = d?.columns || []
+        setSheetsColumns(cols)
+        const phoneCol = cols.find(c => c.isPhoneType)
+        if (phoneCol && !formData.sheetPhoneColumn) {
+          setFormData(f => ({ ...f, sheetPhoneColumn: phoneCol.id }))
+        }
+      })
+      .catch(() => setSheetsColumns([]))
+      .finally(() => setSheetsLoading(p => ({ ...p, columns: false })))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.sheetSpreadsheetId, formData.sheetTabName])
+
+  // Fetch the tab's rows once spreadsheet, tab and phone column are set, so
+  // the user can pick which rows to send to. Default selection = all rows
+  // (rows missing a phone are skipped at send time by the backend).
+  useEffect(() => {
+    if (formData.source !== 'sheets' || !formData.sheetSpreadsheetId || !formData.sheetTabName || !formData.sheetPhoneColumn) {
+      setSheetsRows([])
+      return
+    }
+    let cancelled = false
+    setSheetsRows([])
+    setSheetsRowSearch('')
+    setSheetsRowPage(0)
+    setSheetsLoading(p => ({ ...p, rows: true }))
+    const qs = new URLSearchParams()
+    qs.set('sheet', formData.sheetTabName)
+    qs.set('phone_column', formData.sheetPhoneColumn)
+    fetchWithWorkspace(`/api/integrations/google-sheets/spreadsheets/${formData.sheetSpreadsheetId}/rows?${qs}`)
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled) return
+        const rows = d?.rows || []
+        setSheetsRows(rows)
+        setFormData(f => ({ ...f, sheetRowIds: rows.map(row => row.id) }))
+      })
+      .catch(() => { if (!cancelled) { setSheetsRows([]); setFormData(f => ({ ...f, sheetRowIds: [] })) } })
+      .finally(() => { if (!cancelled) setSheetsLoading(p => ({ ...p, rows: false })) })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.source, formData.sheetSpreadsheetId, formData.sheetTabName, formData.sheetPhoneColumn])
+
   const insertPlaceholder = (tag) => {
     const ta = messageRef.current
     const current = formData.message || ''
@@ -1121,6 +1236,17 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
   const mondayItemPageClamped = Math.min(mondayItemPage, mondayItemPageCount - 1)
   const visibleMondayItems = searchedPool.slice(mondayItemPageClamped * MONDAY_ITEMS_PER_PAGE, (mondayItemPageClamped + 1) * MONDAY_ITEMS_PER_PAGE)
 
+  // Search + paginate the sheet-row picker (mirrors the Monday items picker).
+  const SHEET_ROWS_PER_PAGE = 100
+  const searchedSheetRows = (() => {
+    const q = sheetsRowSearch.trim().toLowerCase()
+    if (!q) return sheetsRows
+    return sheetsRows.filter(r => (r.name || '').toLowerCase().includes(q) || (r.phone || '').toLowerCase().includes(q))
+  })()
+  const sheetsRowPageCount = Math.max(1, Math.ceil(searchedSheetRows.length / SHEET_ROWS_PER_PAGE))
+  const sheetsRowPageClamped = Math.min(sheetsRowPage, sheetsRowPageCount - 1)
+  const visibleSheetRows = searchedSheetRows.slice(sheetsRowPageClamped * SHEET_ROWS_PER_PAGE, (sheetsRowPageClamped + 1) * SHEET_ROWS_PER_PAGE)
+
   // Distinct values present in a column, for the value picker.
   const columnValueOptions = (colId) => colId
     ? [...new Set(mondayItems.map(it => (it.columns || {})[colId]).filter(v => v && String(v).trim()))].sort()
@@ -1155,6 +1281,11 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
     } else if (n === 2) {
       if (formData.source === 'contacts') {
         if (!formData.contactListId) e.contactListId = 'Contact list is required'
+      } else if (formData.source === 'sheets') {
+        if (!formData.sheetSpreadsheetId) e.sheetSpreadsheetId = 'Spreadsheet is required'
+        if (!formData.sheetTabName) e.sheetTabName = 'Sheet tab is required'
+        if (!formData.sheetPhoneColumn) e.sheetPhoneColumn = 'Phone number column is required'
+        if (sheetsRows.length > 0 && formData.sheetRowIds.length === 0) e.sheetRowIds = 'Select at least one recipient.'
       } else {
         if (!formData.mondayBoardId) e.mondayBoardId = 'Board is required'
         if (!formData.mondayPhoneColumnId) e.mondayPhoneColumnId = 'Phone number column is required'
@@ -1178,6 +1309,13 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
     if (!formData.message.trim()) newErrors.message = 'Message is required'
     if (formData.source === 'contacts') {
       if (!formData.contactListId) newErrors.contactListId = 'Contact list is required'
+    } else if (formData.source === 'sheets') {
+      if (!formData.sheetSpreadsheetId) newErrors.sheetSpreadsheetId = 'Spreadsheet is required'
+      if (!formData.sheetTabName) newErrors.sheetTabName = 'Sheet tab is required'
+      if (!formData.sheetPhoneColumn) newErrors.sheetPhoneColumn = 'Phone number column is required'
+      if (sheetsRows.length > 0 && formData.sheetRowIds.length === 0) {
+        newErrors.sheetRowIds = 'Select at least one recipient.'
+      }
     } else {
       if (!formData.mondayBoardId) newErrors.mondayBoardId = 'Board is required'
       if (!formData.mondayPhoneColumnId) newErrors.mondayPhoneColumnId = 'Phone number column is required'
@@ -1224,6 +1362,14 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
           body: JSON.stringify({ board_id: formData.mondayBoardId, board_name: formData.mondayBoardName, group_ids: formData.mondayGroupIds, item_ids: allSelected ? [] : formData.mondayItemIds, phone_column_id: formData.mondayPhoneColumnId }),
         }).catch(() => {})
       }
+      if (formData.source === 'sheets' && formData.sheetSpreadsheetId) {
+        const newId = data.campaign?.id || data.id
+        const allSelected = sheetsRows.length > 0 && formData.sheetRowIds.length === sheetsRows.length
+        if (newId) await fetchWithWorkspace(`/api/campaigns/${newId}/sheets-link`, {
+          method: 'POST',
+          body: JSON.stringify({ spreadsheet_id: formData.sheetSpreadsheetId, spreadsheet_name: formData.sheetSpreadsheetName, sheet_id: formData.sheetTabId, sheet_name: formData.sheetTabName, phone_column: formData.sheetPhoneColumn, row_ids: allSelected ? [] : formData.sheetRowIds }),
+        }).catch(() => {})
+      }
       clearDraft()
       onCampaignCreated()
     } catch {
@@ -1249,9 +1395,9 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
       const selectedPn = phoneNumbers.find(pn => pn.id === formData.phoneNumberId)
       const senderNumber = selectedPn?.phone_number || selectedPn?.phoneNumber
 
-      // Monday-sourced campaigns still get a (synthetic empty) contact_list_ids
-      // because the column is NOT NULL in the schema. The send loop checks for
-      // a campaign_monday_links row first and ignores contact_list_ids when one
+      // Monday/Sheets-sourced campaigns still get a (synthetic empty)
+      // contact_list_ids because the column is NOT NULL in the schema. The send
+      // loop checks for a link row first and ignores contact_list_ids when one
       // is present.
       const payload = {
         name: formData.name,
@@ -1308,6 +1454,36 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
         const linkData = await linkRes.json()
         if (!linkRes.ok || !linkData.success) {
           setErrors({ submit: `Campaign created but linking the Monday board failed: ${linkData.error || 'unknown error'}` })
+          return
+        }
+      }
+
+      // If Google Sheets source, persist the link to the new campaign.
+      if (formData.source === 'sheets') {
+        const newCampaignId = data.campaign?.id || data.id || data.campaignId
+        if (!newCampaignId) {
+          setErrors({ submit: 'Campaign created but ID was missing — refresh and link the sheet manually.' })
+          return
+        }
+        // If every row is selected, send row_ids empty → stored as "all", so
+        // rows added to the sheet later are still included. Otherwise lock in
+        // the explicit subset the user picked.
+        const allSelected =
+          sheetsRows.length > 0 && formData.sheetRowIds.length === sheetsRows.length
+        const linkRes = await fetchWithWorkspace(`/api/campaigns/${newCampaignId}/sheets-link`, {
+          method: 'POST',
+          body: JSON.stringify({
+            spreadsheet_id: formData.sheetSpreadsheetId,
+            spreadsheet_name: formData.sheetSpreadsheetName,
+            sheet_id: formData.sheetTabId,
+            sheet_name: formData.sheetTabName,
+            phone_column: formData.sheetPhoneColumn,
+            row_ids: allSelected ? [] : formData.sheetRowIds,
+          }),
+        })
+        const linkData = await linkRes.json()
+        if (!linkRes.ok || !linkData.success) {
+          setErrors({ submit: `Campaign created but linking the Google Sheet failed: ${linkData.error || 'unknown error'}` })
           return
         }
       }
@@ -1405,10 +1581,10 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
               <h4 className="text-sm font-semibold text-[#131210] mb-4">Audience</h4>
 
               {/* Source toggle */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <button
                   type="button"
-                  onClick={() => setFormData(f => ({ ...f, source: 'contacts' }))}
+                  onClick={() => { setErrors({}); setFormData(f => ({ ...f, source: 'contacts' })) }}
                   className={`flex items-start gap-3 p-3.5 rounded-lg border text-left transition-colors ${formData.source === 'contacts' ? 'bg-[#fdecea] border-[#D63B1F]' : 'bg-[#FFFFFF] border-[#E3E1DB] hover:bg-[#F7F6F3]'}`}
                 >
                   <i className={`fas fa-address-book mt-0.5 ${formData.source === 'contacts' ? 'text-[#D63B1F]' : 'text-[#9B9890]'}`} />
@@ -1419,7 +1595,7 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
                 </button>
                 <button
                   type="button"
-                  onClick={() => mondayConnected && setFormData(f => ({ ...f, source: 'monday' }))}
+                  onClick={() => { if (mondayConnected) { setErrors({}); setFormData(f => ({ ...f, source: 'monday' })) } }}
                   disabled={!mondayConnected}
                   title={mondayConnected ? '' : 'Connect Monday.com in Settings → Integrations first'}
                   className={`flex items-start gap-3 p-3.5 rounded-lg border text-left transition-colors ${formData.source === 'monday' ? 'bg-[#fdecea] border-[#D63B1F]' : 'bg-[#FFFFFF] border-[#E3E1DB] hover:bg-[#F7F6F3]'} disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#FFFFFF]`}
@@ -1434,10 +1610,32 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
                     <span className="block text-xs text-[#9B9890] mt-0.5">Send from a Monday.com board</span>
                   </span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => { if (sheetsConnected) { setErrors({}); setFormData(f => ({ ...f, source: 'sheets' })) } }}
+                  disabled={!sheetsConnected}
+                  title={sheetsConnected ? '' : 'Connect Google Sheets in Settings → Integrations first'}
+                  className={`flex items-start gap-3 p-3.5 rounded-lg border text-left transition-colors ${formData.source === 'sheets' ? 'bg-[#fdecea] border-[#D63B1F]' : 'bg-[#FFFFFF] border-[#E3E1DB] hover:bg-[#F7F6F3]'} disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#FFFFFF]`}
+                >
+                  <svg width="18" height="18" viewBox="0 0 32 32" fill="none" className="mt-0.5 shrink-0">
+                    <path d="M8 2h12l6 6v20a2 2 0 01-2 2H8a2 2 0 01-2-2V4a2 2 0 012-2z" fill="#0F9D58" />
+                    <path d="M20 2l6 6h-6V2z" fill="#87CEAC" />
+                    <path d="M11 14h10v9H11v-9zm2 2v1.5h2.5V16H13zm4.5 0v1.5H20V16h-2.5zM13 19.5V21h2.5v-1.5H13zm4.5 0V21H20v-1.5h-2.5z" fill="#FFFFFF" />
+                  </svg>
+                  <span className="min-w-0">
+                    <span className={`block text-sm font-medium ${formData.source === 'sheets' ? 'text-[#D63B1F]' : 'text-[#131210]'}`}>Google Sheet</span>
+                    <span className="block text-xs text-[#9B9890] mt-0.5">Send from a Google Sheet tab</span>
+                  </span>
+                </button>
               </div>
               {!mondayConnected && (
                 <p className="text-[11px] text-[#9B9890] mt-2">
                   Connect <a href="/settings?section=integrations" className="text-[#D63B1F] hover:underline">Monday.com</a> to send campaigns from a board.
+                </p>
+              )}
+              {!sheetsConnected && (
+                <p className="text-[11px] text-[#9B9890] mt-2">
+                  Connect <a href="/settings?section=integrations" className="text-[#D63B1F] hover:underline">Google Sheets</a> to send campaigns from a sheet.
                 </p>
               )}
 
@@ -1475,7 +1673,7 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
                   </div>
                 )}
               </div>
-            ) : (
+            ) : formData.source === 'monday' ? (
               <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Board picker */}
