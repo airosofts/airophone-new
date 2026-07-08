@@ -1930,6 +1930,184 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
                   </div>
                 )}
               </div>
+            ) : (
+              <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Spreadsheet picker */}
+                <div>
+                  <label className="block text-sm font-medium text-[#5C5A55] mb-2">Spreadsheet *</label>
+                  <SearchableDropdown
+                    value={formData.sheetSpreadsheetId}
+                    onChange={(v) => {
+                      const ss = sheetsSpreadsheets.find(s => String(s.id) === String(v))
+                      setFormData(f => ({
+                        ...f,
+                        sheetSpreadsheetId: v,
+                        sheetSpreadsheetName: ss?.name || '',
+                        sheetTabId: null,
+                        sheetTabName: '',
+                        sheetPhoneColumn: '',
+                        sheetRowIds: [],
+                      }))
+                    }}
+                    options={sheetsSpreadsheets.map(s => ({ value: String(s.id), label: s.name, searchText: s.name }))}
+                    placeholder={sheetsLoading.spreadsheets ? 'Loading spreadsheets…' : (sheetsSpreadsheets.length === 0 ? 'No spreadsheets found' : 'Select a spreadsheet')}
+                    loading={sheetsLoading.spreadsheets}
+                    error={errors.sheetSpreadsheetId}
+                    renderSelected={(o) => o.label}
+                    renderOption={(o) => (<p className="text-sm font-medium text-[#131210]">{o.label}</p>)}
+                  />
+                  {errors.sheetSpreadsheetId && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.sheetSpreadsheetId}</p>}
+                </div>
+
+                {/* Tab picker */}
+                {formData.sheetSpreadsheetId && (
+                  <div>
+                    <label className="block text-sm font-medium text-[#5C5A55] mb-2">Sheet Tab *</label>
+                    {sheetsLoading.tabs ? (
+                      <p className="text-xs text-[#9B9890] py-3">Loading tabs…</p>
+                    ) : (
+                      <select
+                        value={formData.sheetTabId == null ? '' : String(formData.sheetTabId)}
+                        onChange={(e) => {
+                          const tab = sheetsTabs.find(t => String(t.id) === e.target.value)
+                          setFormData(f => ({
+                            ...f,
+                            sheetTabId: tab ? tab.id : null,
+                            sheetTabName: tab?.title || '',
+                            sheetPhoneColumn: '',
+                            sheetRowIds: [],
+                          }))
+                        }}
+                        className={`w-full px-3 py-3 border rounded-lg text-sm bg-[#FFFFFF] focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F] ${errors.sheetTabName ? 'border-[#D63B1F]' : 'border-[#D4D1C9]'}`}
+                      >
+                        <option value="">{sheetsTabs.length === 0 ? 'No tabs found' : 'Select a tab…'}</option>
+                        {sheetsTabs.map(t => (
+                          <option key={t.id} value={String(t.id)}>{t.title}{t.rowCount ? ` (${t.rowCount.toLocaleString()} rows)` : ''}</option>
+                        ))}
+                      </select>
+                    )}
+                    {errors.sheetTabName && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.sheetTabName}</p>}
+                  </div>
+                )}
+              </div>
+
+              {/* Phone column picker */}
+              {formData.sheetSpreadsheetId && formData.sheetTabName && (
+                <div>
+                  <label className="block text-sm font-medium text-[#5C5A55] mb-2">Phone Number Column *</label>
+                  <SearchableDropdown
+                    value={formData.sheetPhoneColumn}
+                    onChange={(v) => setFormData(f => ({ ...f, sheetPhoneColumn: v }))}
+                    options={sheetsColumns.map(c => ({
+                      value: c.id,
+                      label: c.title,
+                      letter: c.id,
+                      searchText: `${c.title} ${c.id}`,
+                    }))}
+                    placeholder={sheetsLoading.columns ? 'Loading columns…' : 'Select the phone column'}
+                    loading={sheetsLoading.columns}
+                    error={errors.sheetPhoneColumn}
+                    renderSelected={(o) => o.label}
+                    renderOption={(o) => (
+                      <div>
+                        <p className="text-sm font-medium text-[#131210]">{o.label}</p>
+                        <p className="text-xs text-[#9B9890] mt-0.5 font-mono">Column {o.letter}</p>
+                      </div>
+                    )}
+                  />
+                  {errors.sheetPhoneColumn && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.sheetPhoneColumn}</p>}
+                  <p className="text-[11px] text-[#9B9890] mt-1.5">Rows missing a phone in this column will be skipped at send time.</p>
+                </div>
+              )}
+
+              {/* Recipient (row) picker — choose which sheet rows to send to */}
+              {formData.sheetSpreadsheetId && formData.sheetTabName && formData.sheetPhoneColumn && (
+                <div>
+                  <label className="block text-sm font-medium text-[#5C5A55] mb-2">
+                    Recipients
+                    {sheetsRows.length > 0 && (
+                      <span className="ml-1.5 text-xs font-normal text-[#9B9890]">
+                        {formData.sheetRowIds.length} of {sheetsRows.length} selected
+                      </span>
+                    )}
+                  </label>
+                  {sheetsLoading.rows ? (
+                    <p className="text-xs text-[#9B9890] py-2 flex items-center gap-2">
+                      <i className="fas fa-spinner fa-spin text-[#D63B1F]" />Fetching rows from Google Sheets…
+                    </p>
+                  ) : sheetsRows.length === 0 ? (
+                    <p className="text-xs text-[#9B9890]">No rows in this sheet.</p>
+                  ) : (
+                    <>
+                      <input
+                        type="text"
+                        value={sheetsRowSearch}
+                        onChange={(e) => { setSheetsRowSearch(e.target.value); setSheetsRowPage(0) }}
+                        placeholder="Search rows…"
+                        className="w-full mb-2 px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F]"
+                      />
+                      {searchedSheetRows.length === 0 ? (
+                        <p className="text-xs text-[#9B9890]">No rows match.</p>
+                      ) : (
+                      <>
+                      <div className="border border-[#E3E1DB] rounded-lg max-h-60 overflow-y-auto divide-y divide-[#F0EEE9]">
+                        <label className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-[#F7F6F3] sticky top-0 bg-[#FFFFFF] border-b border-[#E3E1DB]">
+                          <input
+                            type="checkbox"
+                            checked={sheetsRows.length > 0 && formData.sheetRowIds.length === sheetsRows.length}
+                            ref={el => { if (el) el.indeterminate = formData.sheetRowIds.length > 0 && formData.sheetRowIds.length < sheetsRows.length }}
+                            onChange={(e) => {
+                              setFormData(f => ({ ...f, sheetRowIds: e.target.checked ? sheetsRows.map(r => r.id) : [] }))
+                            }}
+                            className="accent-[#D63B1F]"
+                          />
+                          <span className="text-sm font-medium text-[#131210]">Select all{sheetsRows.length > visibleSheetRows.length ? ` (${sheetsRows.length.toLocaleString()} rows)` : ''}</span>
+                        </label>
+                        {visibleSheetRows.map(r => (
+                            <label key={r.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-[#F7F6F3]">
+                              <input
+                                type="checkbox"
+                                checked={formData.sheetRowIds.includes(r.id)}
+                                onChange={(e) => {
+                                  setFormData(f => {
+                                    const next = e.target.checked
+                                      ? [...f.sheetRowIds, r.id]
+                                      : f.sheetRowIds.filter(x => x !== r.id)
+                                    return { ...f, sheetRowIds: next }
+                                  })
+                                }}
+                                className="accent-[#D63B1F] shrink-0"
+                              />
+                              <span className="min-w-0 flex-1">
+                                <span className="block text-sm text-[#131210] truncate">{r.name || `Row ${r.id}`}</span>
+                                <span className={`block text-xs truncate ${r.phone ? 'text-[#9B9890] font-mono' : 'text-[#9B9890]'}`}>{r.phone || '—'}</span>
+                              </span>
+                            </label>
+                          ))}
+                      </div>
+                      {sheetsRowPageCount > 1 && (
+                        <div className="flex items-center justify-between mt-2 text-xs text-[#9B9890]">
+                          <span>
+                            {(sheetsRowPageClamped * SHEET_ROWS_PER_PAGE + 1).toLocaleString()}–{Math.min((sheetsRowPageClamped + 1) * SHEET_ROWS_PER_PAGE, searchedSheetRows.length).toLocaleString()} of {searchedSheetRows.length.toLocaleString()}
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <button type="button" disabled={sheetsRowPageClamped === 0} onClick={() => setSheetsRowPage(p => Math.max(0, p - 1))}
+                              className="px-2 py-1 border border-[#E3E1DB] rounded-md bg-white disabled:opacity-40 hover:bg-[#F7F6F3]">Prev</button>
+                            <span>Page {sheetsRowPageClamped + 1} / {sheetsRowPageCount}</span>
+                            <button type="button" disabled={sheetsRowPageClamped + 1 >= sheetsRowPageCount} onClick={() => setSheetsRowPage(p => p + 1)}
+                              className="px-2 py-1 border border-[#E3E1DB] rounded-md bg-white disabled:opacity-40 hover:bg-[#F7F6F3]">Next</button>
+                          </div>
+                        </div>
+                      )}
+                      </>
+                      )}
+                      {errors.sheetRowIds && <p className="text-[#D63B1F] text-xs mt-1.5">{errors.sheetRowIds}</p>}
+                    </>
+                  )}
+                </div>
+              )}
+              </div>
             )}
               </div>
             </section>
@@ -1959,6 +2137,20 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
                           )
                         })
                     )
+                  ) : formData.source === 'sheets' ? (
+                    sheetsColumns.filter(c => c.placeholder).length === 0 ? (
+                      <span className="text-xs text-[#9B9890] italic">Pick a spreadsheet to see available columns</span>
+                    ) : (
+                      sheetsColumns
+                        .filter(c => c.placeholder)
+                        .filter((c, i, arr) => arr.findIndex(x => x.placeholder === c.placeholder) === i)
+                        .map(c => {
+                          const tag = `{{${c.placeholder}}}`
+                          return (
+                            <button key={c.id} type="button" onClick={() => insertPlaceholder(tag)} title={`${c.title} (column ${c.id})`} className="px-2.5 py-1 text-xs bg-[#EFEDE8] hover:bg-[#fdecea] hover:text-[#D63B1F] hover:border-[#D63B1F] text-[#5C5A55] rounded-md border border-[#E3E1DB] font-mono transition-colors">{tag}</button>
+                          )
+                        })
+                    )
                   ) : (
                     ['{first_name}', '{last_name}', '{business_name}', '{email}', '{phone}', '{city}', '{state}', '{country}'].map(tag => (
                       <button key={tag} type="button" onClick={() => insertPlaceholder(tag)} className="px-2.5 py-1 text-xs bg-[#EFEDE8] hover:bg-[#fdecea] hover:text-[#D63B1F] hover:border-[#D63B1F] text-[#5C5A55] rounded-md border border-[#E3E1DB] font-mono transition-colors">{tag}</button>
@@ -1981,9 +2173,13 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
                 const pn = phoneNumberOptions.find(o => o.value === formData.phoneNumberId)
                 const audienceLabel = formData.source === 'monday'
                   ? `Monday — ${formData.mondayBoardName || 'board'}`
+                  : formData.source === 'sheets'
+                  ? `Google Sheet — ${formData.sheetSpreadsheetName || 'spreadsheet'}`
                   : (list?.label || '—')
                 const recipientCount = formData.source === 'monday'
                   ? formData.mondayItemIds.length
+                  : formData.source === 'sheets'
+                  ? formData.sheetRowIds.length
                   : (list?.count ?? 0)
                 const rows = [
                   ['Campaign', formData.name || '—'],
@@ -1991,9 +2187,11 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
                   ['Recipients', String(recipientCount)],
                   ['Sends from', pn ? (pn.name ? `${pn.name} — ${pn.number}` : pn.number) : '—'],
                 ]
-                // Resolved recipient list (Monday path — the picked rows).
+                // Resolved recipient list (Monday/Sheets path — the picked rows).
                 const previewItems = formData.source === 'monday'
                   ? mondayItems.filter(it => formData.mondayItemIds.includes(it.id))
+                  : formData.source === 'sheets'
+                  ? sheetsRows.filter(r => formData.sheetRowIds.includes(r.id))
                   : []
                 const PREVIEW_CAP = 50
                 return (
@@ -2044,7 +2242,7 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
                     )
                   })()}
 
-                  {formData.source === 'monday' && (
+                  {(formData.source === 'monday' || formData.source === 'sheets') && (
                     <div className="mb-4">
                       <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1.5">
                         Will send to {previewItems.length} recipient{previewItems.length !== 1 ? 's' : ''}
@@ -2292,6 +2490,8 @@ function ViewCampaignModal({ campaign, contactLists, phoneNumbers, isTrial, onCl
                 {[
                   campaign.source === 'monday'
                     ? { label: 'Monday Board', value: campaign.monday_board_name || 'Monday board' }
+                    : campaign.source === 'sheets'
+                    ? { label: 'Google Sheet', value: campaign.sheet_name || 'Google Sheet' }
                     : { label: 'Contact List', value: campaign.contact_list_names?.join(', ') || 'Unknown' },
                   { label: 'Sender Number', value: campaign.sender_number || 'Unknown' },
                   { label: 'Recipients', value: campaign.total_recipients ?? 0 },
