@@ -52,7 +52,7 @@ async function createSheetsAutomation(user, body) {
   const {
     name, spreadsheet_id, spreadsheet_name, sheet_id, sheet_name, phone_column,
     message_mode, message_template, ai_instructions, sender_phone_number_id,
-    send_delay_seconds, business_hours_mode,
+    send_delay_seconds, business_hours_mode, graph,
   } = body
 
   const bhMode = ['anytime', 'within', 'outside'].includes(business_hours_mode)
@@ -91,6 +91,7 @@ async function createSheetsAutomation(user, body) {
       sender_phone_number_id: String(sender_phone_number_id),
       send_delay_seconds: Math.max(0, Math.min(7 * 24 * 60 * 60, Number(send_delay_seconds) || 0)),
       business_hours_mode: bhMode,
+      graph: graph && typeof graph === 'object' ? graph : null,
       created_by: user.userId,
       created_at: now,
       updated_at: now,
@@ -136,7 +137,7 @@ export async function POST(request) {
   const {
     name, board_id, board_name, trigger_event, phone_column_id,
     message_mode, message_template, ai_instructions, sender_phone_number_id,
-    send_delay_seconds, respect_business_hours, business_hours_mode,
+    send_delay_seconds, respect_business_hours, business_hours_mode, graph,
   } = body
 
   // Business-hours mode: 'anytime' | 'within' | 'outside'. Accept the legacy
@@ -206,6 +207,7 @@ export async function POST(request) {
       send_delay_seconds: Math.max(0, Math.min(7 * 24 * 60 * 60, Number(send_delay_seconds) || 0)),
       respect_business_hours: bhMode === 'within',   // keep legacy column in sync
       business_hours_mode: bhMode,
+      graph: graph && typeof graph === 'object' ? graph : null,
       created_by: user.userId,
       created_at: now,
       updated_at: now,
