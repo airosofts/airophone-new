@@ -154,8 +154,17 @@ export default function AutomationBuilder({ phoneNumbers = [], automation = null
   const selSheetName = triggerData.sheet_name || ''
 
   // ── Canvas mutators ───────────────────────────────────────────────────────
-  const updateNodeData = (id, patch) =>
+  // In edit mode the Trigger's identity fields are locked — changing board/
+  // trigger/spreadsheet here doesn't recreate the Monday/Sheets webhook, so
+  // letting them through would silently point phone_column_id at the wrong
+  // board. phone_column_id itself stays editable (that's the intended edit).
+  const updateNodeData = (id, patch) => {
+    if (isEdit && id === 'trigger') {
+      const { board_id, board_name, trigger_event, spreadsheet_id, spreadsheet_name, sheet_id, sheet_name, ...safe } = patch
+      patch = safe
+    }
     setNodes(nds => nds.map(n => n.id === id ? { ...n, data: { ...n.data, ...patch } } : n))
+  }
   const deleteNode = (id) => {
     setNodes(nds => nds.filter(n => n.id !== id))
     setEdges(eds => eds.filter(e => e.source !== id && e.target !== id))
