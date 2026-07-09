@@ -1,6 +1,13 @@
 import { createClient } from '@supabase/supabase-js'
 import { buildGraphFromAutomation, flattenGraphToPayload, NODE } from '../src/lib/automation-graph/index.js'
 
+// jsonb does not preserve object key order; compare structurally, not by raw string.
+function canon(v) {
+  if (Array.isArray(v)) return v.map(canon)
+  if (v && typeof v === 'object') return Object.keys(v).sort().reduce((a, k) => { a[k] = canon(v[k]); return a }, {})
+  return v
+}
+
 const url = 'https://sayakmjcwleakvxzuujw.supabase.co'
 const key = process.env.TEST_SERVICE_ROLE // set from airophone-test.env before running
 const sb = createClient(url, key)
@@ -25,14 +32,14 @@ const { data: row, error } = await sb.from('monday_automations').insert({
 if (error) { console.error('INSERT FAILED', error); process.exit(1) }
 
 const { data: back } = await sb.from('monday_automations').select('*').eq('id', row.id).single()
-const ok1 = JSON.stringify(back.graph) === JSON.stringify(graph)
+const ok1 = JSON.stringify(canon(back.graph)) === JSON.stringify(canon(graph))
 const ok2 = back.send_delay_seconds === 600 && back.business_hours_mode === 'within' && back.message_template === 'Hi {{name}}'
 const rebuilt = buildGraphFromAutomation(back)
 const ok3 = rebuilt.nodes.length === 3 && rebuilt.nodes[0].position.x === 40
 const graphless = buildGraphFromAutomation({ board_id: 'b', trigger_event: 'create_item', phone_column_id: 'p', message_mode: 'template', message_template: 'x', sender_phone_number_id: 'n' })
 const ok4 = graphless.nodes.length === 3 && graphless.nodes.every(n => Number.isFinite(n.position.x))
 
-console.log('graph round-trips identical:', ok1)
+console.log('graph round-trips (key-order-insensitive):', ok1)
 console.log('flat columns correct:', ok2)
 console.log('rebuild from stored graph:', ok3)
 console.log('graph-less auto-layout:', ok4)
