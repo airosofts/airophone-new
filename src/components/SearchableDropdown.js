@@ -33,8 +33,17 @@ export default function SearchableDropdown({ value, onChange, options, placehold
       if (panelRef.current?.contains(e.target)) return
       setOpen(false); setSearch('')
     }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    // Capture-phase pointerdown: fires for mouse + touch and BEFORE another
+    // handler (e.g. the React Flow canvas) can preventDefault/suppress the
+    // event, so an outside click always closes the panel — even when this
+    // dropdown lives inside the node canvas. Escape closes it too.
+    const onKey = (e) => { if (e.key === 'Escape') { setOpen(false); setSearch('') } }
+    document.addEventListener('pointerdown', handler, true)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', handler, true)
+      document.removeEventListener('keydown', onKey)
+    }
   }, [])
 
   useEffect(() => {

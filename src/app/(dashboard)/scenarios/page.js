@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { apiGet, apiPost, fetchWithWorkspace } from '@/lib/api-client'
@@ -369,6 +370,38 @@ export default function ScenariosPage() {
 
 function RowActions({ scenario, onFollowups, onExecutions, onAnalytics, onToggle, onDelete }) {
   const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState(null)
+  const btnRef = useRef(null)
+  const MENU_W = 208   // w-52
+
+  // Measure the trigger and pin a fixed-position menu to the viewport so a
+  // scrolling / overflow-clipped table section can never cut it off; flip up
+  // when there isn't room below.
+  const place = () => {
+    const el = btnRef.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    const MENU_H = 232, GAP = 6
+    const spaceBelow = window.innerHeight - r.bottom
+    const openUp = spaceBelow < MENU_H + GAP && r.top > spaceBelow
+    setPos({
+      left: Math.max(8, r.right - MENU_W),
+      top: openUp ? undefined : r.bottom + GAP,
+      bottom: openUp ? window.innerHeight - r.top + GAP : undefined,
+    })
+  }
+
+  useEffect(() => {
+    if (!open) return
+    const reposition = () => place()
+    window.addEventListener('scroll', reposition, true)
+    window.addEventListener('resize', reposition)
+    return () => {
+      window.removeEventListener('scroll', reposition, true)
+      window.removeEventListener('resize', reposition)
+    }
+  }, [open])
+
   const item = (icon, label, onClick, danger) => (
     <button onClick={(e) => { e.stopPropagation(); setOpen(false); onClick() }}
       className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors ${danger ? 'text-[#D63B1F] hover:bg-[rgba(214,59,31,0.06)]' : 'text-[#5C5A55] hover:bg-[#F7F6F3]'}`}>
@@ -377,14 +410,15 @@ function RowActions({ scenario, onFollowups, onExecutions, onAnalytics, onToggle
   )
   return (
     <div className="relative inline-block">
-      <button onClick={(e) => { e.stopPropagation(); setOpen(o => !o) }} title="More actions"
+      <button ref={btnRef} onClick={(e) => { e.stopPropagation(); if (!open) place(); setOpen(o => !o) }} title="More actions"
         className="p-1.5 text-[#9B9890] hover:text-[#131210] hover:bg-[#F7F6F3] rounded transition-colors">
         <i className="fas fa-ellipsis-vertical text-[14px]" />
       </button>
-      {open && (
+      {open && pos && createPortal(
         <>
-          <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setOpen(false) }} />
-          <div className="absolute right-0 mt-1 w-52 bg-white border border-[#E3E1DB] rounded-lg shadow-lg z-50 py-1">
+          <div className="fixed inset-0 z-[9998]" onClick={(e) => { e.stopPropagation(); setOpen(false) }} />
+          <div style={{ position: 'fixed', left: pos.left, top: pos.top, bottom: pos.bottom, width: MENU_W }}
+            className="bg-white border border-[#E3E1DB] rounded-lg shadow-xl z-[9999] py-1">
             {item('fa-layer-group', 'Follow-up stages', onFollowups)}
             {item('fa-list-alt', 'Execution logs', onExecutions)}
             {item('fa-chart-bar', 'Analytics', onAnalytics)}
@@ -392,7 +426,8 @@ function RowActions({ scenario, onFollowups, onExecutions, onAnalytics, onToggle
             <div className="my-1 border-t border-[#EFEDE8]" />
             {item('fa-trash', 'Delete scenario', onDelete, true)}
           </div>
-        </>
+        </>,
+        document.body
       )}
     </div>
   )
