@@ -220,6 +220,32 @@ export default function InboxPage() {
   const fromParam = searchParams.get('from')
   const selectedPhoneNumber = phoneNumbers.find(p => p.phoneNumber === fromParam) || phoneNumbers[0] || null
 
+  // When /inbox is opened without ?from=, we silently default to the first
+  // line (above) but the URL doesn't say so — which left the sidebar with NO
+  // number highlighted. Write the defaulted line into the URL (replace, not
+  // push, so Back isn't polluted) so the sidebar highlight, deep links and
+  // refreshes all agree on the active line.
+  useEffect(() => {
+    if (!fromParam && selectedPhoneNumber?.phoneNumber) {
+      router.replace(`/inbox?from=${encodeURIComponent(selectedPhoneNumber.phoneNumber)}`)
+    }
+  }, [fromParam, selectedPhoneNumber?.phoneNumber, router])
+
+  // Switching to another line resets the list filter back to Open — carrying
+  // an Unread/Done filter across lines reads as "this line has no chats" when
+  // the filter simply matches nothing there. First mount keeps the restored
+  // filter; only an actual line CHANGE resets it.
+  const prevLineRef = useRef(null)
+  useEffect(() => {
+    const line = selectedPhoneNumber?.phoneNumber || null
+    if (!line) return
+    if (prevLineRef.current && prevLineRef.current !== line) {
+      setFilter('open')
+      localStorage.setItem('inbox_filter', 'open')
+    }
+    prevLineRef.current = line
+  }, [selectedPhoneNumber?.phoneNumber])
+
   // Fetch call history when calls tab is active, scoped to the selected phone number
   useEffect(() => {
     if (inboxTab !== 'calls') return
