@@ -55,46 +55,100 @@ export async function GET(request) {
 
     const blockedNumbers = (blockedRows || []).map(r => r.phone_number)
 
-    let query = supabaseAdmin
-      .from('conversations')
-      .select(`
-        *,
-        messages!inner (
-          id,
-          body,
-          direction,
-          status,
-          created_at,
-          read_at,
-          from_number,
-          to_number,
-          telnyx_message_id
-        )
-      `)
-      .in('from_number', workspacePhoneNumbers)
-
-
-    // Filter by specific from_number if provided
-    if (fromNumber) {
-      // Verify the requested number belongs to this workspace
-      if (!workspacePhoneNumbers.includes(fromNumber)) {
-        return NextResponse.json({ error: 'Access denied to this phone number' }, { status: 403 })
-      }
-      query = query.eq('from_number', fromNumber)
+    // Verify the requested number belongs to this workspace
+    if (fromNumber && !workspacePhoneNumbers.includes(fromNumber)) {
+      return NextResponse.json({ error: 'Access denied to this phone number' }, { status: 403 })
     }
 
-    const { data: conversationsData, error: conversationsError } = await query
-      .order('last_message_at', { ascending: false })
-      // PostgREST default cap is 1000 — busy workspaces silently lost the
-      // older conversations. Raise to 50k so the inbox shows everything.
-      .range(0, 49999)
+    // Supabase clamps EVERY query to its "Max rows" setting (db-max-rows,
+    // default 1000) — .range() beyond that is silently truncated, which hid
+    // older conversations (and their unread badges) on busy lines. This loop
+    // is ADAPTIVE: it asks for up to WINDOW rows and advances by however many
+    // the server actually returned. If Max rows is raised in the Supabase
+    // dashboard this becomes a single round trip; at the default clamp it
+    // pages in 1000-row chunks instead of truncating. A page shorter than
+    // MIN_CLAMP means the data is exhausted (the clamp is never below 1000).
+    // Each conversation embeds ONLY its latest message (per-parent
+    // order+limit) instead of its full history; unread counts come from the
+    // separate query below. Both changes keep the response small at 1000s of
+    // chats.
+    const WINDOW = 50000
+    const conversationsData = []
+    for (let offset = 0, total = null; ; ) {
+      let query = supabaseAdmin
+        .from('conversations')
+        // count: 'exact' returns the TRUE total alongside the rows, so the
+        // loop knows precisely when it has everything — one request when the
+        // server allows it, no trailing empty probe, and still correct if
+        // Max rows is ever lowered again.
+        .select(`
+          *,
+          messages!inner (
+            id,
+            body,
+            direction,
+            status,
+            created_at,
+            read_at,
+            from_number,
+            to_number,
+            telnyx_message_id
+          )
+        `, { count: 'exact' })
+        .in('from_number', workspacePhoneNumbers)
+      if (fromNumber) query = query.eq('from_number', fromNumber)
 
-    if (conversationsError) {
-      console.error('Error fetching conversations:', conversationsError)
-      return NextResponse.json(
-        { error: 'Failed to fetch conversations' },
-        { status: 500 }
-      )
+      const { data: pageRows, count, error: conversationsError } = await query
+        .order('last_message_at', { ascending: false })
+        // Stable tiebreak so paging never skips/duplicates rows that share
+        // the same last_message_at.
+        .order('id', { ascending: true })
+        .order('created_at', { referencedTable: 'messages', ascending: false })
+        .limit(1, { referencedTable: 'messages' })
+        .range(offset, offset + WINDOW - 1)
+
+      if (conversationsError) {
+        console.error('Error fetching conversations:', conversationsError)
+        return NextResponse.json(
+          { error: 'Failed to fetch conversations' },
+          { status: 500 }
+        )
+      }
+      conversationsData.push(...(pageRows || []))
+      if (total === null) total = count ?? 0
+      if (!pageRows || pageRows.length === 0 || conversationsData.length >= total) break
+      offset += pageRows.length
+    }
+
+    // Unread inbound messages per conversation. Starting from the (small) set
+    // of unread messages instead of counting inside the conversations embed —
+    // same trick as /api/conversations/unread-counts — with the same adaptive
+    // paging.
+    const unreadByConversation = new Map()
+    for (let offset = 0, total = null, fetched = 0; ; ) {
+      let unreadQuery = supabaseAdmin
+        .from('messages')
+        .select('id, conversation_id, conversations!inner(from_number)', { count: 'exact' })
+        .eq('direction', 'inbound')
+        .is('read_at', null)
+        .in('conversations.from_number', workspacePhoneNumbers)
+      if (fromNumber) unreadQuery = unreadQuery.eq('conversations.from_number', fromNumber)
+
+      const { data: unreadRows, count, error: unreadError } = await unreadQuery
+        .order('id', { ascending: true })
+        .range(offset, offset + WINDOW - 1)
+
+      if (unreadError) {
+        console.error('Error fetching unread counts:', unreadError)
+        break   // degrade to zero badges rather than failing the whole inbox
+      }
+      for (const row of (unreadRows || [])) {
+        unreadByConversation.set(row.conversation_id, (unreadByConversation.get(row.conversation_id) || 0) + 1)
+      }
+      fetched += unreadRows?.length || 0
+      if (total === null) total = count ?? 0
+      if (!unreadRows || unreadRows.length === 0 || fetched >= total) break
+      offset += unreadRows.length
     }
 
     // Filter out blocked contacts
@@ -151,9 +205,10 @@ export async function GET(request) {
       console.log(`[ContactMap] Found ${Object.keys(contactMap).length} contact entries for ${phonesToQuery.length} phones`)
     }
 
-    // Process conversations to get the latest message for each
+    // Process conversations — the embed is already just the latest message
+    // (defensive sort in case the embed limit ever returns more than one).
     const processedConversations = visibleConversations.map(conv => {
-      const sortedMessages = conv.messages.sort((a, b) =>
+      const sortedMessages = (conv.messages || []).sort((a, b) =>
         new Date(b.created_at) - new Date(a.created_at)
       )
 
@@ -173,9 +228,7 @@ export async function GET(request) {
         contact_status: contact?.status || null,
         name: contactName || conv.name || null,
         lastMessage: sortedMessages[0] || null,
-        unreadCount: sortedMessages.filter(msg =>
-          msg.direction === 'inbound' && !msg.read_at
-        ).length,
+        unreadCount: unreadByConversation.get(conv.id) || 0,
         messages: undefined
       }
     })
