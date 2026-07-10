@@ -44,10 +44,15 @@ export async function GET(request) {
     for (let offset = 0, total = null, fetched = 0; ; ) {
       const { data: unreadRows, count, error: unreadError } = await supabaseAdmin
         .from('messages')
-        .select('id, conversation_id, conversations!inner(from_number, phone_number)', { count: 'exact' })
+        .select('id, conversation_id, conversations!inner(from_number, phone_number, status)', { count: 'exact' })
         .eq('direction', 'inbound')
         .is('read_at', null)
         .in('conversations.from_number', wsPhones)
+        // Closed ("done") conversations shouldn't keep the badge lit — this
+        // matches the inbox's default Open view, so the sidebar badge and the
+        // in-page Unread chip always agree. NULL status counts as open (same
+        // rule the inbox filter uses: status !== 'closed').
+        .or('status.neq.closed,status.is.null', { referencedTable: 'conversations' })
         .order('id', { ascending: true })
         .range(offset, offset + WINDOW - 1)
 

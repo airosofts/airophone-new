@@ -224,6 +224,11 @@ export default function ScenariosPage() {
                       </div>
                       {/* Actions */}
                       <div className="flex items-center gap-2 shrink-0">
+                        <button onClick={(e) => { e.stopPropagation(); router.push(`/scenarios/${scenario.id}/sandbox`) }}
+                          title="Practice chat — see how the AI replies, without texting anyone"
+                          className="px-2.5 py-1 text-xs font-medium text-[#D63B1F] border border-[#D63B1F]/40 rounded-md hover:bg-[rgba(214,59,31,0.06)] transition-colors">
+                          <i className="fas fa-vial mr-1 text-[10px]" />Test
+                        </button>
                         <button onClick={(e) => { e.stopPropagation(); router.push(`/scenarios/${scenario.id}/edit`) }}
                           className="px-2.5 py-1 text-xs font-medium text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3] transition-colors">Edit</button>
                         <RowActions
@@ -276,6 +281,11 @@ export default function ScenariosPage() {
                         </td>
                         <td className="px-5 py-3 text-right">
                           <div className="flex items-center justify-end gap-2">
+                            <button onClick={(e) => { e.stopPropagation(); router.push(`/scenarios/${scenario.id}/sandbox`) }}
+                              title="Practice chat — see how the AI replies, without texting anyone"
+                              className="px-2.5 py-1 text-xs font-medium text-[#D63B1F] border border-[#D63B1F]/40 rounded-md hover:bg-[rgba(214,59,31,0.06)] transition-colors">
+                              <i className="fas fa-vial mr-1 text-[10px]" />Test
+                            </button>
                             <button onClick={(e) => { e.stopPropagation(); router.push(`/scenarios/${scenario.id}/edit`) }}
                               className="px-2.5 py-1 text-xs font-medium text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3] transition-colors">Edit</button>
                             <RowActions

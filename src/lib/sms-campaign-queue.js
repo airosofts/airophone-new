@@ -35,7 +35,7 @@ async function getOrCreateConversation(phone, fromNumber, workspaceId, createdBy
   return created
 }
 
-const CAMPAIGN_COLS = 'id, status, sender_number, message_template, workspace_id, created_by, delay_between_messages, scheduled_at, throttle_count, throttle_window_seconds, send_windows, send_timezone, send_days, daily_cap, recurring, cycle, contact_list_ids'
+const CAMPAIGN_COLS = 'id, status, sender_number, message_template, workspace_id, created_by, delay_between_messages, scheduled_at, throttle_count, throttle_window_seconds, send_windows, send_timezone, send_days, daily_cap, recurring, cycle, contact_list_ids, recipient_filters'
 
 export async function sweepSmsCampaignQueue({ batchSize = 50 } = {}) {
   const now = new Date()

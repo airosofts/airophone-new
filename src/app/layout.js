@@ -1,9 +1,13 @@
 // src/app/layout.js
+import Script from 'next/script'
 import { Plus_Jakarta_Sans, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
 import AudioUnlock from '@/components/AudioUnlock'
 import PushSetup from '@/components/PushSetup'
 import AnalyticsProvider from '@/components/AnalyticsProvider'
+
+// Google tag (gtag.js) — hardcoded, loads on every page via the root layout.
+const GA_MEASUREMENT_ID = 'G-1DQJB2E530'
 
 const jakarta = Plus_Jakarta_Sans({ subsets: ['latin'], weight: ['300', '400', '500', '600'], variable: '--font-sans' })
 const jetbrains = JetBrains_Mono({ subsets: ['latin'], weight: ['400', '500'], variable: '--font-mono' })
@@ -33,6 +37,19 @@ export default function RootLayout({ children }) {
           crossOrigin="anonymous"
           referrerPolicy="no-referrer"
         />
+        {/* Google tag (gtag.js) */}
+        <Script
+          src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
+          strategy="afterInteractive"
+        />
+        <Script id="google-analytics" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', '${GA_MEASUREMENT_ID}');
+          `}
+        </Script>
       </head>
       <body className={`${jakarta.variable} ${jetbrains.variable} ${jakarta.className}`}>
         <AudioUnlock />

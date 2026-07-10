@@ -199,6 +199,7 @@ export async function POST(request) {
       send_days: Array.isArray(send_days) && send_days.length ? send_days : null,
       daily_cap: daily_cap || null,
       recurring: !!recurring,
+      recipient_filters: body.recipient_filters || null,
       workspace_id: workspace.workspaceId,
       status: 'draft',
       total_recipients: totalRecipients,

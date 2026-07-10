@@ -3,6 +3,14 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { apiGet } from '@/lib/api-client'
+import { cacheGet, cacheSet } from '@/lib/client-cache'
+
+// Persist a bounded copy of a chat's messages for instant reload hydration.
+const MAX_CACHED_MESSAGES = 200
+function persistMessages(conversationId, msgs) {
+  if (!conversationId || !Array.isArray(msgs)) return
+  cacheSet(`msgs:${conversationId}`, msgs.slice(-MAX_CACHED_MESSAGES))
+}
 
 function normalizePhoneNumber(phone) {
   if (!phone) return phone
@@ -109,12 +117,42 @@ export function useRealtimeMessages(conversationId) {
             messageIdsRef.current.clear()
             data.forEach(msg => messageIdsRef.current.add(msg.id))
             messageCache.set(conversationId, data)
+            persistMessages(conversationId, data)
             setMessages(data)
           }
         })
         .catch(error => console.error('Error updating messages:', error))
 
       return // Exit immediately after setting cache
+    }
+
+    // In-memory miss (e.g. after a full page reload) — try the persistent
+    // cache before showing any spinner. An IndexedDB read is a few ms, so a
+    // previously-opened chat paints instantly and refreshes in the background.
+    const persisted = await cacheGet(`msgs:${conversationId}`)
+    if (Array.isArray(persisted) && persisted.length > 0 && currentConversationIdRef.current === conversationId) {
+      messageIdsRef.current.clear()
+      persisted.forEach(msg => messageIdsRef.current.add(msg.id))
+      messageCache.set(conversationId, persisted)
+      setMessages(persisted)
+      setLoading(false)
+
+      supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true })
+        .then(({ data, error }) => {
+          if (!error && data && currentConversationIdRef.current === conversationId) {
+            messageIdsRef.current.clear()
+            data.forEach(msg => messageIdsRef.current.add(msg.id))
+            messageCache.set(conversationId, data)
+            persistMessages(conversationId, data)
+            setMessages(data)
+          }
+        })
+        .catch(error => console.error('Error updating messages:', error))
+      return
     }
 
     // First load — show spinner only here (cache hits stay instant).
@@ -143,6 +181,7 @@ export function useRealtimeMessages(conversationId) {
 
         // Update cache and state
         messageCache.set(conversationId, data || [])
+        persistMessages(conversationId, data || [])
         setMessages(data || [])
       }
     } catch (error) {
@@ -189,6 +228,7 @@ export function useRealtimeMessages(conversationId) {
             const sorted = newMessages.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
             // Update cache immediately
             messageCache.set(conversationId, sorted)
+            persistMessages(conversationId, sorted)
             return sorted
           })
 
@@ -214,6 +254,7 @@ export function useRealtimeMessages(conversationId) {
             )
             // Update cache
             messageCache.set(conversationId, updated)
+            persistMessages(conversationId, updated)
             return updated
           })
         }
@@ -507,7 +548,11 @@ export function useRealtimeConversations(fromNumber) {
       }
       
       lastFetchRef.current = now
-      
+
+      // Persist the fresh server list so the next page load hydrates
+      // instantly instead of showing the skeleton (stale-while-revalidate).
+      cacheSet(`convs:${normalizedFromNumber}`, processedConversations)
+
     } catch (error) {
       console.error('Error fetching conversations:', error)
     } finally {
@@ -520,9 +565,29 @@ export function useRealtimeConversations(fromNumber) {
 
   useEffect(() => {
     initialLoadDone.current = false
-    fetchConversations(true)
 
-    if (!fromNumber) return
+    // Line switch: clear the previous line's list SYNCHRONOUSLY so its chats
+    // and unread counts never bleed into the new line — show the skeleton
+    // instead. Then hydrate from the persistent cache (a few ms, so the
+    // skeleton is a blink on cached lines) and let the network fetch below
+    // replace it with fresh data (stale-while-revalidate).
+    setConversations([])
+    setLoading(true)
+
+    let cancelled = false
+    ;(async () => {
+      if (fromNumber) {
+        const cached = await cacheGet(`convs:${normalizePhoneNumber(fromNumber)}`)
+        if (!cancelled && !initialLoadDone.current && Array.isArray(cached) && cached.length > 0) {
+          setConversations(cached)
+          setLoading(false)
+          initialLoadDone.current = true   // network fetch merges quietly, no skeleton
+        }
+      }
+      if (!cancelled) fetchConversations(true)
+    })()
+
+    if (!fromNumber) return () => { cancelled = true }
 
     const normalizedFromNumber = normalizePhoneNumber(fromNumber)
 
@@ -637,6 +702,7 @@ export function useRealtimeConversations(fromNumber) {
       .subscribe()
 
     return () => {
+      cancelled = true
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current)
         channelRef.current = null

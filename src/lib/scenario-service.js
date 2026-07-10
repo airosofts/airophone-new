@@ -191,6 +191,75 @@ function tzShort(tz) {
   } catch { return tz }
 }
 
+// Assemble the full system prompt for a scenario reply: the (already
+// token-substituted) instructions + business-hours booking constraints +
+// current date/time + the hard rules. Used by BOTH the live webhook path
+// (executeScenario) and the sandbox test chat, so tests are faithful.
+export async function buildScenarioSystemPrompt({ instructions, booksAppointments, workspaceId }) {
+  // Pull the workspace's configured business hours (Settings → Business Hours)
+  // so the AI's clock AND its scheduling window come from one place — no need
+  // to hard-code times in the prompt.
+  let bizTz = 'America/New_York'
+  let businessHoursLine = ''
+  try {
+    const { data: ws } = await supabaseAdmin
+      .from('workspaces')
+      .select('business_hours_start, business_hours_end, business_hours_tz, business_days')
+      .eq('id', workspaceId)
+      .maybeSingle()
+    if (ws) {
+      bizTz = ws.business_hours_tz || bizTz
+      // Only inject the booking constraint for scenarios that actually BOOK
+      // calls. An info/support scenario shouldn't be told to confirm callbacks.
+      if (booksAppointments !== false) {
+        const bdays = ws.business_days && ws.business_days.length ? ws.business_days : [1, 2, 3, 4, 5]
+        const days = summarizeDays(bdays)
+        // Spell out the NEXT few days as open/closed so the AI never has to do
+        // weekday math (the recurring "tried to book Saturday" bug). It just
+        // picks an (open) day.
+        const _ISO = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 }
+        const upcoming = []
+        for (let i = 1; i <= 5; i++) {
+          const p = new Intl.DateTimeFormat('en-US', { timeZone: bizTz, weekday: 'short', month: 'short', day: 'numeric' }).formatToParts(new Date(Date.now() + i * 86400000))
+          const wd = p.find(x => x.type === 'weekday')?.value
+          const md = `${p.find(x => x.type === 'month')?.value} ${p.find(x => x.type === 'day')?.value}`
+          upcoming.push(`${wd} ${md} ${bdays.includes(_ISO[wd]) ? '(open)' : '(CLOSED)'}`)
+        }
+        businessHoursLine = `\n\nBUSINESS HOURS: ${days}, ${fmtBizTime(ws.business_hours_start)}–${fmtBizTime(ws.business_hours_end)} (${tzShort(bizTz)}). Only confirm a callback INSIDE these hours and ONLY on a business day.` +
+          `\nUPCOMING DAYS: ${upcoming.join(', ')}. Propose or confirm a callback ONLY on an (open) day — never on a (CLOSED) day. If the lead asks for a closed day or a time outside hours, guide them to the next (open) day at opening time.`
+      }
+    }
+  } catch (e) { console.warn('[scenario] business hours load failed:', e.message) }
+
+  // Current date/time in the business timezone — the AI has no built-in clock,
+  // so without this it can't reason about "today/tomorrow/this afternoon" or
+  // whether a requested time falls inside business hours.
+  const nowLocal = new Intl.DateTimeFormat('en-US', {
+    timeZone: bizTz,
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+  }).format(new Date())
+  // Spell out tomorrow's weekday so the AI never has to compute it (the
+  // recurring "tried to schedule Saturday" bug came from bad weekday math).
+  const _tp = new Intl.DateTimeFormat('en-US', { timeZone: bizTz, weekday: 'long', month: 'long', day: 'numeric' }).formatToParts(new Date(Date.now() + 86400000))
+  const tomorrowStr = `${_tp.find(x => x.type === 'weekday')?.value}, ${_tp.find(x => x.type === 'month')?.value} ${_tp.find(x => x.type === 'day')?.value}`
+
+  return `${instructions}
+
+CURRENT DATE & TIME: ${nowLocal}. Tomorrow is ${tomorrowStr}.
+Use this to interpret relative times the customer mentions (e.g. "today", "tomorrow", "this afternoon", "next week") and when confirming or proposing times. Always check the weekday before proposing a day.${businessHoursLine}
+
+IMPORTANT RULES:
+1. Follow the scenario instructions strictly
+2. Keep responses concise and natural
+3. If the scenario says to stop responding, return exactly: "STOP_SCENARIO"
+4. If you cannot help the customer or need human assistance (e.g., unable to meet their requirements after multiple attempts), return exactly: "NEED_HUMAN"
+5. Never mention you are an AI or bot
+6. Stay in character based on the scenario
+
+Current conversation:`
+}
+
 export async function executeScenario(scenario, message, conversation) {
   const startTime = Date.now()
   const executionLog = {
@@ -337,69 +406,13 @@ export async function executeScenario(scenario, message, conversation) {
       console.warn(`[scenario] Unresolved tokens for ${message.from_number}: ${[...unresolvedTokens].join(', ')} — message will read awkwardly. Check that this contact's custom_fields contains those keys.`)
     }
 
-    // Pull the workspace's configured business hours (Settings → Business Hours)
-    // so the AI's clock AND its scheduling window come from one place — no need
-    // to hard-code times in the prompt.
-    let bizTz = 'America/New_York'
-    let businessHoursLine = ''
-    try {
-      const { data: ws } = await supabaseAdmin
-        .from('workspaces')
-        .select('business_hours_start, business_hours_end, business_hours_tz, business_days')
-        .eq('id', conversation.workspace_id)
-        .maybeSingle()
-      if (ws) {
-        bizTz = ws.business_hours_tz || bizTz
-        // Only inject the booking constraint for scenarios that actually BOOK
-        // calls. An info/support scenario shouldn't be told to confirm callbacks.
-        if (scenario.books_appointments !== false) {
-          const bdays = ws.business_days && ws.business_days.length ? ws.business_days : [1, 2, 3, 4, 5]
-          const days = summarizeDays(bdays)
-          // Spell out the NEXT few days as open/closed so the AI never has to do
-          // weekday math (the recurring "tried to book Saturday" bug). It just
-          // picks an (open) day.
-          const _ISO = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 }
-          const upcoming = []
-          for (let i = 1; i <= 5; i++) {
-            const p = new Intl.DateTimeFormat('en-US', { timeZone: bizTz, weekday: 'short', month: 'short', day: 'numeric' }).formatToParts(new Date(Date.now() + i * 86400000))
-            const wd = p.find(x => x.type === 'weekday')?.value
-            const md = `${p.find(x => x.type === 'month')?.value} ${p.find(x => x.type === 'day')?.value}`
-            upcoming.push(`${wd} ${md} ${bdays.includes(_ISO[wd]) ? '(open)' : '(CLOSED)'}`)
-          }
-          businessHoursLine = `\n\nBUSINESS HOURS: ${days}, ${fmtBizTime(ws.business_hours_start)}–${fmtBizTime(ws.business_hours_end)} (${tzShort(bizTz)}). Only confirm a callback INSIDE these hours and ONLY on a business day.` +
-            `\nUPCOMING DAYS: ${upcoming.join(', ')}. Propose or confirm a callback ONLY on an (open) day — never on a (CLOSED) day. If the lead asks for a closed day or a time outside hours, guide them to the next (open) day at opening time.`
-        }
-      }
-    } catch (e) { console.warn('[scenario] business hours load failed:', e.message) }
-
-    // Current date/time in the business timezone — the AI has no built-in clock,
-    // so without this it can't reason about "today/tomorrow/this afternoon" or
-    // whether a requested time falls inside business hours.
-    const nowLocal = new Intl.DateTimeFormat('en-US', {
-      timeZone: bizTz,
-      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-      hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
-    }).format(new Date())
-    // Spell out tomorrow's weekday so the AI never has to compute it (the
-    // recurring "tried to schedule Saturday" bug came from bad weekday math).
-    const _tp = new Intl.DateTimeFormat('en-US', { timeZone: bizTz, weekday: 'long', month: 'long', day: 'numeric' }).formatToParts(new Date(Date.now() + 86400000))
-    const tomorrowStr = `${_tp.find(x => x.type === 'weekday')?.value}, ${_tp.find(x => x.type === 'month')?.value} ${_tp.find(x => x.type === 'day')?.value}`
-
-    // Build AI prompt
-    const aiPrompt = `${instructions}
-
-CURRENT DATE & TIME: ${nowLocal}. Tomorrow is ${tomorrowStr}.
-Use this to interpret relative times the customer mentions (e.g. "today", "tomorrow", "this afternoon", "next week") and when confirming or proposing times. Always check the weekday before proposing a day.${businessHoursLine}
-
-IMPORTANT RULES:
-1. Follow the scenario instructions strictly
-2. Keep responses concise and natural
-3. If the scenario says to stop responding, return exactly: "STOP_SCENARIO"
-4. If you cannot help the customer or need human assistance (e.g., unable to meet their requirements after multiple attempts), return exactly: "NEED_HUMAN"
-5. Never mention you are an AI or bot
-6. Stay in character based on the scenario
-
-Current conversation:`
+    // Build AI prompt — shared with the sandbox test chat so a test reply is
+    // produced by EXACTLY the same prompt a real lead would trigger.
+    const aiPrompt = await buildScenarioSystemPrompt({
+      instructions,
+      booksAppointments: scenario.books_appointments,
+      workspaceId: conversation.workspace_id,
+    })
 
     executionLog.ai_prompt = aiPrompt
 

@@ -165,11 +165,12 @@ export async function GET(request) {
 
       // Query in batches of 100 to stay within URL length limits
       const batchSize = 100
+      const rowsByKey = {}
       for (let i = 0; i < phonesToQuery.length; i += batchSize) {
         const batch = phonesToQuery.slice(i, i + batchSize)
         const { data: contactRows, error: contactError } = await supabaseAdmin
           .from('contacts')
-          .select('phone_number, first_name, last_name, business_name, status')
+          .select('phone_number, first_name, last_name, business_name, status, updated_at')
           .eq('workspace_id', workspace.workspaceId)
           .in('phone_number', batch)
 
@@ -178,28 +179,29 @@ export async function GET(request) {
           continue
         }
 
-        if (contactRows) {
-          for (const c of contactRows) {
-            const entry = {
-              first_name: c.first_name || null,
-              last_name: c.last_name || null,
-              business_name: c.business_name || null,
-              status: c.status || null
-            }
-            // Duplicate rows can share a phone. Don't let a status-less duplicate
-            // overwrite one that already carries a status (or a name) — prefer the
-            // richer entry so the list badge reflects the real disposition.
-            const better = (key) => {
-              const prev = contactMap[key]
-              if (!prev) return true
-              if (!prev.status && entry.status) return true
-              if (!prev.first_name && !prev.last_name && (entry.first_name || entry.last_name)) return true
-              return false
-            }
-            if (c.phone_number && better(c.phone_number)) contactMap[c.phone_number] = entry
-            const normalized = normalizePhone(c.phone_number)
-            if (normalized && normalized !== c.phone_number && better(normalized)) contactMap[normalized] = entry
+        for (const c of (contactRows || [])) {
+          const keys = new Set([c.phone_number, normalizePhone(c.phone_number)].filter(Boolean))
+          for (const key of keys) {
+            if (!rowsByKey[key]) rowsByKey[key] = []
+            rowsByKey[key].push(c)
           }
+        }
+      }
+
+      // The same phone often exists as SEVERAL contact rows (imported into
+      // multiple lists, each with a different name). Every surface must pick
+      // the SAME row, or the conversation list, chat header and contact panel
+      // show different names for one lead. This mirrors /api/contacts/by-phone
+      // exactly: most-recently-updated first, prefer the first row that has a
+      // status, else the newest row.
+      for (const [key, rows] of Object.entries(rowsByKey)) {
+        rows.sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0))
+        const winner = rows.find(r => r.status) || rows[0]
+        contactMap[key] = {
+          first_name: winner.first_name || null,
+          last_name: winner.last_name || null,
+          business_name: winner.business_name || null,
+          status: winner.status || null,
         }
       }
       console.log(`[ContactMap] Found ${Object.keys(contactMap).length} contact entries for ${phonesToQuery.length} phones`)

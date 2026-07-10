@@ -36,6 +36,23 @@ function humanizeSpan(ms) {
   return `about ${days} day${days === 1 ? '' : 's'}`
 }
 
+// Compact "how long ago" from a timestamp: "12m ago", "5h ago", "3d ago".
+function timeAgo(ts) {
+  if (!ts) return ''
+  const ms = Date.now() - new Date(ts).getTime()
+  if (!Number.isFinite(ms)) return ''
+  const mins = Math.floor(ms / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 30) return `${days}d ago`
+  const months = Math.floor(days / 30)
+  if (months < 12) return `${months}mo ago`
+  return `${Math.floor(months / 12)}y ago`
+}
+
 // Recommended RVM send-rate presets, keyed by team size. Each maps to a
 // concrete (count, window-seconds) the backend sweeper enforces — derived from
 // the "spacing/interval" guidance. `callbacks` is shown to help users pick by
@@ -901,6 +918,12 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
     sheetTabId: null, sheetTabName: '',
     sheetPhoneColumn: '',
     sheetRowIds: [],             // selected rows; all-selected == "all rows"
+    // Engagement-based recipient filters — enforced server-side at send time
+    // against the sender line's conversation history.
+    filterEngagement: 'all',     // 'all' | 'not_replied' | 'not_replied_recent' | 'replied' | 'never_messaged'
+    filterWindowHours: 24,       // window for 'not_replied_recent'
+    filterQuietHours: 0,         // "skip anyone texted in the last N hours" (0 = off)
+    filterExcludeStatuses: [],
   }
   // Preserve in-progress work: restore the autosaved draft if there is one.
   const DRAFT_KEY = 'campaign.wizard.draft'
@@ -1210,6 +1233,61 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
     })
   }
 
+  // Engagement filters → the API shape. null = "no filtering", so the backend
+  // skips the history check entirely.
+  const buildRecipientFilters = () => {
+    if (formData.filterEngagement === 'all' && Number(formData.filterQuietHours) === 0) return null
+    return {
+      engagement: formData.filterEngagement,
+      window_hours: Number(formData.filterWindowHours),
+      skip_contacted_hours: Number(formData.filterQuietHours),
+      exclude_statuses: [],
+    }
+  }
+
+  // Recipients preview (contacts source) — fetched when the user reaches Review,
+  // and refetched whenever the list, sender or filters change. Filters are
+  // enforced server-side at send time; this shows who matches right now.
+  const [recipPreview, setRecipPreview] = useState(null)   // { total, matched, excluded, truncated, recipients }
+  const [recipPreviewLoading, setRecipPreviewLoading] = useState(false)
+  const [recipPreviewError, setRecipPreviewError] = useState('')
+  const [recipSearch, setRecipSearch] = useState('')
+  useEffect(() => {
+    if (step !== 4 || formData.source !== 'contacts' || !formData.contactListId) {
+      setRecipPreview(null); setRecipPreviewError('')
+      return
+    }
+    const selectedPn = phoneNumbers.find(pn => pn.id === formData.phoneNumberId)
+    const senderNumber = selectedPn?.phone_number || selectedPn?.phoneNumber || ''
+    let alive = true
+    setRecipPreviewLoading(true)
+    setRecipPreviewError('')
+    setRecipSearch('')
+    fetchWithWorkspace('/api/campaigns/preview-recipients', {
+      method: 'POST',
+      body: JSON.stringify({
+        contact_list_ids: [formData.contactListId],
+        sender_number: senderNumber,
+        filters: {
+          engagement: formData.filterEngagement,
+          window_hours: Number(formData.filterWindowHours),
+          skip_contacted_hours: Number(formData.filterQuietHours),
+          exclude_statuses: [],
+        },
+      }),
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (!alive) return
+        if (d?.success) setRecipPreview(d)
+        else { setRecipPreview(null); setRecipPreviewError(d?.error || 'Could not load the recipient preview.') }
+      })
+      .catch(() => { if (alive) { setRecipPreview(null); setRecipPreviewError('Could not load the recipient preview.') } })
+      .finally(() => { if (alive) setRecipPreviewLoading(false) })
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, formData.source, formData.contactListId, formData.phoneNumberId, formData.filterEngagement, formData.filterWindowHours, formData.filterQuietHours])
+
   const contactListOptions = [...extraLists, ...contactLists].map(cl => ({ value: cl.id, label: cl.name, count: cl.contactCount ?? cl.contact_count ?? 0, searchText: cl.name }))
   const phoneNumberOptions = phoneNumbers.map(pn => ({ value: pn.id, number: pn.phone_number || pn.phoneNumber, name: pn.custom_name || pn.prefix || '', searchText: `${pn.custom_name || ''} ${pn.phone_number || pn.phoneNumber || ''}` }))
 
@@ -1351,6 +1429,7 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
         send_days: formData.businessHoursOnly && bizHours ? bizHours.days : null,
         send_timezone: formData.businessHoursOnly && bizHours ? bizHours.tz : null,
         recurring: !!(formData.recurring && formData.dailyLimitEnabled),
+        recipient_filters: buildRecipientFilters(),
       })
       const data = await res.json()
       if (!data.success) { setErrors({ submit: data.error || 'Failed to save draft' }); return }
@@ -1417,6 +1496,8 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
         send_days: formData.businessHoursOnly && bizHours ? bizHours.days : null,
         send_timezone: formData.businessHoursOnly && bizHours ? bizHours.tz : null,
         recurring: !!(formData.recurring && formData.dailyLimitEnabled),
+        // Engagement filters — re-checked server-side at send time (null = none).
+        recipient_filters: buildRecipientFilters(),
         // Tells the create endpoint to skip contact-list validation — a Monday
         // campaign's recipients come from the board, linked right after this.
         source: formData.source,
@@ -1670,6 +1751,61 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
                       className="px-3.5 py-1.5 text-xs font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md disabled:opacity-50">
                       {csvBusy ? <><i className="fas fa-spinner fa-spin mr-1.5" />Importing…</> : 'Import & use this list'}
                     </button>
+                  </div>
+                )}
+
+                {/* Engagement filters — narrow the list by chat history with the sender line */}
+                {formData.contactListId && (
+                  <div className="mt-5 p-4 border border-[#E3E1DB] rounded-lg">
+                    <h5 className="text-sm font-semibold text-[#131210]">Who should get this?</h5>
+                    <p className="text-xs text-[#9B9890] mt-0.5 mb-3.5">Narrow the audience using their chat history with the sender number.</p>
+                    <div className="space-y-3">
+                      <div>
+                        <select
+                          value={formData.filterEngagement}
+                          onChange={(e) => setFormData(f => ({ ...f, filterEngagement: e.target.value }))}
+                          className="w-full px-3 py-3 border border-[#D4D1C9] rounded-lg text-sm bg-[#FFFFFF] focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F]"
+                        >
+                          <option value="all">Everyone in the list</option>
+                          <option value="not_replied">Only people who never replied</option>
+                          <option value="not_replied_recent">Only people quiet for the last…</option>
+                          <option value="replied">Only people who replied before</option>
+                          <option value="never_messaged">Only brand-new — never texted from this line</option>
+                        </select>
+                      </div>
+                      {formData.filterEngagement === 'not_replied_recent' && (
+                        <div>
+                          <label className="block text-sm font-medium text-[#5C5A55] mb-2">Quiet for the last</label>
+                          <select
+                            value={String(formData.filterWindowHours)}
+                            onChange={(e) => setFormData(f => ({ ...f, filterWindowHours: Number(e.target.value) }))}
+                            className="w-full px-3 py-3 border border-[#D4D1C9] rounded-lg text-sm bg-[#FFFFFF] focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F]"
+                          >
+                            <option value="24">24 hours</option>
+                            <option value="48">48 hours</option>
+                            <option value="72">3 days</option>
+                            <option value="168">7 days</option>
+                            <option value="336">14 days</option>
+                            <option value="720">30 days</option>
+                          </select>
+                        </div>
+                      )}
+                      <div>
+                        <label className="block text-sm font-medium text-[#5C5A55] mb-2">Skip anyone texted in the last…</label>
+                        <select
+                          value={String(formData.filterQuietHours)}
+                          onChange={(e) => setFormData(f => ({ ...f, filterQuietHours: Number(e.target.value) }))}
+                          className="w-full px-3 py-3 border border-[#D4D1C9] rounded-lg text-sm bg-[#FFFFFF] focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F]"
+                        >
+                          <option value="0">Off</option>
+                          <option value="12">12 hours</option>
+                          <option value="24">24 hours</option>
+                          <option value="48">48 hours</option>
+                          <option value="168">7 days</option>
+                        </select>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-[#9B9890] mt-3">Filters are re-checked at send time, and on every cycle for recurring campaigns.</p>
                   </div>
                 )}
               </div>
@@ -2180,7 +2316,10 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
                   ? formData.mondayItemIds.length
                   : formData.source === 'sheets'
                   ? formData.sheetRowIds.length
-                  : (list?.count ?? 0)
+                  // Contacts: once the preview has loaded, count only who passes
+                  // the engagement filters; fall back to the raw list size while
+                  // it loads (or if it errors).
+                  : (typeof recipPreview?.matched === 'number' ? recipPreview.matched : (list?.count ?? 0))
                 const rows = [
                   ['Campaign', formData.name || '—'],
                   ['Audience', audienceLabel],
@@ -2241,6 +2380,60 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
                       </div>
                     )
                   })()}
+
+                  {/* Recipients review (contacts source) — who matches the engagement filters right now */}
+                  {formData.source === 'contacts' && (
+                    <div className="mb-4">
+                      {recipPreviewLoading ? (
+                        <p className="text-xs text-[#9B9890]"><i className="fas fa-spinner fa-spin mr-1.5" />Checking who matches your filters…</p>
+                      ) : recipPreviewError ? (
+                        <p className="text-xs text-[#D63B1F]">{recipPreviewError}</p>
+                      ) : recipPreview ? (
+                        recipPreview.matched === 0 ? (
+                          <p className="text-xs text-[#D63B1F]">No one matches these filters — nothing would be sent.</p>
+                        ) : (() => {
+                          const q = recipSearch.trim().toLowerCase()
+                          const shown = q
+                            ? (recipPreview.recipients || []).filter(r => `${r.name || ''} ${r.phone || ''}`.toLowerCase().includes(q))
+                            : (recipPreview.recipients || [])
+                          return (
+                            <>
+                              <p className="text-xs text-[#9B9890] uppercase tracking-wider mb-1.5">
+                                {recipPreview.matched.toLocaleString()} of {recipPreview.total.toLocaleString()} people will receive this
+                                {recipPreview.excluded > 0 && <> · {recipPreview.excluded.toLocaleString()} filtered out</>}
+                              </p>
+                              <input type="text" value={recipSearch} onChange={(e) => setRecipSearch(e.target.value)} placeholder="Search by name or phone…"
+                                className="w-full px-3 py-2 mb-2 border border-[#D4D1C9] rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20" />
+                              <div className="border border-[#E3E1DB] rounded-lg max-h-[300px] overflow-y-auto divide-y divide-[#F0EEE9]">
+                                {shown.length === 0 ? (
+                                  <p className="px-3 py-2 text-xs text-[#9B9890]">No matches for “{recipSearch}”.</p>
+                                ) : shown.map((r, i) => (
+                                  <div key={`${r.phone}-${i}`} className="flex items-center justify-between gap-3 px-3 py-2">
+                                    <div className="min-w-0">
+                                      <p className="text-sm text-[#131210] truncate">{r.name || r.phone}</p>
+                                      {(r.last_outbound_at || r.last_inbound_at) && (
+                                        <p className="text-[11px] text-[#9B9890] mt-0.5">
+                                          {r.last_outbound_at && <>Last texted {timeAgo(r.last_outbound_at)}</>}
+                                          {r.last_outbound_at && r.last_inbound_at && ' · '}
+                                          {r.last_inbound_at && <>Replied {timeAgo(r.last_inbound_at)}</>}
+                                        </p>
+                                      )}
+                                    </div>
+                                    <span className="text-xs font-mono shrink-0 text-[#9B9890]">{r.phone}</span>
+                                  </div>
+                                ))}
+                                {recipPreview.truncated && (
+                                  <div className="px-3 py-2 text-xs text-[#9B9890] text-center">
+                                    Showing first 1,000 — all {recipPreview.matched.toLocaleString()} will be sent.
+                                  </div>
+                                )}
+                              </div>
+                            </>
+                          )
+                        })()
+                      ) : null}
+                    </div>
+                  )}
 
                   {(formData.source === 'monday' || formData.source === 'sheets') && (
                     <div className="mb-4">
