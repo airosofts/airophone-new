@@ -103,6 +103,7 @@ export async function PATCH(request, { params }) {
       followup_start_time,
       followup_end_time,
       followup_timezone,
+      followup_graph,
       ai_reply_mode,
       books_appointments
     } = body
@@ -124,6 +125,8 @@ export async function PATCH(request, { params }) {
     if (followup_start_time !== undefined) updateData.followup_start_time = followup_start_time || null
     if (followup_end_time !== undefined) updateData.followup_end_time = followup_end_time || null
     if (followup_timezone !== undefined) updateData.followup_timezone = followup_timezone || null
+    // Visual builder graph — additive, nullable; the follow-up engine never reads it.
+    if (followup_graph !== undefined) updateData.followup_graph = (followup_graph && typeof followup_graph === 'object') ? followup_graph : null
     if (ai_reply_mode !== undefined) updateData.ai_reply_mode = ai_reply_mode === 'business_hours' ? 'business_hours' : 'anytime'
     if (books_appointments !== undefined) updateData.books_appointments = !!books_appointments
     if (contact_list_ids !== undefined) updateData.restrict_to_contact_lists = contact_list_ids?.length > 0 ? contact_list_ids : null

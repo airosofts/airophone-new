@@ -278,7 +278,8 @@ export default function DashboardLayout({ children }) {
   // Full-bleed routes (the automation builder canvas) render edge-to-edge with
   // NO sidebar/header chrome — but still behind auth + the subscription guard.
   const FULLSCREEN_ROUTES = ['/automations/new']
-  if (FULLSCREEN_ROUTES.includes(pathname)) {
+  const isFullscreen = FULLSCREEN_ROUTES.includes(pathname) || /^\/scenarios\/[^/]+\/follow-ups$/.test(pathname)
+  if (isFullscreen) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', background: '#F7F6F3' }}>
         {isBlocked && (

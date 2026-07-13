@@ -1,112 +1,79 @@
 'use client'
 
-// Full-page follow-up sequence builder — a horizontal canvas styled like the
-// Automations builder (FlowCard + curved red connectors). Replaces the old
-// cramped modal. Reads/writes the same /api/scenarios/[id]/followup-stages API.
+// Full-page drag-and-drop follow-up sequence builder. Flexible nodes/branches
+// on the existing linear engine: the not_responded chain from the Trigger is
+// serialised to ordered scenario_followup_stages; "if replied → End" edges are
+// visual (the engine stops on any reply). Reads/writes the same APIs as before.
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { ReactFlow, Background, Controls, MiniMap, addEdge, useNodesState, useEdgesState, MarkerType } from '@xyflow/react'
+import '@xyflow/react/dist/style.css'
 import { apiGet, apiPost, fetchWithWorkspace } from '@/lib/api-client'
-
-// One card on the canvas (matches AutomationBuilder's FlowCard).
-function FlowCard({ badge, badgeBg, title, subtitle, accent = '#D63B1F', width = 'w-[340px]', children, headerRight }) {
-  return (
-    <div className={`${width} shrink-0 bg-white rounded-xl border border-[#E3E1DB] shadow-sm`}>
-      <div className="flex items-center gap-2.5 px-4 py-3 rounded-t-xl border-b border-[#EFEDE8]" style={{ background: `${accent}0D` }}>
-        <span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border"
-          style={{ background: badgeBg || accent, borderColor: badgeBg ? '#E3E1DB' : 'transparent' }}>
-          {badge}
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-[#131210] leading-tight truncate">{title}</p>
-          {subtitle && <p className="text-[11px] text-[#9B9890] leading-tight truncate">{subtitle}</p>}
-        </div>
-        {headerRight}
-      </div>
-      {children && <div className="p-4 space-y-3">{children}</div>}
-    </div>
-  )
-}
-
-// Curved connector with an optional condition pill above it.
-function FlowArrow({ label, tone = 'red' }) {
-  const stroke = tone === 'green' ? '#16A34A' : '#D63B1F'
-  const pill = tone === 'green'
-    ? 'bg-[#F1F9F4] border-[#CDE9D6] text-[#16A34A]'
-    : 'bg-white border-[#E3E1DB] text-[#9B9890]'
-  return (
-    <div className="flex-1 min-w-[72px] px-1.5 self-center flex flex-col items-center justify-center gap-1.5" aria-hidden>
-      {label && <span className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full border whitespace-nowrap ${pill}`}>{label}</span>}
-      <div className="w-full flex items-center">
-        <svg className="flex-1 h-8" viewBox="0 0 100 32" preserveAspectRatio="none" fill="none">
-          <path d="M0 16 C 30 16, 30 5, 50 5 C 70 5, 70 16, 100 16"
-            stroke={stroke} strokeWidth="2" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-        </svg>
-        <svg width="9" height="12" viewBox="0 0 9 12" className="-ml-px shrink-0">
-          <path d="M9 6L0 0v12z" fill={stroke} />
-        </svg>
-      </div>
-    </div>
-  )
-}
-
-const inputCls = 'px-2.5 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]'
+import { followUpNodeTypes } from '@/components/scenarios/FollowUpNodes'
+import { NODE, HANDLE, buildGraphFromScenario, flattenGraphToStages, validateGraph } from '@/lib/followup-graph'
 
 const DAYS = [{ n: 1, l: 'M' }, { n: 2, l: 'T' }, { n: 3, l: 'W' }, { n: 4, l: 'T' }, { n: 5, l: 'F' }, { n: 6, l: 'S' }, { n: 7, l: 'S' }]
 const TIMEZONES = [
-  { v: 'America/New_York', l: 'Eastern (ET)' },
-  { v: 'America/Chicago', l: 'Central (CT)' },
-  { v: 'America/Denver', l: 'Mountain (MT)' },
-  { v: 'America/Los_Angeles', l: 'Pacific (PT)' },
-  { v: 'America/Phoenix', l: 'Arizona' },
-  { v: 'America/Anchorage', l: 'Alaska' },
-  { v: 'Pacific/Honolulu', l: 'Hawaii' },
-  { v: 'UTC', l: 'UTC' },
+  { v: 'America/New_York', l: 'Eastern (ET)' }, { v: 'America/Chicago', l: 'Central (CT)' },
+  { v: 'America/Denver', l: 'Mountain (MT)' }, { v: 'America/Los_Angeles', l: 'Pacific (PT)' },
+  { v: 'America/Phoenix', l: 'Arizona' }, { v: 'America/Anchorage', l: 'Alaska' },
+  { v: 'Pacific/Honolulu', l: 'Hawaii' }, { v: 'UTC', l: 'UTC' },
 ]
+const inputCls = 'px-2.5 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]'
 
-// Tiny Monday tri-dot mark for the per-stage status field.
-function MondayDot() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 32 32" fill="none" className="inline-block shrink-0">
-      <circle cx="6" cy="16" r="5" fill="#FF3D57" />
-      <circle cx="16" cy="16" r="5" fill="#FFCB00" />
-      <circle cx="26" cy="16" r="5" fill="#00CA72" />
-    </svg>
-  )
+const COL = 360
+const strip = ({ ctx, ...rest }) => rest
+function decorate(e) {
+  const stop = e.sourceHandle === HANDLE.STOP
+  const stroke = stop ? '#16A34A' : '#D63B1F'
+  return {
+    ...e, type: 'smoothstep', animated: true, label: stop ? 'if replied' : 'if no reply',
+    deletable: !stop,   // the replied → End edge can't be disconnected (engine reply-stop)
+    labelStyle: { fill: stroke, fontSize: 10, fontWeight: 700 }, labelBgStyle: { fill: '#fff', fillOpacity: 0.9 }, labelBgPadding: [4, 2], labelBgBorderRadius: 3,
+    style: { stroke, strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color: stroke, width: 16, height: 16 },
+  }
+}
+// Drop any End node left with no incoming edge (orphaned after a delete / rewire).
+function prune(nodes, edges) {
+  const incoming = new Set(edges.map(e => e.target))
+  const keptNodes = nodes.filter(n => n.type !== NODE.END || incoming.has(n.id))
+  const ids = new Set(keptNodes.map(n => n.id))
+  return { nodes: keptNodes, edges: edges.filter(e => ids.has(e.source) && ids.has(e.target)) }
 }
 
 export default function FollowUpSequencePage() {
   const { id } = useParams()
   const router = useRouter()
-
   const [scenarioName, setScenarioName] = useState('')
-  const [stages, setStages] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [savedTick, setSavedTick] = useState(false)
-  // Real Monday status columns (+ labels) for this scenario's board(s).
-  const [statusCols, setStatusCols] = useState([])   // [{ id, title, labels, board_name }]
+  const [statusCols, setStatusCols] = useState([])
   const [multiBoard, setMultiBoard] = useState(false)
-  // Per-sequence working window (when follow-ups may send).
   const [win, setWin] = useState({ enabled: false, days: [1, 2, 3, 4, 5, 6, 7], start: '08:00', end: '22:00', tz: 'America/New_York' })
+  const [showAdd, setShowAdd] = useState(false)
+  const [nodes, setNodes, onNodesChange] = useNodesState([])
+  const [edges, setEdges, onEdgesChange] = useEdgesState([])
+
+  const updateNodeData = useCallback((nid, patch) => setNodes(nds => nds.map(n => n.id === nid ? { ...n, data: { ...n.data, ...patch } } : n)), [setNodes])
+  // plain fns (not memoised) so they close over the current nodes/edges for pruning
+  const deleteNode = (nid) => {
+    const p = prune(nodes.filter(n => n.id !== nid), edges.filter(e => e.source !== nid && e.target !== nid))
+    setNodes(p.nodes); setEdges(p.edges)
+  }
 
   const load = useCallback(async () => {
     try {
       const [scRes, stRes, mcRes] = await Promise.all([
-        apiGet(`/api/scenarios/${id}`),
-        apiGet(`/api/scenarios/${id}/followup-stages`),
-        apiGet(`/api/scenarios/${id}/monday-status-columns`),
+        apiGet(`/api/scenarios/${id}`), apiGet(`/api/scenarios/${id}/followup-stages`), apiGet(`/api/scenarios/${id}/monday-status-columns`),
       ])
       const sc = await scRes.json().catch(() => ({}))
       const st = await stRes.json().catch(() => ({}))
       const mc = await mcRes.json().catch(() => ({}))
       const scenario = sc?.scenario || sc || {}
       setScenarioName(scenario.name || 'Scenario')
-      const list = st?.stages || []
-      setStages(list.length > 0 ? list : [{ stage_number: 1, wait_duration: 1, wait_unit: 'days', instructions: '' }])
-
-      // Hydrate the working window from the scenario (with sane defaults).
       setWin({
         enabled: !!scenario.enable_business_hours,
         days: (Array.isArray(scenario.followup_days) && scenario.followup_days.length) ? scenario.followup_days : [1, 2, 3, 4, 5, 6, 7],
@@ -114,44 +81,93 @@ export default function FollowUpSequencePage() {
         end: (scenario.followup_end_time || '22:00').slice(0, 5),
         tz: scenario.followup_timezone || scenario.business_hours_timezone || 'America/New_York',
       })
-
-      // Flatten board → status columns; dedupe by column id (union labels).
       const boards = mc?.boards || []
       setMultiBoard(boards.length > 1)
       const map = new Map()
-      for (const b of boards) {
-        for (const c of (b.columns || [])) {
-          const ex = map.get(c.id)
-          if (ex) ex.labels = [...new Set([...ex.labels, ...c.labels])]
-          else map.set(c.id, { id: c.id, title: c.title, labels: [...c.labels], board_name: b.board_name })
-        }
+      for (const b of boards) for (const c of (b.columns || [])) {
+        const ex = map.get(c.id)
+        if (ex) ex.labels = [...new Set([...ex.labels, ...c.labels])]
+        else map.set(c.id, { id: c.id, title: c.title, labels: [...c.labels], board_name: b.board_name })
       }
       setStatusCols([...map.values()])
+
+      const stages = (st?.stages || [])
+      const graph = buildGraphFromScenario(scenario, stages.length ? stages : [{ stage_number: 1, wait_duration: 1, wait_unit: 'days', instructions: '' }])
+      setNodes(graph.nodes)
+      setEdges((graph.edges || []).map(decorate))
     } catch {
       setError('Failed to load this sequence.')
     } finally {
       setLoading(false)
     }
-  }, [id])
-
+  }, [id, setNodes, setEdges])
   useEffect(() => { load() }, [load])
 
-  const addStage = () => setStages(s => [...s, { stage_number: s.length + 1, wait_duration: 2, wait_unit: 'days', instructions: '' }])
-  const removeStage = (index) => setStages(s => s.filter((_, i) => i !== index).map((x, i) => ({ ...x, stage_number: i + 1 })))
-  const updateStage = (index, field, value) => setStages(s => s.map((x, i) => i === index ? { ...x, [field]: value } : x))
+  // Number each follow-up by its position on the not_responded chain.
+  const orderIndex = useMemo(() => {
+    const byId = Object.fromEntries(nodes.map(n => [n.id, n]))
+    const trigger = nodes.find(n => n.type === NODE.TRIGGER)
+    const idx = {}
+    if (!trigger) return idx
+    let edge = edges.find(e => e.source === trigger.id)
+    let i = 1; const seen = new Set()
+    while (edge && byId[edge.target]?.type === NODE.FOLLOWUP && !seen.has(edge.target)) {
+      seen.add(edge.target); idx[edge.target] = i++
+      edge = edges.find(e => e.source === edge.target && e.sourceHandle === HANDLE.NEXT)
+    }
+    return idx
+  }, [nodes, edges])
+
+  const rfNodes = nodes.map(n => {
+    if (n.type === NODE.FOLLOWUP) return { ...n, data: { ...n.data, ctx: { onChange: updateNodeData, onDelete: deleteNode, statusCols, multiBoard, index: orderIndex[n.id] } } }
+    if (n.type === NODE.END) return { ...n, deletable: !n.data?.fixed, data: { ...n.data, ctx: { onDelete: deleteNode } } }
+    return n
+  })
+
+  // one outgoing edge per source handle (single "next" / single "reply"); prune orphaned Ends.
+  const onConnect = (p) => {
+    const handle = p.sourceHandle || HANDLE.NEXT
+    const base = edges.filter(e => !(e.source === p.source && e.sourceHandle === handle))
+    const pr = prune(nodes, addEdge(decorate({ ...p, sourceHandle: handle }), base))
+    setNodes(pr.nodes); setEdges(pr.edges)
+  }
+
+  const addNode = (type) => {
+    setShowAdd(false)
+    const uid = Date.now().toString(36)
+    if (type === NODE.END) {
+      setNodes(nds => [...nds, { id: `end-${uid}`, type: NODE.END, position: { x: 200, y: 700 }, data: { fixed: false } }])
+      return
+    }
+    // A new follow-up ALWAYS ships with its fixed replied→End (built-in reply-stop)
+    // and a removable no-reply→End. It floats until you wire it into the chain.
+    const count = nodes.filter(n => n.type === NODE.FOLLOWUP).length
+    const x = 40 + (count + 1) * COL
+    const fid = `followup-${uid}`, rid = `end-r-${uid}`, nid = `end-n-${uid}`
+    setNodes(nds => [...nds,
+      { id: fid, type: NODE.FOLLOWUP, position: { x, y: 80 }, data: { wait_duration: 2, wait_unit: 'days', message_mode: 'ai', instructions: '', monday_status_column_id: '', monday_status_label: '' } },
+      { id: rid, type: NODE.END, position: { x: x + 30, y: 700 }, data: { fixed: true } },
+      { id: nid, type: NODE.END, position: { x: x + COL, y: 80 }, data: { fixed: false } },
+    ])
+    setEdges(eds => [...eds,
+      decorate({ id: `er-${uid}`, source: fid, target: rid, sourceHandle: HANDLE.STOP }),
+      decorate({ id: `en-${uid}`, source: fid, target: nid, sourceHandle: HANDLE.NEXT }),
+    ])
+  }
 
   const save = async () => {
     setSaving(true); setError(null)
     try {
-      // Save the working window on the scenario, then the stages.
+      const graph = { nodes: nodes.map(({ id: nid, type, position, data }) => ({ id: nid, type, position, data: strip(data) })), edges: edges.map(({ id: eid, source, target, sourceHandle }) => ({ id: eid, source, target, sourceHandle: sourceHandle || null })) }
+      const errs = validateGraph(graph)
+      if (errs.length) { setError(errs[0]); setSaving(false); return }
+      const { stages } = flattenGraphToStages(graph)
+
       await fetchWithWorkspace(`/api/scenarios/${id}`, {
         method: 'PATCH',
         body: JSON.stringify({
-          enable_business_hours: win.enabled,
-          followup_days: win.days,
-          followup_start_time: win.start,
-          followup_end_time: win.end,
-          followup_timezone: win.tz,
+          enable_business_hours: win.enabled, followup_days: win.days, followup_start_time: win.start, followup_end_time: win.end, followup_timezone: win.tz,
+          followup_graph: graph,
         }),
       }).catch(() => {})
       const res = await apiPost(`/api/scenarios/${id}/followup-stages`, { stages })
@@ -165,14 +181,6 @@ export default function FollowUpSequencePage() {
     }
   }
 
-  const formatWaitLabel = (duration, unit) => {
-    const n = Number(duration) || 0
-    if (unit === 'minutes' && n >= 1440 && n % 1440 === 0) return `${n / 1440} day${n / 1440 !== 1 ? 's' : ''}`
-    if (unit === 'minutes' && n >= 60 && n % 60 === 0) return `${n / 60} hour${n / 60 !== 1 ? 's' : ''}`
-    const word = { minutes: 'minute', hours: 'hour', days: 'day', weeks: 'week' }[unit] || 'minute'
-    return `${n} ${word}${n !== 1 ? 's' : ''}`
-  }
-
   return (
     <div className="h-full flex flex-col bg-[#F7F6F3]">
       {/* Top bar */}
@@ -181,17 +189,14 @@ export default function FollowUpSequencePage() {
           <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
         </button>
         <div className="flex items-center gap-2 flex-1 min-w-0">
-          <span className="w-7 h-7 rounded-lg bg-[#D63B1F] flex items-center justify-center shrink-0">
-            <i className="fas fa-layer-group text-white text-xs" />
-          </span>
+          <span className="w-7 h-7 rounded-lg bg-[#D63B1F] flex items-center justify-center shrink-0"><i className="fas fa-layer-group text-white text-xs" /></span>
           <div className="min-w-0">
             <p className="text-base font-semibold text-[#131210] leading-tight truncate">Follow-up sequence</p>
             <p className="text-[11px] text-[#9B9890] leading-tight truncate">{scenarioName}</p>
           </div>
         </div>
         <button onClick={() => router.push('/scenarios')} className="px-4 py-2 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3]">Back</button>
-        <button onClick={save} disabled={saving || loading}
-          className="px-5 py-2 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg disabled:opacity-50">
+        <button onClick={save} disabled={saving || loading} className="px-5 py-2 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg disabled:opacity-50">
           {saving ? 'Saving…' : savedTick ? <><i className="fas fa-check mr-1.5" />Saved</> : 'Save sequence'}
         </button>
       </div>
@@ -199,17 +204,14 @@ export default function FollowUpSequencePage() {
       {/* Rule banner */}
       <div className="flex gap-2.5 items-center px-5 py-2.5 bg-[#FBF3F1] border-b border-[rgba(214,59,31,0.14)] shrink-0">
         <i className="fas fa-circle-info text-[#D63B1F] text-sm"></i>
-        <p className="text-xs text-[#5C5A55]">
-          These messages send <span className="font-semibold text-[#131210]">only if the lead hasn’t replied</span>. The moment they reply, every follow-up stops and your AI takes over.
-        </p>
+        <p className="text-xs text-[#5C5A55]">These messages send <span className="font-semibold text-[#131210]">only if the lead hasn’t replied</span>. The moment they reply, every follow-up stops and your AI takes over.</p>
       </div>
 
-      {/* Working hours — when follow-ups may send (per sequence) */}
+      {/* Working hours */}
       {!loading && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-2.5 bg-white border-b border-[#E3E1DB] shrink-0">
           <label className="flex items-center gap-2 text-xs font-medium text-[#131210] cursor-pointer">
-            <button type="button" role="switch" aria-checked={win.enabled}
-              onClick={() => setWin(w => ({ ...w, enabled: !w.enabled }))}
+            <button type="button" role="switch" aria-checked={win.enabled} onClick={() => setWin(w => ({ ...w, enabled: !w.enabled }))}
               className={`relative inline-flex h-5 w-9 rounded-full transition-colors ${win.enabled ? 'bg-[#D63B1F]' : 'bg-[#D4D1C9]'}`}>
               <span className={`inline-block h-4 w-4 mt-0.5 rounded-full bg-white shadow transition-transform ${win.enabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
             </button>
@@ -219,11 +221,8 @@ export default function FollowUpSequencePage() {
             <>
               <div className="flex items-center gap-1">
                 {DAYS.map((d, i) => (
-                  <button key={i} type="button" title={`Day ${d.n}`}
-                    onClick={() => setWin(w => ({ ...w, days: w.days.includes(d.n) ? w.days.filter(x => x !== d.n) : [...w.days, d.n].sort((a, b) => a - b) }))}
-                    className={`w-7 h-7 rounded-md text-xs font-semibold transition-colors ${win.days.includes(d.n) ? 'bg-[#D63B1F] text-white' : 'bg-[#F1EFEA] text-[#9B9890] hover:text-[#5C5A55]'}`}>
-                    {d.l}
-                  </button>
+                  <button key={i} type="button" onClick={() => setWin(w => ({ ...w, days: w.days.includes(d.n) ? w.days.filter(x => x !== d.n) : [...w.days, d.n].sort((a, b) => a - b) }))}
+                    className={`w-7 h-7 rounded-md text-xs font-semibold transition-colors ${win.days.includes(d.n) ? 'bg-[#D63B1F] text-white' : 'bg-[#F1EFEA] text-[#9B9890] hover:text-[#5C5A55]'}`}>{d.l}</button>
                 ))}
               </div>
               <div className="flex items-center gap-1.5 text-xs text-[#5C5A55]">
@@ -234,143 +233,48 @@ export default function FollowUpSequencePage() {
               <select value={win.tz} onChange={e => setWin(w => ({ ...w, tz: e.target.value }))} className={inputCls}>
                 {TIMEZONES.map(t => <option key={t.v} value={t.v}>{t.l}</option>)}
               </select>
-              <span className="text-[11px] text-[#9B9890]">Outside these hours, a nudge waits for the next open window.</span>
             </>
-          ) : (
-            <span className="text-xs text-[#9B9890]">Follow-ups send 24/7. Turn on to limit to specific days &amp; hours.</span>
-          )}
+          ) : <span className="text-xs text-[#9B9890]">Follow-ups send 24/7. Turn on to limit to specific days &amp; hours.</span>}
         </div>
       )}
 
-      {error && (
-        <div className="px-5 py-2 text-xs bg-[rgba(214,59,31,0.07)] border-b border-[rgba(214,59,31,0.16)] text-[#D63B1F] shrink-0">{error}</div>
-      )}
+      {error && <div className="px-5 py-2 text-xs bg-[rgba(214,59,31,0.07)] border-b border-[rgba(214,59,31,0.16)] text-[#D63B1F] shrink-0">{error}</div>}
 
       {/* Canvas */}
-      <div className="flex-1 overflow-auto" style={{ background: '#FAF9F6', backgroundImage: 'radial-gradient(#E0DED7 1px, transparent 1px)', backgroundSize: '18px 18px' }}>
+      <div className="flex-1 relative" style={{ background: '#FAF9F6' }}>
         {loading ? (
           <div className="h-full flex items-center justify-center text-[#9B9890]"><i className="fas fa-spinner fa-spin text-xl" /></div>
         ) : (
-          <div className="flex items-start w-full p-10" style={{ minWidth: 'max-content' }}>
-
-            {/* Start */}
-            <FlowCard accent="#2563EB" badge={<i className="fas fa-paper-plane text-white text-xs" />} title="First message sent" subtitle="Trigger" width="w-[260px]">
-              <p className="text-xs text-[#5C5A55] leading-relaxed">Your template or AI message goes out to the new lead. The sequence below begins counting from here.</p>
-            </FlowCard>
-
-            {/* Stages */}
-            {stages.map((stage, index) => (
-              <div key={index} className="flex items-stretch">
-                <FlowArrow label={index === 0 ? 'if no reply' : 'if still no reply'} />
-                <FlowCard
-                  accent="#D63B1F"
-                  width="w-[380px]"
-                  badge={<span className="text-white text-[11px] font-bold">{stage.stage_number}</span>}
-                  title={`Follow-up ${stage.stage_number}`}
-                  subtitle="Sent automatically if still no reply"
-                  headerRight={stages.length > 1 ? (
-                    <button onClick={() => removeStage(index)} title="Remove" className="text-[#9B9890] hover:text-[#D63B1F] p-1 shrink-0">
-                      <i className="fas fa-trash-can text-xs"></i>
-                    </button>
-                  ) : null}
-                >
-                  <div className="flex flex-wrap items-center gap-2 text-sm text-[#5C5A55]">
-                    <span>Wait</span>
-                    <input type="number" min="1" value={stage.wait_duration}
-                      onChange={(e) => updateStage(index, 'wait_duration', parseInt(e.target.value) || 1)}
-                      className={`${inputCls} w-16 text-center`} />
-                    <select value={stage.wait_unit} onChange={(e) => updateStage(index, 'wait_unit', e.target.value)} className={inputCls}>
-                      <option value="minutes">minutes</option>
-                      <option value="hours">hours</option>
-                      <option value="days">days</option>
-                      <option value="weeks">weeks</option>
-                    </select>
-                  </div>
-                  <p className="text-[11px] text-[#9B9890] -mt-1">≈ {formatWaitLabel(stage.wait_duration, stage.wait_unit)} after the previous message:</p>
-
-                  {/* Message mode: AI writes it (prompt) vs send exact text */}
-                  {(() => {
-                    const mode = stage.message_mode === 'exact' ? 'exact' : 'ai'
-                    const seg = (val, label) => (
-                      <button type="button" onClick={() => updateStage(index, 'message_mode', val)}
-                        className={`flex-1 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors ${mode === val ? 'bg-white text-[#131210] shadow-sm' : 'text-[#9B9890] hover:text-[#5C5A55]'}`}>
-                        {label}
-                      </button>
-                    )
-                    return (
-                      <>
-                        <div className="flex gap-1 p-1 bg-[#F1EFEA] rounded-lg">
-                          {seg('ai', '✨ AI writes it')}
-                          {seg('exact', 'Send exact message')}
-                        </div>
-                        <textarea value={stage.instructions} onChange={(e) => updateStage(index, 'instructions', e.target.value)}
-                          rows="4"
-                          placeholder={mode === 'exact'
-                            ? 'The exact text to send, e.g. “Hey {{first_name}}, just checking in — let me know when you’d like to schedule a call.”'
-                            : 'Describe what this message should do — the AI writes it. e.g. “Light, friendly bump. Re-ask for a day/time to connect. One short sentence.”'}
-                          className="w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F] resize-none" />
-                        <p className="text-[11px] text-[#9B9890] -mt-1">
-                          {mode === 'exact'
-                            ? 'Sent word-for-word. {{first_name}} and other tokens are filled in.'
-                            : 'The AI writes a fresh message in your scenario’s voice, using the whole conversation.'}
-                        </p>
-                      </>
-                    )
-                  })()}
-
-                  {/* Optional Monday status when this stage fires — real columns + labels */}
-                  <div className="pt-2 border-t border-[#EFEDE8]">
-                    <label className="flex items-center gap-1.5 text-[11px] font-medium text-[#5C5A55] mb-1.5">
-                      <MondayDot /> Set Monday status <span className="text-[#9B9890] font-normal">(optional)</span>
-                    </label>
-                    {statusCols.length === 0 ? (
-                      <p className="text-[11px] text-[#9B9890] leading-relaxed">Add an automation on this scenario’s line (with a status column) to set a Monday status here.</p>
-                    ) : (() => {
-                      const selCol = statusCols.find(c => c.id === stage.monday_status_column_id)
-                      return (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <select
-                            value={stage.monday_status_column_id || ''}
-                            onChange={(e) => { updateStage(index, 'monday_status_column_id', e.target.value); updateStage(index, 'monday_status_label', '') }}
-                            className={`${inputCls} flex-1 min-w-[130px]`}>
-                            <option value="">— No status —</option>
-                            {statusCols.map(c => <option key={c.id} value={c.id}>{multiBoard ? `${c.board_name} · ${c.title}` : c.title}</option>)}
-                          </select>
-                          {selCol && (
-                            <>
-                              <span className="text-xs text-[#9B9890]">to</span>
-                              <select
-                                value={stage.monday_status_label || ''}
-                                onChange={(e) => updateStage(index, 'monday_status_label', e.target.value)}
-                                className={`${inputCls} flex-1 min-w-[130px]`}>
-                                <option value="">— Choose a label —</option>
-                                {selCol.labels.map(l => <option key={l} value={l}>{l}</option>)}
-                              </select>
-                            </>
-                          )}
-                        </div>
-                      )
-                    })()}
-                  </div>
-                </FlowCard>
-              </div>
-            ))}
-
-            {/* Add */}
-            <FlowArrow label="then" />
-            <button onClick={addStage}
-              className="w-[200px] shrink-0 self-center flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#D4D1C9] bg-white/60 py-8 text-sm text-[#9B9890] hover:border-[#D63B1F] hover:text-[#D63B1F] transition-colors">
-              <i className="fas fa-plus text-lg"></i>
-              Add follow-up
-            </button>
-
-            {/* End */}
-            <FlowArrow label="any reply, any time" tone="green" />
-            <FlowCard accent="#16A34A" badge={<i className="fas fa-check text-white text-xs" />} title="Lead replies → ends" subtitle="AI takes over" width="w-[240px]">
-              <p className="text-xs text-[#5C5A55] leading-relaxed">As soon as the lead responds, any remaining follow-ups are cancelled and your AI scenario handles the conversation.</p>
-            </FlowCard>
-
-          </div>
+          <>
+            <ReactFlow nodes={rfNodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
+              nodeTypes={followUpNodeTypes} fitView fitViewOptions={{ maxZoom: 1, padding: 0.2 }} proOptions={{ hideAttribution: true }}>
+              <Background color="#E0DED7" gap={18} />
+              <Controls />
+              <MiniMap pannable zoomable style={{ background: '#FAFAF8' }} nodeColor="#F5C4C0" />
+            </ReactFlow>
+            {/* Add block */}
+            <div style={{ position: 'absolute', top: 14, left: 14, zIndex: 5 }}>
+              <button onClick={() => setShowAdd(v => !v)} className="inline-flex items-center gap-2 bg-white border border-[#E3E1DB] text-[#131210] font-semibold text-sm px-3.5 py-2 rounded-lg hover:bg-[#F7F6F3]" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
+                <span className="w-4 h-4 rounded bg-[#D63B1F] text-white inline-flex items-center justify-center text-[13px] leading-none">+</span> Add block
+                <svg className={`w-3.5 h-3.5 text-[#9B9890] transition-transform ${showAdd ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
+              </button>
+              {showAdd && (
+                <div className="mt-1.5 w-56 bg-white border border-[#E3E1DB] rounded-lg shadow-xl py-1">
+                  <button onClick={() => addNode(NODE.FOLLOWUP)} className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-[#F7F6F3]">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#D63B1F]" /><span className="text-sm font-medium text-[#131210]">Add follow-up</span>
+                  </button>
+                  <button onClick={() => addNode(NODE.END)} className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-[#F7F6F3]">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#16A34A]" /><span className="text-sm font-medium text-[#131210]">End</span>
+                  </button>
+                </div>
+              )}
+            </div>
+            {/* legend */}
+            <div style={{ position: 'absolute', bottom: 14, left: 14, zIndex: 5 }} className="flex gap-3 items-center bg-white/90 border border-[#E8E8E4] rounded px-2.5 py-1.5 text-[11px] font-semibold">
+              <span className="inline-flex items-center gap-1.5 text-[#5a5a57]"><span style={{ width: 14, height: 3, borderRadius: 2, background: '#D63B1F' }} />if no reply</span>
+              <span className="inline-flex items-center gap-1.5 text-[#5a5a57]"><span style={{ width: 14, height: 3, borderRadius: 2, background: '#16A34A' }} />if replied → ends</span>
+            </div>
+          </>
         )}
       </div>
     </div>
