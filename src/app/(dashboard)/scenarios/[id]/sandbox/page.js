@@ -9,11 +9,33 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { fetchWithWorkspace } from '@/lib/api-client'
 
+// Same processed provider logos the builder uses (see /public).
+const VENDOR_LOGOS = {
+  ChatGPT: { src: '/chatgpt-logo-sq.png', round: true },
+  Claude: { src: '/claude-128.jpeg', round: true },
+  Gemini: { src: '/gemini-128.png', round: false },
+}
+
+function ModelBadge({ model }) {
+  if (!model) return null
+  const logo = VENDOR_LOGOS[model.vendor] || VENDOR_LOGOS.ChatGPT
+  return (
+    <span className="hidden sm:inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-white border border-[#E3E1DB] text-[#5C5A55]" title="The AI model this scenario replies with">
+      <img src={logo.src} alt={model.vendor} width={14} height={14}
+        className={`shrink-0 object-cover ${logo.round ? 'rounded-full ring-1 ring-[#E3E1DB]' : ''}`}
+        style={{ width: 14, height: 14 }} />
+      {model.vendor} — {model.label}{model.isDefault ? ' (default)' : ''}
+    </span>
+  )
+}
+
 export default function ScenarioSandboxPage() {
   const { id: scenarioId } = useParams()
   const router = useRouter()
 
   const [scenarioName, setScenarioName] = useState('')
+  const [scenarioModelId, setScenarioModelId] = useState(null)
+  const [aiModels, setAiModels] = useState([])
   const [sessions, setSessions] = useState(null)         // null = loading
   const [activeId, setActiveId] = useState(null)
   const [messages, setMessages] = useState([])
@@ -33,6 +55,7 @@ export default function ScenarioSandboxPage() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to load')
       setScenarioName(data.scenario?.name || '')
+      setScenarioModelId(data.scenario?.ai_model || null)
       setSessions(data.sessions || [])
       return data.sessions || []
     } catch (e) {
@@ -45,7 +68,13 @@ export default function ScenarioSandboxPage() {
   // Initial load — open the most recent test chat, or start fresh with none.
   useEffect(() => {
     loadSessions().then(list => { if (list.length > 0) setActiveId(list[0].id) })
+    fetchWithWorkspace('/api/ai-models').then(r => r.json()).then(d => setAiModels(d.models || [])).catch(() => {})
   }, [loadSessions])
+
+  // The model this scenario replies with — chosen at creation, or the default.
+  const scenarioModel = scenarioModelId
+    ? aiModels.find(m => m.id === scenarioModelId)
+    : aiModels.find(m => m.isDefault)
 
   // Load the transcript when switching chats.
   useEffect(() => {
@@ -167,7 +196,7 @@ export default function ScenarioSandboxPage() {
     <div className="h-full flex flex-col bg-[#F7F6F3]">
       {/* Top bar */}
       <div className="flex items-center gap-3 px-5 py-3 border-b border-[#E3E1DB] bg-white shrink-0">
-        <button onClick={() => router.push(`/scenarios/${scenarioId}/edit`)} title="Back to scenario" className="p-2 -ml-1 rounded-lg text-[#5C5A55] hover:bg-[#F7F6F3]">
+        <button onClick={() => router.push('/scenarios')} title="Back to scenarios" className="p-2 -ml-1 rounded-lg text-[#5C5A55] hover:bg-[#F7F6F3]">
           <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
         </button>
         <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -177,6 +206,7 @@ export default function ScenarioSandboxPage() {
             <p className="text-[11px] text-[#9B9890] truncate leading-tight">{scenarioName || 'Scenario'}</p>
           </div>
         </div>
+        <ModelBadge model={scenarioModel} />
         <span className="hidden sm:inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-[rgba(31,140,74,0.08)] text-[#1F8C4A] border border-[rgba(31,140,74,0.18)]">
           <i className="fas fa-shield-alt text-[10px]" /> Practice mode — no real texts are sent
         </span>

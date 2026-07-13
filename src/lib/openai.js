@@ -27,7 +27,7 @@ function isRetryable(error) {
   )
 }
 
-export async function getAIResponse(conversationHistory, scenarioInstructions) {
+export async function getAIResponse(conversationHistory, scenarioInstructions, { model } = {}) {
   const startTime = Date.now()
 
   try {
@@ -46,7 +46,7 @@ export async function getAIResponse(conversationHistory, scenarioInstructions) {
     for (let attempt = 1; ; attempt++) {
       try {
         completion = await openai.chat.completions.create({
-          model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+          model: model || process.env.OPENAI_MODEL || 'gpt-4o-mini',
           messages: messages,
           temperature: 0.7,
           max_tokens: 500,

@@ -100,6 +100,7 @@ export async function POST(request) {
         auto_stop_keywords: Array.isArray(auto_stop_keywords) ? auto_stop_keywords : undefined,
         ai_reply_mode: ai_reply_mode === 'business_hours' ? 'business_hours' : 'anytime',
         books_appointments: books_appointments !== false,
+        ai_model: typeof body.ai_model === 'string' && body.ai_model.trim() ? body.ai_model.trim() : null,
       })
       .select()
       .single()

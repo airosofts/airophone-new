@@ -12,7 +12,7 @@ import { ContactRestrictionPicker, InstructionTagBar, fmtBizT, fmtBizDays, _TZLB
 const DEFAULT = {
   name: '', description: '', instructions: '', phoneNumbers: [], contact_list_ids: [],
   enable_followups: false, max_followup_attempts: 3, auto_stop_keywords: 'STOP,UNSUBSCRIBE,CANCEL',
-  ai_reply_mode: 'anytime', books_appointments: true,
+  ai_reply_mode: 'anytime', books_appointments: true, ai_model: '',
 }
 
 export default function ScenarioForm({ mode, scenarioId }) {
@@ -30,10 +30,13 @@ export default function ScenarioForm({ mode, scenarioId }) {
   const [loading, setLoading] = useState(isEdit)
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
+  const [aiModels, setAiModels] = useState([])
+
   useEffect(() => {
     apiGet('/api/contact-lists').then(r => r.json()).then(d => setContactLists(d.contactLists || [])).catch(() => {})
     fetchWithWorkspace('/api/phone-numbers').then(r => r.json()).then(d => setPhoneNumbers(d.phoneNumbers || [])).catch(() => {})
     fetchWithWorkspace('/api/workspace/business-hours').then(r => r.json()).then(setWsBiz).catch(() => {})
+    fetchWithWorkspace('/api/ai-models').then(r => r.json()).then(d => setAiModels(d.models || [])).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -50,6 +53,7 @@ export default function ScenarioForm({ mode, scenarioId }) {
         auto_stop_keywords: (s.auto_stop_keywords || ['STOP', 'UNSUBSCRIBE']).join(','),
         ai_reply_mode: s.ai_reply_mode || 'anytime',
         books_appointments: s.books_appointments !== false,
+        ai_model: s.ai_model || '',
       })
       setIndividualContacts((s.scenario_contacts || []).map(sc => ({ phone: sc.recipient_phone, id: sc.contact_id, label: sc.contacts?.business_name || sc.recipient_phone })))
     }).catch(() => setErrors({ submit: 'Failed to load this scenario.' })).finally(() => setLoading(false))
@@ -78,6 +82,7 @@ export default function ScenarioForm({ mode, scenarioId }) {
         contacts: individualContacts.map(c => ({ phone: c.phone, id: c.id || null })),
         enable_followups: form.enable_followups, max_followup_attempts: form.max_followup_attempts,
         auto_stop_keywords: keywords, ai_reply_mode: form.ai_reply_mode, books_appointments: form.books_appointments,
+        ai_model: form.ai_model || null,
       }
       const res = isEdit
         ? await fetchWithWorkspace(`/api/scenarios/${scenarioId}`, { method: 'PATCH', body: JSON.stringify(payload) })
@@ -231,6 +236,20 @@ export default function ScenarioForm({ mode, scenarioId }) {
                     className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${form.books_appointments ? 'bg-[#D63B1F]' : 'bg-[#EFEDE8]'}`}>
                     <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${form.books_appointments ? 'translate-x-4' : 'translate-x-0'}`} />
                   </button>
+                </div>
+
+                {/* AI reply model (BYOM) */}
+                <div className="border border-[#E3E1DB] rounded-md p-3 bg-white">
+                  <p className="text-xs font-semibold text-[#5C5A55]">AI model</p>
+                  <p className="text-[11px] text-[#9B9890] mt-0.5 mb-2">Which AI writes the replies for this scenario.</p>
+                  <select value={form.ai_model} onChange={e => set('ai_model', e.target.value)} className={inp}>
+                    <option value="">Default ({aiModels.find(m => m.isDefault)?.vendor || 'ChatGPT'} — {aiModels.find(m => m.isDefault)?.label || 'GPT-4o mini'})</option>
+                    {aiModels.filter(m => !m.isDefault).map(m => (
+                      <option key={m.id} value={m.id} disabled={!m.available}>
+                        {m.vendor} — {m.label}{m.available ? '' : ' (API key not configured)'}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* AI reply hours */}

@@ -10,7 +10,7 @@ import { getUserFromRequest } from '@/lib/session-helper'
 async function loadScenarioOwned(scenarioId, workspaceId) {
   const { data } = await supabaseAdmin
     .from('scenarios')
-    .select('id, workspace_id, name')
+    .select('id, workspace_id, name, ai_model')
     .eq('id', scenarioId)
     .eq('workspace_id', workspaceId)
     .maybeSingle()
@@ -39,7 +39,7 @@ export async function GET(request, { params }) {
   }
 
   return NextResponse.json({
-    scenario: { id: scenario.id, name: scenario.name },
+    scenario: { id: scenario.id, name: scenario.name, ai_model: scenario.ai_model || null },
     sessions: (sessions || []).map(s => ({
       id: s.id,
       name: s.name,
