@@ -126,6 +126,7 @@ export async function PATCH(request, { params }) {
     if (followup_timezone !== undefined) updateData.followup_timezone = followup_timezone || null
     if (ai_reply_mode !== undefined) updateData.ai_reply_mode = ai_reply_mode === 'business_hours' ? 'business_hours' : 'anytime'
     if (books_appointments !== undefined) updateData.books_appointments = !!books_appointments
+    if (body.ai_model !== undefined) updateData.ai_model = (typeof body.ai_model === 'string' && body.ai_model.trim()) ? body.ai_model.trim() : null
     if (contact_list_ids !== undefined) updateData.restrict_to_contact_lists = contact_list_ids?.length > 0 ? contact_list_ids : null
 
     const { data: scenario, error: updateError } = await supabaseAdmin

@@ -12,7 +12,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
 import { getUserFromRequest } from '@/lib/session-helper'
-import { getAIResponse } from '@/lib/openai'
+import { getAIReply } from '@/lib/ai-models'
 import { buildScenarioSystemPrompt } from '@/lib/scenario-service'
 
 // Sample lead used for {{token}} substitution in tests.
@@ -30,7 +30,7 @@ const SAMPLE_LEAD = {
 async function loadOwnedSession(scenarioId, sessionId, workspaceId) {
   const { data: scenario } = await supabaseAdmin
     .from('scenarios')
-    .select('id, workspace_id, name, instructions, books_appointments')
+    .select('id, workspace_id, name, instructions, books_appointments, ai_model')
     .eq('id', scenarioId)
     .eq('workspace_id', workspaceId)
     .maybeSingle()
@@ -153,7 +153,8 @@ export async function POST(request, { params }) {
     .eq('session_id', sessionId)
     .order('created_at', { ascending: true })
 
-  const aiResult = await getAIResponse(
+  const aiResult = await getAIReply(
+    scenario.ai_model,
     (history || []).map(m => ({ direction: m.direction, body: m.body })),
     aiPrompt
   )

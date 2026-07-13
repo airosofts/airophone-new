@@ -65,6 +65,7 @@ export default function Integrations() {
   const [boards, setBoards] = useState(null)        // [{ id, name, enabled }]
   const [boardsSaving, setBoardsSaving] = useState(false)
   const [boardsSaved, setBoardsSaved] = useState(false)
+  const [boardsExpanded, setBoardsExpanded] = useState(false)   // collapsed by default
 
   useEffect(() => {
     if (!status?.connected) { setBoards(null); return }
@@ -251,44 +252,62 @@ export default function Integrations() {
           Once connected, you&rsquo;ll see a <span className="font-medium text-[#5C5A55]">Source</span> option when creating a campaign — pick a board, choose which groups to include, and Monday columns become message placeholders.
         </p>
 
-        {/* Board allowlist — choose which boards AiroPhone can use */}
+        {/* Board allowlist — collapsed by default so it doesn't clutter the page
+            (or bleed into the Google Sheets flow); expand only to manage boards. */}
         {status?.connected && (
           <div className="mt-4 pt-4 border-t border-[#E3E1DB]">
-            <div className="flex items-center justify-between gap-2 mb-1.5">
-              <p className="text-xs font-semibold text-[#5C5A55]">Boards available to this workspace</p>
-              {boards && boards.length > 0 && (
-                <button onClick={saveBoards} disabled={boardsSaving}
-                  className="text-xs font-medium px-3 py-1.5 rounded-md bg-[#D63B1F] text-white hover:opacity-90 disabled:opacity-50">
-                  {boardsSaving ? 'Saving…' : boardsSaved ? 'Saved ✓' : 'Save'}
-                </button>
-              )}
-            </div>
-            <p className="text-[11px] text-[#9B9890] mb-2.5 leading-relaxed">
-              Monday connects every board on the account. Choose which ones AiroPhone may use in Automations, Campaigns and follow-up status — the rest stay hidden.
-            </p>
-            {boards === null ? (
-              <p className="text-[11px] text-[#9B9890]">Loading boards…</p>
-            ) : boards.length === 0 ? (
-              <p className="text-[11px] text-[#9B9890]">No boards found on this account.</p>
-            ) : (
-              <>
-                <div className="flex items-center gap-3 mb-1.5 text-[11px]">
-                  <button type="button" onClick={() => setAllBoards(true)} className="text-[#D63B1F] hover:underline">Select all</button>
-                  <button type="button" onClick={() => setAllBoards(false)} className="text-[#9B9890] hover:underline">Clear</button>
-                  <span className="text-[#9B9890] ml-auto">{boards.filter(b => b.enabled).length} of {boards.length} enabled</span>
-                </div>
-                <div className="max-h-56 overflow-y-auto border border-[#E3E1DB] rounded-lg divide-y divide-[#F0EEE9]">
-                  {boards.map(b => (
-                    <label key={b.id} className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-[#F7F6F3]">
-                      <input type="checkbox" checked={b.enabled} onChange={() => toggleBoard(b.id)} className="accent-[#D63B1F]" />
-                      <span className="text-sm text-[#131210] truncate">{b.name}</span>
-                    </label>
-                  ))}
-                </div>
-                {boards.every(b => !b.enabled) && (
-                  <p className="text-[11px] text-[#D63B1F] mt-1.5">No boards selected — Monday won&rsquo;t appear as an option until you enable at least one.</p>
+            <button
+              type="button"
+              onClick={() => setBoardsExpanded(v => !v)}
+              className="w-full flex items-center justify-between gap-2 text-left"
+            >
+              <span className="text-xs font-semibold text-[#5C5A55]">
+                Boards available to this workspace
+                {Array.isArray(boards) && boards.length > 0 && (
+                  <span className="text-[#9B9890] font-normal"> · {boards.filter(b => b.enabled).length}/{boards.length}</span>
                 )}
-              </>
+              </span>
+              <i className={`fas fa-chevron-${boardsExpanded ? 'up' : 'down'} text-[10px] text-[#9B9890]`} />
+            </button>
+
+            {boardsExpanded && (
+              <div className="mt-2.5">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <p className="text-[11px] text-[#9B9890] leading-relaxed flex-1">
+                    Monday connects every board on the account. Choose which ones AiroPhone may use in Automations, Campaigns and follow-up status — the rest stay hidden.
+                  </p>
+                  {boards && boards.length > 0 && (
+                    <button onClick={saveBoards} disabled={boardsSaving}
+                      className="flex-shrink-0 text-xs font-medium px-3 py-1.5 rounded-md bg-[#D63B1F] text-white hover:opacity-90 disabled:opacity-50">
+                      {boardsSaving ? 'Saving…' : boardsSaved ? 'Saved ✓' : 'Save'}
+                    </button>
+                  )}
+                </div>
+                {boards === null ? (
+                  <p className="text-[11px] text-[#9B9890]">Loading boards…</p>
+                ) : boards.length === 0 ? (
+                  <p className="text-[11px] text-[#9B9890]">No boards found on this account.</p>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-3 mb-1.5 text-[11px]">
+                      <button type="button" onClick={() => setAllBoards(true)} className="text-[#D63B1F] hover:underline">Select all</button>
+                      <button type="button" onClick={() => setAllBoards(false)} className="text-[#9B9890] hover:underline">Clear</button>
+                      <span className="text-[#9B9890] ml-auto">{boards.filter(b => b.enabled).length} of {boards.length} enabled</span>
+                    </div>
+                    <div className="max-h-56 overflow-y-auto border border-[#E3E1DB] rounded-lg divide-y divide-[#F0EEE9]">
+                      {boards.map(b => (
+                        <label key={b.id} className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-[#F7F6F3]">
+                          <input type="checkbox" checked={b.enabled} onChange={() => toggleBoard(b.id)} className="accent-[#D63B1F]" />
+                          <span className="text-sm text-[#131210] truncate">{b.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                    {boards.every(b => !b.enabled) && (
+                      <p className="text-[11px] text-[#D63B1F] mt-1.5">No boards selected — Monday won&rsquo;t appear as an option until you enable at least one.</p>
+                    )}
+                  </>
+                )}
+              </div>
             )}
           </div>
         )}

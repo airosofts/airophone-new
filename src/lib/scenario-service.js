@@ -1,5 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase-server'
-import { getAIResponse } from '@/lib/openai'
+import { getAIReply } from '@/lib/ai-models'
 import telnyx from '@/lib/telnyx'
 import { getWorkspaceMessageRate } from '@/lib/pricing'
 import {
@@ -88,7 +88,8 @@ export async function findMatchingScenario(recipientNumber, senderNumber) {
           auto_stop_keywords,
           restrict_to_contact_lists,
           ai_reply_mode,
-          books_appointments
+          books_appointments,
+          ai_model
         )
       `)
       .in('phone_number_id', phoneIds)
@@ -416,8 +417,9 @@ export async function executeScenario(scenario, message, conversation) {
 
     executionLog.ai_prompt = aiPrompt
 
-    // Get AI response
-    const aiResult = await getAIResponse(conversationHistory, aiPrompt)
+    // Get AI response — routed to the scenario's chosen model (BYOM), with
+    // automatic fallback to the OpenAI default if the provider key is missing.
+    const aiResult = await getAIReply(scenario.ai_model, conversationHistory, aiPrompt)
 
     if (!aiResult.success) {
       executionLog.execution_status = 'failed'
