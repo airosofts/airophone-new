@@ -9,11 +9,15 @@ export default function FilterTabs({ currentFilter, onFilterChange, conversation
   const getFilterCounts = () => {
     const counts = {
       all: conversations.length,
-      unread: conversations.filter(c => c.unreadCount > 0).length,
+      // Excludes closed ("done") chats — keeps this chip in lockstep with the
+      // sidebar phone badge and the Unread tab's own filter.
+      unread: conversations.filter(c => c.unreadCount > 0 && c.status !== 'closed').length,
       open: conversations.filter(c => c.status !== 'closed').length,
       done: conversations.filter(c => c.status === 'closed').length,
+      // Same predicate the Unresponded tab uses (last word was the lead's) —
+      // read status is irrelevant to whether WE have answered.
       unresponded: conversations.filter(c =>
-        c.lastMessage?.direction === 'inbound' && !c.lastMessage?.read_at
+        c.lastMessage?.direction === 'inbound'
       ).length,
     }
     return counts

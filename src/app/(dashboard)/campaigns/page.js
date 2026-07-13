@@ -925,29 +925,19 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
     filterQuietHours: 0,         // "skip anyone texted in the last N hours" (0 = off)
     filterExcludeStatuses: [],
   }
-  // Preserve in-progress work: restore the autosaved draft if there is one.
+  // "New Campaign" ALWAYS starts blank — the wizard no longer auto-restores
+  // in-progress work (opening a stale half-built campaign surprised users).
+  // To keep work for later, use "Save as draft": DB drafts open from the list.
   const DRAFT_KEY = 'campaign.wizard.draft'
-  const restoredRef = useRef(typeof window !== 'undefined' && !!localStorage.getItem(DRAFT_KEY))
-  const [formData, setFormData] = useState(() => {
-    if (typeof window === 'undefined') return CAMPAIGN_DEFAULTS
-    try { const s = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); if (s?.formData) return { ...CAMPAIGN_DEFAULTS, ...s.formData } } catch {}
-    return CAMPAIGN_DEFAULTS
-  })
+  const [formData, setFormData] = useState(CAMPAIGN_DEFAULTS)
   const [errors, setErrors] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [created, setCreated] = useState(false)
-  const [step, setStep] = useState(() => {
-    if (typeof window === 'undefined') return 1
-    try { const s = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); if (s?.step) return Math.min(4, Math.max(1, s.step)) } catch {}
-    return 1
-  })
-  // Autosave (debounced) so navigating away / refreshing never loses progress.
-  useEffect(() => {
-    const t = setTimeout(() => { try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ formData, step })) } catch {} }, 300)
-    return () => clearTimeout(t)
-  }, [formData, step])
+  const [step, setStep] = useState(1)
   const clearDraft = () => { try { localStorage.removeItem(DRAFT_KEY) } catch {} }
-  const startOver = () => { clearDraft(); restoredRef.current = false; setFormData(CAMPAIGN_DEFAULTS); setStep(1); setErrors({}) }
+  // Remove any legacy autosave so it can never resurface.
+  useEffect(() => { clearDraft() }, [])
+  const startOver = () => { clearDraft(); setFormData(CAMPAIGN_DEFAULTS); setStep(1); setErrors({}) }
 
   // Inline CSV → new contact list (no leaving the wizard). Locally-created lists
   // are merged into the picker and become reusable in Contacts.
@@ -1602,12 +1592,6 @@ function CreateCampaignModal({ contactLists, phoneNumbers, subscription, creditB
             <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
           </button>
           <h3 className="text-base sm:text-lg font-semibold text-[#131210]">New Campaign</h3>
-          {restoredRef.current && (
-            <span className="ml-2 inline-flex items-center gap-2 text-[11px] text-[#9B9890]">
-              <span className="px-2 py-0.5 rounded-full bg-[#EFEDE8] text-[#5C5A55]">Draft restored</span>
-              <button type="button" onClick={startOver} className="text-[#D63B1F] hover:underline">Start over</button>
-            </span>
-          )}
         </div>
         {/* Step indicator */}
         <div className="flex items-center gap-1 sm:gap-2 px-4 sm:px-8 pb-3 overflow-x-auto">

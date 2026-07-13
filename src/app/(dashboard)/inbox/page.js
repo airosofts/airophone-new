@@ -675,7 +675,9 @@ export default function InboxPage() {
     .filter(conv => {
       switch (filter) {
         case 'unread':
-          return conv.unreadCount > 0
+          // Closed ("done") chats are handled — keep the tab consistent with
+          // its count chip and the sidebar badge.
+          return conv.unreadCount > 0 && conv.status !== 'closed'
         case 'open':
           return conv.status !== 'closed'
         case 'done':
@@ -1180,7 +1182,11 @@ export default function InboxPage() {
           {inboxTab === 'chats' && (
             <>
               <div style={{ padding: '8px 12px', borderBottom: '1px solid #E3E1DB' }}>
-                <FilterTabs currentFilter={filter} onFilterChange={(f) => { setFilter(f); localStorage.setItem('inbox_filter', f) }} conversations={filteredConversations} />
+                {/* Counts come from the FULL list, not the tab-filtered one —
+                    otherwise each chip counts within the current tab (e.g. on
+                    Unread, "Unresponded" = unresponded-among-unread) and the
+                    numbers reshuffle every time you switch tabs. */}
+                <FilterTabs currentFilter={filter} onFilterChange={(f) => { setFilter(f); localStorage.setItem('inbox_filter', f) }} conversations={conversations} />
               </div>
               <div style={{ padding: '8px 12px', borderBottom: '1px solid #E3E1DB' }}>
                 <input
