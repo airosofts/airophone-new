@@ -9,6 +9,7 @@ function BuilderLoader() {
   const router = useRouter()
   const params = useSearchParams()
   const editId = params.get('id')
+  const initialSource = params.get('source') === 'sheets' ? 'sheets' : 'monday'
 
   const [phoneNumbers, setPhoneNumbers] = useState([])
   const [automation, setAutomation] = useState(null)
@@ -47,6 +48,7 @@ function BuilderLoader() {
     <AutomationBuilder
       phoneNumbers={phoneNumbers}
       automation={automation}
+      initialSource={initialSource}
       onSaved={goBack}
       onCancel={goBack}
     />

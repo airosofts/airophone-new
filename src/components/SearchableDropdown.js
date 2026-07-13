@@ -13,7 +13,8 @@ import { createPortal } from 'react-dom'
 //   placeholder, error, loading
 //   renderSelected(option) → string shown in the input when selected
 //   renderOption(option)   → JSX shown for each row in the panel
-export default function SearchableDropdown({ value, onChange, options, placeholder, renderOption, renderSelected, error, loading }) {
+//   forceDown              → always open the panel below the field (skip flip-up)
+export default function SearchableDropdown({ value, onChange, options, placeholder, renderOption, renderSelected, error, loading, forceDown = false }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [rect, setRect] = useState(null)
@@ -66,7 +67,7 @@ export default function SearchableDropdown({ value, onChange, options, placehold
     const GAP = 6, MARGIN = 12
     const spaceBelow = window.innerHeight - rect.bottom - GAP - MARGIN
     const spaceAbove = rect.top - GAP - MARGIN
-    const openUp = spaceBelow < 200 && spaceAbove > spaceBelow
+    const openUp = !forceDown && spaceBelow < 200 && spaceAbove > spaceBelow
     panelMaxH = Math.max(120, Math.min(240, openUp ? spaceAbove : spaceBelow))
     panelStyle = {
       position: 'fixed',
