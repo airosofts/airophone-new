@@ -224,7 +224,7 @@ export default function ScenariosPage() {
                       </div>
                       {/* Actions */}
                       <div className="flex items-center gap-2 shrink-0">
-                        <button onClick={(e) => { e.stopPropagation(); router.push(`/scenarios/${scenario.id}/sandbox`) }}
+                        <button onClick={(e) => { e.stopPropagation(); router.push(`/scenarios/new?test=${scenario.id}`) }}
                           title="Practice chat — see how the AI replies, without texting anyone"
                           className="px-2.5 py-1 text-xs font-medium text-[#D63B1F] border border-[#D63B1F]/40 rounded-md hover:bg-[rgba(214,59,31,0.06)] transition-colors">
                           <i className="fas fa-vial mr-1 text-[10px]" />Test
@@ -281,7 +281,7 @@ export default function ScenariosPage() {
                         </td>
                         <td className="px-5 py-3 text-right">
                           <div className="flex items-center justify-end gap-2">
-                            <button onClick={(e) => { e.stopPropagation(); router.push(`/scenarios/${scenario.id}/sandbox`) }}
+                            <button onClick={(e) => { e.stopPropagation(); router.push(`/scenarios/new?test=${scenario.id}`) }}
                               title="Practice chat — see how the AI replies, without texting anyone"
                               className="px-2.5 py-1 text-xs font-medium text-[#D63B1F] border border-[#D63B1F]/40 rounded-md hover:bg-[rgba(214,59,31,0.06)] transition-colors">
                               <i className="fas fa-vial mr-1 text-[10px]" />Test

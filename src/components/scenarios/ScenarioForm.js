@@ -108,7 +108,7 @@ export default function ScenarioForm({ mode, scenarioId }) {
           <p className="text-base font-semibold text-[#131210] truncate">{isEdit ? 'Edit scenario' : 'New scenario'}</p>
         </div>
         {isEdit && (
-          <button onClick={() => router.push(`/scenarios/${scenarioId}/sandbox`)}
+          <button onClick={() => router.push(`/scenarios/new?test=${scenarioId}`)}
             title="Practice chat — see how the AI replies, without texting anyone"
             className="px-4 py-2 text-sm font-medium text-[#D63B1F] border border-[#D63B1F]/40 rounded-lg hover:bg-[rgba(214,59,31,0.06)]">
             <i className="fas fa-vial mr-1.5 text-xs" />Test your AI
