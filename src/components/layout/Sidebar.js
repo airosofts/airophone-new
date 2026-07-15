@@ -100,6 +100,25 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef(null)
 
+  // Per-line "…" menu (hover a number → dots → Copy phone number).
+  const [phoneMenuId, setPhoneMenuId] = useState(null)
+  const [phoneCopied, setPhoneCopied] = useState(false)
+
+  useEffect(() => {
+    if (!phoneMenuId) return
+    const close = () => { setPhoneMenuId(null); setPhoneCopied(false) }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [phoneMenuId])
+
+  const copyPhone = async (number) => {
+    try {
+      await navigator.clipboard.writeText(number || '')
+      setPhoneCopied(true)
+      setTimeout(() => { setPhoneMenuId(null); setPhoneCopied(false) }, 900)
+    } catch { setPhoneMenuId(null) }
+  }
+
   // Get the currently selected phone number from URL
   const selectedPhoneNumber = searchParams?.get('from')
 
@@ -568,7 +587,7 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
                 onClick={() => handlePhoneNumberClick(phone.phoneNumber)}
                 style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '5px 16px', border: 'none',
+                  padding: '5px 16px', border: 'none', position: 'relative',
                   cursor: isDragging ? 'grabbing' : 'pointer',
                   background: isSelected ? '#F7F6F3' : 'transparent',
                   opacity: isDragging ? 0.45 : 1,
@@ -617,6 +636,44 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
                     fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
                   }}>
                     {unreadCounts[phone.phoneNumber] > 99 ? '99+' : unreadCounts[phone.phoneNumber]}
+                  </span>
+                )}
+                {/* Hover "…" menu — Copy phone number (span, not button: the
+                    row itself is a <button> and buttons can't nest). */}
+                <span
+                  role="button"
+                  title="More"
+                  onClick={(e) => { e.stopPropagation(); setPhoneCopied(false); setPhoneMenuId(phoneMenuId === phone.id ? null : phone.id) }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  className={`${phoneMenuId === phone.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}
+                  style={{ flexShrink: 0, padding: '2px 4px', borderRadius: 6, color: '#9B9890' }}
+                >
+                  <i className="fas fa-ellipsis-h" style={{ fontSize: 11 }} />
+                </span>
+                {phoneMenuId === phone.id && (
+                  <span
+                    onMouseDown={(e) => e.stopPropagation()}
+                    style={{
+                      position: 'absolute', right: 10, top: '100%', zIndex: 60,
+                      background: '#fff', border: '1px solid #E3E1DB', borderRadius: 10,
+                      boxShadow: '0 8px 24px rgba(19,18,16,0.10)', padding: 4, minWidth: 180,
+                      display: 'block',
+                    }}
+                  >
+                    <span
+                      role="button"
+                      onClick={(e) => { e.stopPropagation(); copyPhone(phone.phoneNumber) }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        padding: '7px 10px', borderRadius: 7, fontSize: 12.5,
+                        color: phoneCopied ? '#1F8C4A' : '#131210', whiteSpace: 'nowrap',
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = '#F7F6F3' }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                    >
+                      <i className={`fas ${phoneCopied ? 'fa-check' : 'fa-copy'}`} style={{ fontSize: 11, width: 14 }} />
+                      {phoneCopied ? 'Copied!' : 'Copy phone number'}
+                    </span>
                   </span>
                 )}
               </button>
