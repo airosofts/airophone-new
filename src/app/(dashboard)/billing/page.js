@@ -31,6 +31,8 @@ export default function BillingPage() {
   const [arAmount, setArAmount] = useState(200)
   const [arSaving, setArSaving] = useState(false)
   const [arSaved, setArSaved] = useState(false)
+  // Keep phone numbers — auto-charge the card to renew when credits run short.
+  const [phoneAutoRenew, setPhoneAutoRenew] = useState(true)
 
   useEffect(() => {
     const u = getCurrentUser()
@@ -61,8 +63,24 @@ export default function BillingPage() {
         setArEnabled(data.enabled)
         setArThreshold(data.threshold)
         setArAmount(data.amount)
+        setPhoneAutoRenew(data.phoneAutoRenew !== false)
       }
     } catch (e) { console.error(e) }
+  }
+
+  // Toggle "keep my numbers" — saves immediately, on its own.
+  const savePhoneAutoRenew = async (value) => {
+    setPhoneAutoRenew(value)   // optimistic
+    if (!user) return
+    try {
+      const res = await fetch('/api/wallet/auto-recharge', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-workspace-id': user.workspaceId, 'x-user-id': user.userId },
+        body: JSON.stringify({ phoneAutoRenew: value }),
+      })
+      const data = await res.json()
+      if (!data.success) { setPhoneAutoRenew(!value); setErrorModal({ title: 'Save Failed', message: data.error || 'Could not save.' }) }
+    } catch { setPhoneAutoRenew(!value); setErrorModal({ title: 'Error', message: 'An unexpected error occurred.' }) }
   }
 
   const saveAutoRecharge = async () => {
@@ -522,6 +540,27 @@ export default function BillingPage() {
                   className="px-4 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-md disabled:opacity-50 transition-colors"
                 >
                   {arSaving ? <><i className="fas fa-spinner fa-spin mr-1.5"></i>Saving…</> : 'Save settings'}
+                </button>
+              </div>
+            </div>
+
+            {/* Keep my numbers — auto-recharge on phone-number renewal */}
+            <div className="bg-white border border-[#E3E1DB] rounded-lg">
+              <div className="px-5 py-3.5 flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-[#131210]">Keep my phone numbers</h3>
+                  <p className="text-xs text-[#9B9890] mt-0.5 leading-relaxed">
+                    If your credits run short when a number renews (100 credits/number/month), charge your default card to top up and keep the number — instead of losing it. Only charges when a card is on file.
+                  </p>
+                  {phoneAutoRenew && savedCards.length === 0 && (
+                    <p className="text-[11px] text-yellow-700 mt-1.5"><i className="fas fa-exclamation-triangle mr-1"></i>Add a payment method so we can auto-renew — otherwise numbers still get recycled.</p>
+                  )}
+                </div>
+                <button
+                  onClick={() => savePhoneAutoRenew(!phoneAutoRenew)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0 ${phoneAutoRenew ? 'bg-[#D63B1F]' : 'bg-[#D4D1C9]'}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${phoneAutoRenew ? 'translate-x-6' : 'translate-x-1'}`} />
                 </button>
               </div>
             </div>

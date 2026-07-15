@@ -23,6 +23,10 @@ Return ONLY a JSON object: {"reply": string, "name": string, "instructions": str
 - "name": a short scenario title you invent (never ask for one).
 - "reply": ONE short friendly sentence about what you wrote or changed (e.g. "Done — I made the tone more casual."). No markdown, never repeat the prompt in the reply (the app displays it), no questions unless the user's request was truly impossible to act on.
 - On revision requests, return the FULL updated instructions, not a diff. Keep everything that wasn't asked to change.
+- NOT EVERY MESSAGE IS A DESCRIPTION. If the message is a greeting, small talk, a question about the tool, or too vague to describe an agent ("hi", "hello", "what can you do?", "test"), do NOT invent a scenario. Return {"reply": <one friendly line asking what their AI should do when leads text back, with a short example>, "name": "", "instructions": "", "settings": {}} — unless a draft already exists (CURRENT DRAFT present), in which case just answer conversationally in "reply" and return the current name/instructions unchanged.
+- INFORMATIONAL QUESTIONS ("what contact lists do I have?", "which lines are there?", "what models can I use?"): answer factually IN "reply" by enumerating EVERY item from the AVAILABLE lists, one per line ("• Flexbox\n• Deelmap Test 3\n…"). The reply-length rule does not apply here — list them ALL, never summarize with "and more" or "several others", and NEVER say "here's a list" without the actual names (the app renders nothing for you).
+- KNOW YOUR LIMITS: you only know the NAMES of contact lists — not the contacts/numbers inside them. If asked what's inside a list ("what numbers are in X?", "who's on that list?"), say plainly that you can't view a list's members from here and that they can open the Contacts page to see them — then offer what you CAN do (e.g. restrict the scenario to that list). Never answer a question you don't have the data for by restating something else.
+- CHANGE REQUESTS ("change the line to Minnesota", "turn off follow-ups"): put the new value in "settings" AND confirm in "reply". Only claim something was changed if you actually returned it in "settings" (or updated name/instructions). If you can't map the request to a real item, say so and name the valid options instead.
 - "settings": ONLY the setup values the user EXPLICITLY stated anywhere in the conversation — the app asks about the rest itself, so NEVER guess or fill defaults here. Possible keys (omit any the user didn't state):
   - "phone_number_ids": array of ids matched from AVAILABLE PHONE LINES when the user names a line ("on my California line").
   - "contact_list_ids": array of ids matched from AVAILABLE CONTACT LISTS when the user names lists; [] if they explicitly say everyone/anyone can text.
@@ -32,6 +36,28 @@ Return ONLY a JSON object: {"reply": string, "name": string, "instructions": str
   - "books_appointments": boolean when the goal clearly is/isn't booking a call or appointment.
   - "ai_model": an id from AVAILABLE AI MODELS when the user names a model/vendor ("use Claude").`
 
+// Best-effort transcript persistence: store the latest user turn + the reply
+// on the chat (never blocks or fails the response).
+async function persistTurn(workspaceId, chatId, userText, replyText) {
+  if (!chatId) return
+  try {
+    const { data: chat } = await supabaseAdmin
+      .from('scenario_builder_chats')
+      .select('id')
+      .eq('id', chatId)
+      .eq('workspace_id', workspaceId)
+      .maybeSingle()
+    if (!chat) return
+    await supabaseAdmin.from('scenario_builder_messages').insert([
+      { chat_id: chatId, role: 'user', content: String(userText || '').slice(0, 8000) },
+      { chat_id: chatId, role: 'assistant', content: String(replyText || '').slice(0, 8000) },
+    ])
+    await supabaseAdmin.from('scenario_builder_chats')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', chatId)
+  } catch (e) { console.warn('[builder-chat] persist failed:', e.message) }
+}
+
 export async function POST(request) {
   const user = getUserFromRequest(request)
   if (!user?.workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -39,6 +65,7 @@ export async function POST(request) {
   const body = await request.json().catch(() => ({}))
   const messages = Array.isArray(body.messages) ? body.messages.slice(-MAX_TURNS) : []
   const current = body.current || {}
+  const chatId = body.chat_id || null
   if (messages.length === 0 || messages[messages.length - 1].role !== 'user') {
     return NextResponse.json({ error: 'messages must end with a user message' }, { status: 400 })
   }
@@ -76,12 +103,26 @@ export async function POST(request) {
     let parsed = null
     try { parsed = JSON.parse(completion.choices[0].message.content) } catch {}
 
-    // Never leak plumbing: if the model misbehaves, keep the previous draft
-    // and say so — the UI shows a friendly line, not raw JSON.
-    if (!parsed || typeof parsed.instructions !== 'string' || !parsed.instructions.trim()) {
+    // Parse failure → keep the previous draft, never leak plumbing.
+    if (!parsed) {
       return NextResponse.json({
         success: true,
         reply: "Sorry — I couldn't apply that. Try rephrasing?",
+        name: current.name || '',
+        instructions: current.instructions || '',
+        settings: {},
+      })
+    }
+
+    // Deliberately-empty instructions = the message wasn't a scenario
+    // description ("hi", "what is this?") — pass the conversational reply
+    // through with NO draft so the UI doesn't render a prompt card.
+    if (typeof parsed.instructions !== 'string' || !parsed.instructions.trim()) {
+      const reply = String(parsed.reply || "Tell me what your AI should do when leads text back — e.g. “answer questions about my roofing service and book an estimate”.")
+      await persistTurn(user.workspaceId, chatId, messages[messages.length - 1].content, reply)
+      return NextResponse.json({
+        success: true,
+        reply,
         name: current.name || '',
         instructions: current.instructions || '',
         settings: {},
@@ -112,9 +153,11 @@ export async function POST(request) {
     if (typeof raw.books_appointments === 'boolean') settings.books_appointments = raw.books_appointments
     if (typeof raw.ai_model === 'string' && modelIds.has(raw.ai_model)) settings.ai_model = raw.ai_model
 
+    const reply = String(parsed.reply || 'Done — draft updated.')
+    await persistTurn(user.workspaceId, chatId, messages[messages.length - 1].content, reply)
     return NextResponse.json({
       success: true,
-      reply: String(parsed.reply || 'Done — draft updated.'),
+      reply,
       name: String(parsed.name || current.name || 'New scenario').slice(0, 120),
       instructions: parsed.instructions.trim(),
       settings,

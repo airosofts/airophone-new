@@ -17,11 +17,22 @@ export async function GET(request) {
     .eq('id', workspaceId)
     .single()
 
+  // Read phone_auto_renew separately so a not-yet-migrated column can't break the
+  // core auto-recharge settings. Defaults ON.
+  let phoneAutoRenew = true
+  const { data: par } = await supabaseAdmin
+    .from('workspaces')
+    .select('phone_auto_renew')
+    .eq('id', workspaceId)
+    .maybeSingle()
+  if (par && par.phone_auto_renew != null) phoneAutoRenew = par.phone_auto_renew
+
   return NextResponse.json({
     success: true,
     enabled: ws?.auto_recharge_enabled ?? false,
     threshold: ws?.auto_recharge_threshold ?? 50,
     amount: ws?.auto_recharge_amount ?? 200,
+    phoneAutoRenew,   // keep numbers by auto-charging on renewal
   })
 }
 
@@ -30,21 +41,22 @@ export async function PUT(request) {
   const workspaceId = request.headers.get('x-workspace-id')
   if (!workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { enabled, threshold, amount } = await request.json()
+  const { enabled, threshold, amount, phoneAutoRenew } = await request.json()
 
-  if (threshold < 1 || amount < 1) {
-    return NextResponse.json({ error: 'Threshold and amount must be at least 1' }, { status: 400 })
+  const update = { updated_at: new Date().toISOString() }
+  // The phone-renewal toggle can be saved on its own (e.g. from a dedicated
+  // switch) without requiring the threshold auto-recharge fields.
+  if (phoneAutoRenew !== undefined) update.phone_auto_renew = !!phoneAutoRenew
+  if (enabled !== undefined || threshold !== undefined || amount !== undefined) {
+    if (threshold < 1 || amount < 1) {
+      return NextResponse.json({ error: 'Threshold and amount must be at least 1' }, { status: 400 })
+    }
+    update.auto_recharge_enabled = !!enabled
+    update.auto_recharge_threshold = parseInt(threshold)
+    update.auto_recharge_amount = parseInt(amount)
   }
 
-  await supabaseAdmin
-    .from('workspaces')
-    .update({
-      auto_recharge_enabled: !!enabled,
-      auto_recharge_threshold: parseInt(threshold),
-      auto_recharge_amount: parseInt(amount),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', workspaceId)
+  await supabaseAdmin.from('workspaces').update(update).eq('id', workspaceId)
 
   return NextResponse.json({ success: true })
 }

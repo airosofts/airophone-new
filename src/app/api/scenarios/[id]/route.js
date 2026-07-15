@@ -132,20 +132,34 @@ export async function PATCH(request, { params }) {
     if (body.ai_model !== undefined) updateData.ai_model = (typeof body.ai_model === 'string' && body.ai_model.trim()) ? body.ai_model.trim() : null
     if (contact_list_ids !== undefined) updateData.restrict_to_contact_lists = contact_list_ids?.length > 0 ? contact_list_ids : null
 
-    const { data: scenario, error: updateError } = await supabaseAdmin
-      .from('scenarios')
-      .update(updateData)
-      .eq('id', id)
-      .eq('workspace_id', workspace.workspaceId)
-      .select()
-      .single()
-
-    if (updateError) {
-      console.error('Error updating scenario:', updateError)
-      return NextResponse.json(
-        { error: 'Failed to update scenario' },
-        { status: 500 }
-      )
+    // PATCHes that only touch relations (phoneNumbers/contacts) leave
+    // updateData empty — PostgREST rejects an empty update, so skip it and
+    // just load the row for the response.
+    let scenario
+    if (Object.keys(updateData).length > 0) {
+      const { data, error: updateError } = await supabaseAdmin
+        .from('scenarios')
+        .update(updateData)
+        .eq('id', id)
+        .eq('workspace_id', workspace.workspaceId)
+        .select()
+        .single()
+      if (updateError) {
+        console.error('Error updating scenario:', updateError)
+        return NextResponse.json(
+          { error: 'Failed to update scenario' },
+          { status: 500 }
+        )
+      }
+      scenario = data
+    } else {
+      const { data } = await supabaseAdmin
+        .from('scenarios')
+        .select()
+        .eq('id', id)
+        .eq('workspace_id', workspace.workspaceId)
+        .single()
+      scenario = data
     }
 
     // Update phone number assignments if provided

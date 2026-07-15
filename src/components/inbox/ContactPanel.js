@@ -7,6 +7,7 @@ import { getAvatarColor, getInitials } from '@/lib/avatar-color'
 import { fetchWithWorkspace } from '@/lib/api-client'
 import ContactStatusPicker from '@/components/ContactStatusPicker'
 import MentionTextarea, { renderNoteWithMentions } from './MentionTextarea'
+import CopyText from '@/components/ui/CopyText'
 
 const FIELD_TYPES = [
   { type: 'text',     label: 'Text' },
@@ -285,7 +286,9 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user, on
         )}
 
         {!editingName && (
-          <p className="text-sm text-[#9B9890] mt-0.5">{formatPhoneNumber(conversation.phone_number)}</p>
+          <p className="text-sm text-[#9B9890] mt-0.5 flex justify-center">
+            <CopyText value={conversation.phone_number}>{formatPhoneNumber(conversation.phone_number)}</CopyText>
+          </p>
         )}
       </div>
 
@@ -349,7 +352,9 @@ export default function ContactPanel({ conversation, formatPhoneNumber, user, on
         <div className="flex items-center gap-3 py-2.5">
           <span className="flex-shrink-0"><Icon type="phone" /></span>
           <span className="text-sm text-[#9B9890] w-16 flex-shrink-0">Phone</span>
-          <span className="text-sm text-[#131210]">{formatPhoneNumber(conversation.phone_number)}</span>
+          <span className="text-sm text-[#131210]">
+            <CopyText value={conversation.phone_number}>{formatPhoneNumber(conversation.phone_number)}</CopyText>
+          </span>
         </div>
         <ContactField
           icon={<Icon type="email" />}
