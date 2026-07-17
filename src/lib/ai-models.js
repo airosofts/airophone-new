@@ -52,7 +52,8 @@ async function anthropicReply(modelId, history, systemPrompt) {
     },
     body: JSON.stringify({
       model: modelId,
-      max_tokens: 500,
+      // Anthropic requires max_tokens — generous ceiling, not a style cap.
+      max_tokens: 4096,
       temperature: 0.7,
       system: systemPrompt,
       messages: normalizeTurns(history).map(t => ({ role: t.role, content: t.text })),
@@ -78,7 +79,7 @@ async function geminiReply(modelId, history, systemPrompt) {
         role: t.role === 'assistant' ? 'model' : 'user',
         parts: [{ text: t.text }],
       })),
-      generationConfig: { temperature: 0.7, maxOutputTokens: 500 },
+      generationConfig: { temperature: 0.7 },
     }),
   })
   const json = await res.json().catch(() => ({}))
