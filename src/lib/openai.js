@@ -49,7 +49,8 @@ export async function getAIResponse(conversationHistory, scenarioInstructions, {
           model: model || process.env.OPENAI_MODEL || 'gpt-4o-mini',
           messages: messages,
           temperature: 0.7,
-          max_tokens: 500,
+          // No max_tokens cap — reply length is governed by the prompt's own
+          // rules; a hard cap was truncating longer outputs.
         })
         break
       } catch (error) {

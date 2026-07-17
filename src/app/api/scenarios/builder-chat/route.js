@@ -85,7 +85,8 @@ export async function POST(request) {
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o',
       temperature: 0.5,
-      max_tokens: 1600,
+      // Generous — a tight cap truncated long prompts mid-JSON.
+      max_tokens: 4000,
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: SYSTEM },

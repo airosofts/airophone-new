@@ -6,176 +6,9 @@ import { useRouter } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { apiGet, apiPost, fetchWithWorkspace } from '@/lib/api-client'
 
-export default function ScenariosPage() {
-  const router = useRouter()
-  const [scenarios, setScenarios] = useState([])
-  const [phoneNumbers, setPhoneNumbers] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [selectedScenario, setSelectedScenario] = useState(null)
-  const [showAnalyticsModal, setShowAnalyticsModal] = useState(false)
-  const [showExecutionsModal, setShowExecutionsModal] = useState(false)
-  const [deleteConfirm, setDeleteConfirm] = useState(null)
-  const [errorModal, setErrorModal] = useState(null)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
-  const [currentPage, setCurrentPage] = useState(1)
-  const itemsPerPage = 10
-
-  const fetchScenarios = useCallback(async () => {
-    try {
-      const response = await apiGet('/api/scenarios')
-      const data = await response.json()
-      if (data.success) {
-        const updated = data.scenarios || []
-        setScenarios(updated)
-        // Keep selectedScenario in sync so modals don't show stale data after a save
-        setSelectedScenario(prev => prev ? (updated.find(s => s.id === prev.id) || prev) : null)
-      }
-    } catch (error) {
-      console.error('Error fetching scenarios:', error)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    const open = () => router.push('/scenarios/new')
-    const close = () => {}
-    window.addEventListener('tour:open-scenario-modal', open)
-    window.addEventListener('tour:close-scenario-modal', close)
-    return () => {
-      window.removeEventListener('tour:open-scenario-modal', open)
-      window.removeEventListener('tour:close-scenario-modal', close)
-    }
-  }, [])
-
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [phoneRes] = await Promise.all([
-          apiGet('/api/phone-numbers'),
-        ])
-        const phoneData = await phoneRes.json()
-        if (phoneData.success) setPhoneNumbers(phoneData.phoneNumbers || [])
-      } catch (error) {
-        console.error('Error fetching data:', error)
-      }
-    }
-    fetchScenarios()
-    fetchData()
-  }, [fetchScenarios])
-
-  const handleDeleteScenario = async (scenarioId) => {
-    try {
-      const response = await fetchWithWorkspace(`/api/scenarios/${scenarioId}`, { method: 'DELETE' })
-      const data = await response.json()
-      if (data.success) {
-        setDeleteConfirm(null)
-        setSelectedScenario(null)
-        await fetchScenarios()
-      } else {
-        setErrorModal({ title: 'Error', message: data.error || 'Failed to delete scenario' })
-      }
-    } catch {
-      setErrorModal({ title: 'Error', message: 'Failed to delete scenario. Please try again.' })
-    }
-  }
-
-  const handleToggleActive = async (scenario) => {
-    try {
-      const response = await fetchWithWorkspace(`/api/scenarios/${scenario.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ is_active: !scenario.is_active }),
-        headers: { 'Content-Type': 'application/json' }
-      })
-      const data = await response.json()
-      if (data.success) {
-        await fetchScenarios()
-      } else {
-        setErrorModal({ title: 'Error', message: data.error || 'Failed to update scenario' })
-      }
-    } catch {
-      setErrorModal({ title: 'Error', message: 'Failed to update scenario. Please try again.' })
-    }
-  }
-
-  const filteredScenarios = useMemo(() => {
-    return scenarios.filter((scenario) => {
-      const searchLower = searchTerm.toLowerCase()
-      const matchesSearch =
-        scenario.name.toLowerCase().includes(searchLower) ||
-        (scenario.description || '').toLowerCase().includes(searchLower)
-      if (!matchesSearch) return false
-      if (statusFilter === 'active' && !scenario.is_active) return false
-      if (statusFilter === 'inactive' && scenario.is_active) return false
-      return true
-    })
-  }, [scenarios, searchTerm, statusFilter])
-
-  const paginatedScenarios = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage
-    return filteredScenarios.slice(startIndex, startIndex + itemsPerPage)
-  }, [filteredScenarios, currentPage])
-
-  const totalPages = Math.ceil(filteredScenarios.length / itemsPerPage)
-
-  useEffect(() => { setCurrentPage(1) }, [searchTerm, statusFilter])
-
-  if (loading) {
-    return (
-      <div className="h-full bg-[#F7F6F3] flex items-center justify-center">
-        <div className="text-center">
-          <i className="fas fa-spinner fa-spin text-2xl text-[#9B9890] mb-3"></i>
-          <p className="text-sm text-[#9B9890]">Loading scenarios…</p>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="h-full bg-[#F7F6F3] overflow-auto">
-      <div className="p-4 md:p-6 space-y-4">
-
-        {/* Main Card */}
-        <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg overflow-hidden">
-          {/* Card Header — stacked on mobile, single row on desktop */}
-          <div data-tour="scenarios-header" className="px-4 py-3 border-b border-[#E3E1DB] space-y-2.5 md:space-y-0 md:flex md:items-center md:justify-between md:gap-4 md:px-5 md:py-3.5">
-            {/* Row 1: title + new button */}
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold text-[#131210]">AI Scenarios</h3>
-              <button
-                data-tour="new-scenario-btn"
-                onClick={() => router.push('/scenarios/new')}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#D63B1F] hover:bg-[#c23119] text-white text-sm font-medium rounded-md transition-colors whitespace-nowrap shrink-0"
-              >
-                <i className="fas fa-plus text-xs"></i>
-                <span className="hidden sm:inline">New Scenario</span>
-                <span className="sm:hidden">New</span>
-              </button>
-            </div>
-            {/* Row 2: search + filter */}
-            <div className="flex items-center gap-2 md:flex-1 md:max-w-sm md:ml-3">
-              <div className="relative flex-1">
-                <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-[#9B9890] text-xs"></i>
-                <input
-                  type="text"
-                  placeholder="Search…"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 border border-[#E3E1DB] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
-                />
-              </div>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="shrink-0 px-2.5 py-1.5 border border-[#E3E1DB] rounded-md text-sm text-[#5C5A55] focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]"
-              >
-                <option value="all">All</option>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-              </select>
-            </div>
-          </div>
+import { useState } from 'react'
+import ScenarioAgentChat from '@/components/scenarios/ScenarioAgentChat'
+import ScenarioForm from '@/components/scenarios/ScenarioForm'
 
           {/* List */}
           {paginatedScenarios.length === 0 ? (
@@ -612,106 +445,21 @@ function ExecutionsModal({ scenario, onClose }) {
     } catch { return dateString }
   }
 
-  const getStatusBadge = (status) => {
-    const map = {
-      success: 'bg-green-50 text-green-700',
-      failed: 'bg-[rgba(214,59,31,0.07)] text-[#D63B1F]',
-      no_reply: 'bg-[#EFEDE8] text-[#5C5A55]',
-      human_needed: 'bg-orange-50 text-orange-700',
-      skipped_business_hours: 'bg-yellow-50 text-yellow-700',
-      processing: 'bg-[rgba(214,59,31,0.07)] text-[#D63B1F]',
-    }
-    return map[status] || 'bg-[#EFEDE8] text-[#5C5A55]'
+  if (!manual) {
+    return <ScenarioAgentChat onSwitchToManual={() => setManual(true)} />
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-2xl my-8">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#E3E1DB] sticky top-0 bg-[#FFFFFF] z-10">
-          <div>
-            <h3 className="text-sm font-semibold text-[#131210]">Execution Logs</h3>
-            <p className="text-xs text-[#9B9890] mt-0.5">{scenario.name}</p>
-          </div>
-          <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1">
-            <i className="fas fa-times text-sm"></i>
-          </button>
-        </div>
-
-        <div className="px-5 py-4">
-          {loading ? (
-            <div className="text-center py-8">
-              <i className="fas fa-spinner fa-spin text-[#9B9890] text-xl"></i>
-            </div>
-          ) : executions.length === 0 ? (
-            <p className="text-sm text-[#9B9890] text-center py-8">No execution logs yet</p>
-          ) : (
-            <div className="space-y-2">
-              {executions.map((exec) => (
-                <div key={exec.id} className="bg-[#F7F6F3] border border-[#E3E1DB] rounded px-3 py-2">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs text-[#9B9890]">{formatDate(exec.created_at)}</span>
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getStatusBadge(exec.execution_status)}`}>
-                      {exec.execution_status?.replace(/_/g, ' ')}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-4 text-xs text-[#9B9890]">
-                    <span><i className="fas fa-phone-alt mr-1"></i>{exec.sender_number}</span>
-                    {exec.tokens_used && <span><i className="fas fa-coins mr-1"></i>{exec.tokens_used} tokens</span>}
-                    {exec.processing_time_ms && <span><i className="fas fa-clock mr-1"></i>{exec.processing_time_ms}ms</span>}
-                    {exec.reply_sent && <span className="text-green-600"><i className="fas fa-check mr-1"></i>Reply sent</span>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="px-5 py-3.5 border-t border-[#E3E1DB] flex justify-end">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Close</button>
-        </div>
+    <div className="h-full flex flex-col bg-[#F7F6F3]">
+      <div className="flex items-center justify-end px-5 py-2 bg-white border-b border-[#E3E1DB] shrink-0">
+        <button onClick={() => setManual(false)}
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-[#D63B1F] hover:underline">
+          <i className="fas fa-wand-magic-sparkles text-[11px]" />
+          Use the assistant instead
+        </button>
       </div>
-    </div>
-  )
-}
-
-// ─── Error Modal ──────────────────────────────────────────────────────────────
-
-function ErrorModal({ title, message, onClose }) {
-  return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-sm">
-        <div className="px-5 py-4 border-b border-[#E3E1DB]">
-          <h3 className="text-sm font-semibold text-[#131210]">{title}</h3>
-        </div>
-        <div className="px-5 py-4">
-          <p className="text-sm text-[#5C5A55]">{message}</p>
-        </div>
-        <div className="px-5 py-3 border-t border-[#E3E1DB] flex justify-end">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Close</button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ─── Delete Confirm Modal ─────────────────────────────────────────────────────
-
-function DeleteConfirmModal({ scenarioName, onConfirm, onCancel }) {
-  return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#FFFFFF] rounded-lg shadow-xl w-full max-w-sm">
-        <div className="px-5 py-4 border-b border-[#E3E1DB]">
-          <h3 className="text-sm font-semibold text-[#131210]">Delete Scenario</h3>
-        </div>
-        <div className="px-5 py-4">
-          <p className="text-sm text-[#5C5A55]">
-            Delete <span className="font-medium text-[#131210]">"{scenarioName}"</span>? This cannot be undone.
-          </p>
-        </div>
-        <div className="px-5 py-3 border-t border-[#E3E1DB] flex justify-end gap-2">
-          <button onClick={onCancel} className="px-3 py-1.5 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-md hover:bg-[#F7F6F3]">Cancel</button>
-          <button onClick={onConfirm} className="px-3 py-1.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c4351b] rounded-md">Delete</button>
-        </div>
+      <div className="flex-1 min-h-0">
+        <ScenarioForm mode="create" />
       </div>
     </div>
   )
