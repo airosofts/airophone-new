@@ -11,6 +11,7 @@ import { isOnline } from '@/lib/presence'
 import { useTypingIndicator } from '@/hooks/useTypingIndicator'
 import { apiPost, apiGet, apiDelete, fetchWithWorkspace } from '@/lib/api-client'
 import { getAvatarColor, getInitials } from '@/lib/avatar-color'
+import CopyText from '@/components/ui/CopyText'
 
 // Small curated emoji set for the composer picker (no heavy dependency).
 const EMOJIS = ['😀','😁','😂','🤣','😊','😍','😘','😎','🤩','🥳','🙌','👍','👎','👏','🙏','💪','🔥','✨','🎉','✅','❌','⚠️','💯','❤️','🧡','💛','💚','💙','💜','🤝','📞','📱','💬','📩','⏰','📅','💰','🏠','🚗','👋','🤔','😅','😉','🙂','😇','🥹','😢','😡']
@@ -50,6 +51,8 @@ export default function ChatWindow({
 }) {
   const [newMessage, setNewMessage] = useState('')
   const [sending, setSending] = useState(false)
+  // Synchronous double-click guard for sendMessage — see comment there.
+  const sendingRef = useRef(false)
   const [showMoreMenu, setShowMoreMenu] = useState(false)
   // MMS attachments staged for the next send: [{ file, previewUrl, type }]
   const [attachments, setAttachments] = useState([])
@@ -219,7 +222,10 @@ export default function ChatWindow({
 
     const messageText = newMessage.trim()
     const hasMedia = attachments.length > 0
-    if ((!messageText && !hasMedia) || sending || !phoneNumber) return
+    // sendingRef is the real double-click guard: two rapid clicks land in the
+    // same tick and both see the STATE as false — the ref flips synchronously.
+    if ((!messageText && !hasMedia) || sending || sendingRef.current || !phoneNumber) return
+    sendingRef.current = true
 
     setSending(true)
     setShowEmoji(false)
@@ -242,6 +248,7 @@ export default function ChatWindow({
       }))
     } catch (err) {
       console.error('Attachment upload failed:', err)
+      sendingRef.current = false
       setSending(false)
       setNewMessage(messageText)
       setAttachments(staged)
@@ -290,6 +297,7 @@ export default function ChatWindow({
       setNewMessage(messageText)
       setAttachments(staged)
     } finally {
+      sendingRef.current = false
       setSending(false)
     }
   }
@@ -615,7 +623,7 @@ export default function ChatWindow({
                     {displayName}
                   </h2>
                   <p className="text-xs text-[#5C5A55] truncate">
-                    {conversation.phone_number}
+                    <CopyText value={conversation.phone_number}>{conversation.phone_number}</CopyText>
                   </p>
                 </div>
               </div>

@@ -1,23 +1,25 @@
 'use client'
 
-// Assisted scenario builder — a single chat thread where the APP drives a
-// deterministic setup queue:
-//   1. The user describes the agent; builder-chat writes the prompt →
-//      inline PROMPT DOCUMENT CARD (editable name + prompt + refine box).
-//   2. "Use this prompt" starts a FIXED queue of setup steps, each appended
-//      as an app-authored assistant message with an inline widget (no LLM
-//      call between steps). Anything the user already stated arrives
-//      pre-validated in builder-chat's `settings` and is skipped with a
-//      compact "✓ … (you mentioned it) — Change" line. Free-text answers to
-//      an active widget round-trip through builder-chat for extraction.
-//   3. When the queue completes, the view auto-switches to a full REVIEW
-//      PAGE (not a thread item) → POST /api/scenarios → /scenarios list.
+// Scenario STUDIO — builder + test on one screen, with persistent chats:
+//   LEFT: builder CHATS (ChatGPT-style history, collapsible rail).
+//   MAIN, builder mode: model dropdown in the composer → describe → prompt
+//     document card ("Use this prompt") → deterministic setup queue, one
+//     inline widget at a time (fields already stated arrive pre-validated in
+//     builder-chat `settings` and are skipped with "✓ … (you mentioned it)"
+//     lines) → last step completes → the scenario is created immediately →
+//     the same screen flips into TEST MODE.
+//   MAIN, test mode: condensed sandbox chat (same /sandbox APIs).
 //
-// builder-chat contract: POST { messages, current: { name, instructions } }
-//   → { success, reply, name, instructions, settings } where `settings` only
-//   contains values the user explicitly stated (already validated).
+// Persistence: chats live server-side (/api/scenarios/builder-chats). The
+// first user send creates the chat; every builder-chat call carries chat_id
+// (the server persists the turns), and a debounced PATCH snapshots the draft
+// { name, instructions, promptAccepted, answered, premapped, aiModel,
+//   scenarioId } after every meaningful change. Reopening a chat rebuilds the
+// thread from messages + draft; chats that already produced a scenario open
+// straight into TEST MODE (with a "View chat" toggle), and re-accepting a
+// refined prompt PATCHes the existing scenario instead of creating a new one.
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { apiGet, apiPost, fetchWithWorkspace } from '@/lib/api-client'
 
@@ -32,6 +34,7 @@ const SUGGESTIONS = [
 const DEFAULT_KEYWORDS = ['STOP', 'UNSUBSCRIBE', 'CANCEL']
 
 // The deterministic setup queue — app-authored, never model-driven.
+// (The AI model is NOT a step: it lives in the composer dropdown.)
 const QUEUE = [
   'phone_number_ids',
   'contact_list_ids',
@@ -39,7 +42,6 @@ const QUEUE = [
   'auto_stop_keywords',
   'ai_reply_mode',
   'books_appointments',
-  'ai_model',
 ]
 
 const inp = 'w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-[#D63B1F] focus:border-[#D63B1F]'
@@ -47,8 +49,7 @@ const inp = 'w-full px-3 py-2 border border-[#D4D1C9] rounded-md text-sm focus:o
 // ---------- provider logos ----------
 
 // Real provider logos from /public — square-cropped 128px versions so they
-// render crisp and full-bleed at icon size (the original ChatGPT png was a
-// wide canvas with big white margins that shrank the mark to a dot).
+// render crisp and full-bleed at icon size.
 const VENDOR_LOGOS = {
   ChatGPT: { src: '/chatgpt-logo-sq.png', round: true },   // black knot, white bg → white circle badge
   Claude: { src: '/claude-128.jpeg', round: true },        // white starburst on terracotta → round badge
@@ -86,32 +87,55 @@ const TypingDots = () => (
   </span>
 )
 
+const fmtTime = iso => new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(new Date(iso))
+
+const relTime = iso => {
+  if (!iso) return ''
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000)
+  if (s < 60) return 'now'
+  if (s < 3600) return `${Math.floor(s / 60)}m`
+  if (s < 86400) return `${Math.floor(s / 3600)}h`
+  if (s < 604800) return `${Math.floor(s / 86400)}d`
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(iso))
+}
+
 // ---------- main component ----------
 
 export default function ScenarioAgentChat({ onSwitchToManual }) {
   const router = useRouter()
 
-  // Thread items: { id, type: 'user'|'assistant'|'prompt'|'step',
-  //   content?, field?, status?, premapped?, hint? }
-  const [thread, setThread] = useState([])
-  const [view, setView] = useState('chat')           // 'chat' | 'review'
-  const [transcript, setTranscript] = useState([])   // {role, content} history for builder-chat
-  const [drafting, setDrafting] = useState(false)
+  // ----- studio-level state -----
+  const [mode, setMode] = useState('builder')        // 'builder' | 'test'
+  const [chats, setChats] = useState(null)           // sidebar; null = loading
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [confirmDeleteChat, setConfirmDeleteChat] = useState(null)   // chat id
+  const [chatId, setChatId] = useState(null)         // current builder chat
+  const [chatScenarioId, setChatScenarioId] = useState(null)   // scenario this chat produced
+  const [testScenario, setTestScenario] = useState(null)       // { id, name }
+  const [createdNote, setCreatedNote] = useState(false)
   const [error, setError] = useState('')
 
-  // Prompt document (single source of truth; the card renders these live)
+  // ----- reference data -----
+  const [aiModels, setAiModels] = useState([])
+  const [phoneNumbers, setPhoneNumbers] = useState([])
+  const [contactLists, setContactLists] = useState([])
+
+  // ----- builder state -----
+  // Thread items: { id, type: 'user'|'assistant'|'prompt'|'step', content?, field?, status?, premapped?, hint? }
+  const [thread, setThread] = useState([])
+  const [transcript, setTranscript] = useState([])   // {role, content} for builder-chat
+  const [drafting, setDrafting] = useState(false)
   const [name, setName] = useState('')
   const [instructions, setInstructions] = useState('')
   const [statusLine, setStatusLine] = useState('')
   const [promptAccepted, setPromptAccepted] = useState(false)
-
-  // Composer + card refine box
   const [input, setInput] = useState('')
   const [refineInput, setRefineInput] = useState('')
-
-  // Settings values (live state; widgets, compact lines and review read these)
+  const [aiModel, setAiModel] = useState('')          // '' = workspace default
+  const [modelOpen, setModelOpen] = useState(false)
+  // Queue values:
   const [phoneIds, setPhoneIds] = useState([])
-  const [audience, setAudience] = useState('all')          // 'all' | 'lists'
+  const [audience, setAudience] = useState('all')     // 'all' | 'lists'
   const [listIds, setListIds] = useState([])
   const [listOpen, setListOpen] = useState(false)
   const [listSearch, setListSearch] = useState('')
@@ -119,48 +143,389 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
   const [attempts, setAttempts] = useState(3)
   const [keywords, setKeywords] = useState(DEFAULT_KEYWORDS)
   const [keywordInput, setKeywordInput] = useState('')
-  const [replyMode, setReplyMode] = useState('anytime')    // 'anytime' | 'business_hours'
+  const [replyMode, setReplyMode] = useState('anytime')
   const [booksAppointments, setBooksAppointments] = useState(true)
   const booksTouched = useRef(false)
-  const [aiModel, setAiModel] = useState('')               // '' = workspace default
+  const [creatingScenario, setCreatingScenario] = useState(false)
+  const [createFailed, setCreateFailed] = useState(false)
+  const [updatedNote, setUpdatedNote] = useState(false)
 
-  // Review / create
-  const [showReviewPrompt, setShowReviewPrompt] = useState(false)
-  const [creating, setCreating] = useState(false)
-  const [created, setCreated] = useState(false)
-
-  // Reference data
-  const [aiModels, setAiModels] = useState([])
-  const [phoneNumbers, setPhoneNumbers] = useState([])
-  const [contactLists, setContactLists] = useState([])
-
-  const premappedRef = useRef(new Set())   // fields already answered via `settings`
+  const premappedRef = useRef(new Set())
+  const builderInflightRef = useRef(false)   // hard double-send guards
+  const createInflightRef = useRef(false)
+  const updateInflightRef = useRef(false)
+  const createdRef = useRef(false)
+  const skipSaveRef = useRef(false)          // suppress snapshot save during restore
   const idRef = useRef(0)
   const nid = () => ++idRef.current
   const inputRef = useRef(null)
   const bottomRef = useRef(null)
   const prevLenRef = useRef(0)
 
+  // ----- test-mode state (absorbed from the sandbox page) -----
+  const [sessions, setSessions] = useState(null)
+  const [activeSessionId, setActiveSessionId] = useState(null)
+  const [testMessages, setTestMessages] = useState([])
+  const [loadingMessages, setLoadingMessages] = useState(false)
+  const [testInput, setTestInput] = useState('')
+  const [testSending, setTestSending] = useState(false)
+  const [scenarioModelId, setScenarioModelId] = useState(null)
+  const [showOpener, setShowOpener] = useState(false)
+  const [openerDraft, setOpenerDraft] = useState('')
+  const [addingOpener, setAddingOpener] = useState(false)
+  const testInflightRef = useRef(false)
+  const openerInflightRef = useRef(false)
+  const testBottomRef = useRef(null)
+
+  // ----- data loading -----
+
+  const loadChats = useCallback(() => {
+    apiGet('/api/scenarios/builder-chats').then(r => r.json())
+      .then(d => setChats(d.chats || []))
+      .catch(() => setChats([]))
+  }, [])
+
   useEffect(() => {
     fetchWithWorkspace('/api/ai-models').then(r => r.json()).then(d => setAiModels(d.models || [])).catch(() => {})
     fetchWithWorkspace('/api/phone-numbers').then(r => r.json()).then(d => setPhoneNumbers(d.phoneNumbers || [])).catch(() => {})
     apiGet('/api/contact-lists').then(r => r.json()).then(d => setContactLists(d.contactLists || [])).catch(() => {})
+    loadChats()
+    // ?test=<scenarioId> → open that scenario in test mode straight away.
+    try {
+      const t = new URLSearchParams(window.location.search).get('test')
+      if (t) openTest(t, '')
+    } catch { /* noop */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Auto-scroll only when the thread grows (not on in-place widget reopens).
+  // Builder auto-scroll — only when the thread grows.
   useEffect(() => {
-    if (thread.length > prevLenRef.current || drafting) {
+    if (mode !== 'builder') return
+    if (thread.length > prevLenRef.current || drafting || creatingScenario) {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
     prevLenRef.current = thread.length
-  }, [thread, drafting])
+  }, [thread, drafting, creatingScenario, mode])
 
-  // ----- queue engine (pure over thread items + the premapped set) -----
+  // Test-chat auto-scroll.
+  useEffect(() => {
+    if (mode === 'test') testBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [testMessages, testSending, mode])
+
+  // ----- test mode: open / sessions / messages -----
+
+  const openTest = (id, nameHint = '', fromCreate = false) => {
+    setError('')
+    setCreatedNote(fromCreate)
+    setShowOpener(false)
+    setOpenerDraft('')
+    setTestInput('')
+    setTestScenario({ id, name: nameHint })
+    setMode('test')
+  }
+
+  useEffect(() => {
+    if (mode !== 'test' || !testScenario?.id) return
+    const id = testScenario.id
+    let cancelled = false
+    setSessions(null)
+    setActiveSessionId(null)
+    setTestMessages([])
+    fetchWithWorkspace(`/api/scenarios/${id}/sandbox`).then(r => r.json()).then(d => {
+      if (cancelled) return
+      setTestScenario(p => (p && p.id === id ? { ...p, name: d.scenario?.name || p.name } : p))
+      setScenarioModelId(d.scenario?.ai_model || null)
+      setSessions(d.sessions || [])
+      if ((d.sessions || []).length > 0) setActiveSessionId(d.sessions[0].id)   // most recent
+    }).catch(() => { if (!cancelled) setSessions([]) })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, testScenario?.id])
+
+  useEffect(() => {
+    if (mode !== 'test' || !testScenario?.id || !activeSessionId) { setTestMessages([]); return }
+    // A send in flight owns the message list (it appends the server copies
+    // itself) — refetching now would clobber the optimistic bubble or race in
+    // a duplicate. The send's own update supersedes this load.
+    if (testInflightRef.current) return
+    let cancelled = false
+    setLoadingMessages(true)
+    fetchWithWorkspace(`/api/scenarios/${testScenario.id}/sandbox/${activeSessionId}/messages`)
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setTestMessages(d.messages || []) })
+      .catch(() => { if (!cancelled) setTestMessages([]) })
+      .finally(() => { if (!cancelled) setLoadingMessages(false) })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, testScenario?.id, activeSessionId])
+
+  const newTestChat = async () => {
+    if (!testScenario?.id) return
+    setError('')
+    try {
+      const res = await fetchWithWorkspace(`/api/scenarios/${testScenario.id}/sandbox`, { method: 'POST', body: JSON.stringify({}) })
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to create test chat')
+      setSessions(p => [data.session, ...(p || [])])
+      setActiveSessionId(data.session.id)
+      setTestMessages([])
+    } catch (e) { setError(e.message) }
+  }
+
+  const ensureSession = async () => {
+    if (activeSessionId) return activeSessionId
+    const res = await fetchWithWorkspace(`/api/scenarios/${testScenario.id}/sandbox`, { method: 'POST', body: JSON.stringify({}) })
+    const data = await res.json()
+    if (!res.ok || !data.success) throw new Error(data.error || 'Failed to create test chat')
+    setSessions(p => [data.session, ...(p || [])])
+    setActiveSessionId(data.session.id)
+    return data.session.id
+  }
+
+  const testSend = async () => {
+    const text = testInput.trim()
+    if (!text || testInflightRef.current) return
+    testInflightRef.current = true
+    setError('')
+    setTestInput('')
+    setTestSending(true)
+    const tempId = `temp-${Math.random()}`
+    setTestMessages(prev => [...prev, { id: tempId, direction: 'inbound', body: text, created_at: new Date().toISOString() }])
+    try {
+      const sessionId = await ensureSession()
+      const res = await fetchWithWorkspace(`/api/scenarios/${testScenario.id}/sandbox/${sessionId}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({ body: text }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.error || 'The AI could not reply. Try again.')
+      // Dedupe by id: when the first send auto-creates the session, the
+      // session-load effect can race in with the server's copy of this same
+      // message before we append it here — filtering by id keeps exactly one.
+      setTestMessages(prev => {
+        const drop = new Set([tempId, data.message?.id, data.reply?.id].filter(Boolean))
+        return [
+          ...prev.filter(m => !drop.has(m.id)),
+          data.message,
+          ...(data.reply ? [data.reply] : []),
+        ]
+      })
+    } catch (e) {
+      setError(e.message)
+      setTestMessages(prev => prev.filter(m => m.id !== tempId))
+      setTestInput(text)
+    } finally {
+      setTestSending(false)
+      testInflightRef.current = false
+    }
+  }
+
+  // Campaign/automation opening text — first outbound bubble, no AI reply.
+  const addOpener = async () => {
+    const text = openerDraft.trim()
+    if (!text || openerInflightRef.current) return
+    openerInflightRef.current = true
+    setError('')
+    setAddingOpener(true)
+    try {
+      const sessionId = await ensureSession()
+      const res = await fetchWithWorkspace(`/api/scenarios/${testScenario.id}/sandbox/${sessionId}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({ body: text, opener: true }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to add opening text')
+      setTestMessages(prev => [...prev, data.opener])
+      setOpenerDraft('')
+      setShowOpener(false)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setAddingOpener(false)
+      openerInflightRef.current = false
+    }
+  }
+
+  // ----- chat lifecycle: new / open / delete / persist -----
+
+  const startNewChat = () => {
+    setMode('builder')
+    setChatId(null)
+    setChatScenarioId(null)
+    setTestScenario(null)
+    setCreatedNote(false)
+    setUpdatedNote(false)
+    setError('')
+    setThread([])
+    setTranscript([])
+    setName('')
+    setInstructions('')
+    setStatusLine('')
+    setPromptAccepted(false)
+    setInput('')
+    setRefineInput('')
+    setPhoneIds([])
+    setAudience('all')
+    setListIds([])
+    setListOpen(false)
+    setListSearch('')
+    setEnableFollowups(false)
+    setAttempts(3)
+    setKeywords(DEFAULT_KEYWORDS)
+    setKeywordInput('')
+    setReplyMode('anytime')
+    setBooksAppointments(true)
+    setAiModel('')
+    booksTouched.current = false
+    premappedRef.current = new Set()
+    createdRef.current = false
+    setCreatingScenario(false)
+    setCreateFailed(false)
+    setConfirmDeleteChat(null)
+  }
+
+  // First user send in a new chat → create the server-side chat record.
+  const ensureChat = async firstText => {
+    if (chatId) return chatId
+    try {
+      const res = await fetchWithWorkspace('/api/scenarios/builder-chats', {
+        method: 'POST',
+        body: JSON.stringify({ title: firstText.slice(0, 60) }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok && data.chat?.id) {
+        setChatId(data.chat.id)
+        loadChats()
+        return data.chat.id
+      }
+    } catch { /* persistence is best-effort; chatting still works */ }
+    return null
+  }
+
+  const deleteChat = async id => {
+    setConfirmDeleteChat(null)
+    try {
+      await fetchWithWorkspace(`/api/scenarios/builder-chats/${id}`, { method: 'DELETE' })
+    } catch { /* noop */ }
+    if (id === chatId) startNewChat()
+    loadChats()
+  }
+
+  // Full draft snapshot for persistence.
+  const answeredFieldValue = f => ({
+    phone_number_ids: phoneIds,
+    contact_list_ids: audience === 'lists' ? listIds : [],
+    enable_followups: enableFollowups,
+    auto_stop_keywords: keywords,
+    ai_reply_mode: replyMode,
+    books_appointments: booksAppointments,
+  })[f]
+
+  const buildSnapshot = () => {
+    const answered = {}
+    QUEUE.forEach(f => {
+      if (thread.some(x => x.type === 'step' && x.field === f && x.status === 'done')) {
+        answered[f] = answeredFieldValue(f)
+      }
+    })
+    if ('enable_followups' in answered) answered.max_followup_attempts = attempts
+    return {
+      name,
+      instructions,
+      promptAccepted,
+      answered,
+      premapped: [...premappedRef.current],
+      aiModel,
+      scenarioId: chatScenarioId,
+    }
+  }
+
+  // Debounced PATCH after every meaningful change (draft edits, accepted
+  // prompt, answered steps, created scenario).
+  useEffect(() => {
+    if (!chatId) return
+    if (skipSaveRef.current) { skipSaveRef.current = false; return }
+    const snapshot = buildSnapshot()
+    const tmr = setTimeout(() => {
+      fetchWithWorkspace(`/api/scenarios/builder-chats/${chatId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ draft: snapshot, ...(chatScenarioId ? { scenario_id: chatScenarioId } : {}) }),
+      }).catch(() => {})
+    }, 600)
+    return () => clearTimeout(tmr)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId, name, instructions, promptAccepted, thread, phoneIds, audience, listIds,
+      enableFollowups, attempts, keywords, replyMode, booksAppointments, aiModel, chatScenarioId])
+
+  // Reopen a chat from the sidebar: rebuild the thread from messages + draft.
+  const openChat = async id => {
+    setError('')
+    setConfirmDeleteChat(null)
+    try {
+      const res = await apiGet(`/api/scenarios/builder-chats/${id}`)
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Failed to open chat')
+      const chat = data.chat || {}
+      const draft = chat.draft || {}
+      const msgs = data.messages || []
+      const premapped = draft.premapped || []
+      const answered = draft.answered || {}
+      const hasDraft = typeof draft.instructions === 'string' && draft.instructions.trim().length > 0
+      const accepted = !!draft.promptAccepted && hasDraft
+      const sid = chat.scenario_id || draft.scenarioId || null
+
+      startNewChat()
+      skipSaveRef.current = true
+      setChatId(id)
+      setTranscript(msgs.map(m => ({ role: m.role, content: m.content })))
+      premappedRef.current = new Set(premapped)
+
+      // Restore values.
+      if (hasDraft) { setName(draft.name || ''); setInstructions(draft.instructions) }
+      setPromptAccepted(accepted)
+      setAiModel(draft.aiModel || '')
+      if ('phone_number_ids' in answered) setPhoneIds(answered.phone_number_ids || [])
+      if ('contact_list_ids' in answered) {
+        const v = answered.contact_list_ids || []
+        setAudience(v.length ? 'lists' : 'all')
+        setListIds(v)
+      }
+      if ('enable_followups' in answered) setEnableFollowups(!!answered.enable_followups)
+      if ('max_followup_attempts' in answered) setAttempts(Number(answered.max_followup_attempts) || 3)
+      if ('auto_stop_keywords' in answered) setKeywords(answered.auto_stop_keywords || [])
+      if ('ai_reply_mode' in answered) setReplyMode(answered.ai_reply_mode || 'anytime')
+      if ('books_appointments' in answered) { setBooksAppointments(!!answered.books_appointments); booksTouched.current = true }
+      setChatScenarioId(sid)
+
+      // Rebuild the thread: text bubbles → prompt card → ✓ lines → next widget.
+      let items = msgs.map(m => ({ id: nid(), type: m.role === 'user' ? 'user' : 'assistant', content: m.content }))
+      if (hasDraft) items.push({ id: nid(), type: 'prompt', status: accepted ? 'accepted' : 'open' })
+      for (const f of QUEUE) {
+        if (f in answered) items.push({ id: nid(), type: 'step', field: f, status: 'done', premapped: premapped.includes(f) })
+      }
+      const allAnswered = QUEUE.every(f => f in answered)
+      if (accepted && !sid && !allAnswered) items = ensureProgress(items)
+      setThread(items)
+
+      // Never auto-create on open; a completed-but-uncreated chat gets the
+      // retry bar instead of a surprise POST.
+      createdRef.current = true
+      if (!sid && !(accepted && allAnswered)) createdRef.current = false
+      setCreateFailed(!sid && accepted && allAnswered)
+
+      // Always open the CHAT itself — testing is one click away via the
+      // "Test" button in the header (auto-opening test hid the conversation).
+      setMode('builder')
+    } catch (e) {
+      setError(e.message || 'Failed to open chat')
+    }
+  }
+
+  // ----- queue engine -----
 
   // Walk QUEUE in order. Answered fields keep their item (or get a compact
   // pre-mapped confirmation appended). The first unanswered field gets an
-  // active widget. When everything is answered, drop a one-time cue line —
-  // the review itself is a separate page view, never a thread item.
+  // active widget; when all are answered the create effect takes over.
   const ensureProgress = items => {
     let t = items
     for (const f of QUEUE) {
@@ -175,19 +540,19 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
       }
       return [...t, { id: nid(), type: 'step', field: f, status: 'active' }]
     }
-    // No cue bubble — the sticky "Review scenario →" bar above the composer
-    // is the single entry point (a bubble too was redundant).
     return t
   }
 
-  // Queue complete → automatically show the review page (only on the
-  // transition, so "Back to chat" doesn't bounce straight back).
   const queueComplete = promptAccepted &&
     QUEUE.every(f => thread.some(x => x.type === 'step' && x.field === f && x.status === 'done'))
-  const wasCompleteRef = useRef(false)
+
+  // Last step answered → create immediately (only for chats without a scenario).
   useEffect(() => {
-    if (queueComplete && !wasCompleteRef.current) setView('review')
-    wasCompleteRef.current = queueComplete
+    if (queueComplete && !createdRef.current && !chatScenarioId) {
+      createdRef.current = true
+      createScenario()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queueComplete])
 
   const completeSteps = fields => {
@@ -196,22 +561,14 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
       x.type === 'step' && fields.includes(x.field) ? { ...x, status: 'done', hint: null } : x)))
   }
 
-  // "Change" — in place from a compact line; moved to the end of the thread
-  // when coming from the review page (which also switches back to chat).
-  const reopenStep = (field, moveToEnd = false) => {
+  // "Change" on a ✓ line — reopen that widget in place.
+  const reopenStep = field => {
     setError('')
-    setView('chat')
-    setThread(t => {
-      if (!moveToEnd) {
-        return t.map(x => (x.type === 'step' && x.field === field ? { ...x, status: 'active', hint: null } : x))
-      }
-      const rest = t.filter(x => !(x.type === 'step' && x.field === field))
-      return [...rest, { id: nid(), type: 'step', field, status: 'active' }]
-    })
+    setThread(t => t.map(x => (x.type === 'step' && x.field === field ? { ...x, status: 'active', hint: null } : x)))
   }
 
-  // Apply validated settings from builder-chat. Returns the queue fields it
-  // filled so the caller can mark their widgets done / skip them.
+  // ----- settings extraction (pre-mapping) -----
+
   const applySettings = settings => {
     if (!settings || typeof settings !== 'object') return []
     const applied = []
@@ -227,16 +584,52 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
     if ('auto_stop_keywords' in settings) { setKeywords(settings.auto_stop_keywords || []); applied.push('auto_stop_keywords') }
     if ('ai_reply_mode' in settings) { setReplyMode(settings.ai_reply_mode); applied.push('ai_reply_mode') }
     if ('books_appointments' in settings) { setBooksAppointments(!!settings.books_appointments); booksTouched.current = true; applied.push('books_appointments') }
-    if ('ai_model' in settings) { setAiModel(settings.ai_model || ''); applied.push('ai_model') }
+    if ('ai_model' in settings) setAiModel(settings.ai_model || '')
     applied.forEach(f => premappedRef.current.add(f))
     return applied
   }
 
-  // ----- builder-chat round-trips (first draft, refines, free-text answers) -----
+  // Post-create chats: extracted settings must hit the real scenario, not
+  // just local state — PATCH first, and only reflect the change in the
+  // ✓ lines when the server accepted it (the assistant must never claim a
+  // change that didn't happen).
+  const patchScenarioSettings = async settings => {
+    if (!settings || typeof settings !== 'object') return []
+    if (updateInflightRef.current) return []
+    const payload = {}
+    if ('phone_number_ids' in settings) payload.phoneNumbers = settings.phone_number_ids || []
+    if ('contact_list_ids' in settings) payload.contact_list_ids = settings.contact_list_ids || []
+    if ('enable_followups' in settings) payload.enable_followups = !!settings.enable_followups
+    if ('max_followup_attempts' in settings) payload.max_followup_attempts = Number(settings.max_followup_attempts) || 3
+    if ('auto_stop_keywords' in settings) payload.auto_stop_keywords = settings.auto_stop_keywords || []
+    if ('ai_reply_mode' in settings) payload.ai_reply_mode = settings.ai_reply_mode
+    if ('books_appointments' in settings) payload.books_appointments = !!settings.books_appointments
+    if ('ai_model' in settings) payload.ai_model = settings.ai_model || null
+    if (Object.keys(payload).length === 0) return []
+    updateInflightRef.current = true
+    try {
+      const res = await fetchWithWorkspace(`/api/scenarios/${chatScenarioId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok || d.success === false) throw new Error(d.error || 'Failed to update the scenario')
+      setUpdatedNote(true)
+      return applySettings(settings)   // sync local state + ✓ line values
+    } catch (e) {
+      setError(e.message || 'Failed to update the scenario')
+      return []
+    } finally {
+      updateInflightRef.current = false
+    }
+  }
+
+  // ----- builder-chat round-trips -----
 
   const handleUserText = async (text, restore) => {
     const trimmed = (text || '').trim()
-    if (!trimmed || drafting) return
+    if (!trimmed || builderInflightRef.current) return
+    builderInflightRef.current = true
     setError('')
     const baseTranscript = transcript
     const apiMessages = [...baseTranscript, { role: 'user', content: trimmed }]
@@ -245,44 +638,59 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
     setThread(t => [...t, { id: bubbleId, type: 'user', content: trimmed }])
     setDrafting(true)
     try {
+      const currentChatId = await ensureChat(trimmed)
       const res = await apiPost('/api/scenarios/builder-chat', {
         messages: apiMessages,
         current: { name, instructions },   // includes any hand edits
+        ...(currentChatId ? { chat_id: currentChatId } : {}),   // server persists the turns
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok || !data.success) throw new Error(data.error || 'The assistant could not reply. Please try again.')
       setTranscript([...apiMessages, { role: 'assistant', content: data.reply || '' }])
-      if (data.name) setName(data.name)
-      if (data.instructions) setInstructions(data.instructions)
-      setStatusLine(data.reply || '')
-      const applied = applySettings(data.settings)
+      // Greetings/small-talk come back with empty instructions — that is a
+      // conversational reply, NOT a draft. Only touch the prompt document
+      // when the response actually carries instructions.
+      const hasDraft = typeof data.instructions === 'string' && data.instructions.trim().length > 0
+      if (hasDraft) {
+        if (data.name) setName(data.name)
+        setInstructions(data.instructions)
+        setStatusLine(data.reply || '')
+      }
+      const applied = chatScenarioId
+        ? await patchScenarioSettings(data.settings)   // PATCH the real scenario first
+        : applySettings(data.settings)
 
-      setThread(t => {
-        // Prompt phase: the document card absorbs the response in place.
-        if (!promptAccepted) {
-          if (!t.some(x => x.type === 'prompt')) {
-            return [...t,
-              { id: nid(), type: 'assistant', content: data.reply || '' },
-              { id: nid(), type: 'prompt', status: 'open' },
-            ]
+      if (!promptAccepted) {
+        setThread(t => {
+          const cardExists = t.some(x => x.type === 'prompt')
+          if (!cardExists) {
+            return hasDraft
+              ? [...t,
+                  { id: nid(), type: 'assistant', content: data.reply || '' },
+                  { id: nid(), type: 'prompt', status: 'open' },
+                ]
+              : [...t, { id: nid(), type: 'assistant', content: data.reply || '' }]
           }
-          return t
-        }
-        // Queue / review phase.
-        const hadActive = t.some(x => x.type === 'step' && x.status === 'active')
-        if (applied.length) {
-          let next = t.map(x => (x.type === 'step' && applied.includes(x.field) ? { ...x, status: 'done', hint: null } : x))
-          if (!hadActive) next = [...next, { id: nid(), type: 'assistant', content: data.reply || '' }]
-          return ensureProgress(next)
-        }
-        if (hadActive) {
-          // Nothing matched → gentle hint under the active widget.
-          return t.map(x => (x.type === 'step' && x.status === 'active'
-            ? { ...x, hint: 'Use the buttons below, or try rephrasing.' } : x))
-        }
-        // Queue already complete (prompt tweaks / questions) → show the reply.
-        return ensureProgress([...t, { id: nid(), type: 'assistant', content: data.reply || '' }])
-      })
+          // Card exists: draft updates are absorbed in place (status line);
+          // conversational answers just get a reply bubble, card untouched.
+          return hasDraft ? t : [...t, { id: nid(), type: 'assistant', content: data.reply || '' }]
+        })
+      } else {
+        // Queue phase: free-text answers are extracted server-side.
+        setThread(t => {
+          const hadActive = t.some(x => x.type === 'step' && x.status === 'active')
+          if (applied.length) {
+            let next = t.map(x => (x.type === 'step' && applied.includes(x.field) ? { ...x, status: 'done', hint: null } : x))
+            if (!hadActive) next = [...next, { id: nid(), type: 'assistant', content: data.reply || '' }]
+            return ensureProgress(next)
+          }
+          if (hadActive) {
+            return t.map(x => (x.type === 'step' && x.status === 'active'
+              ? { ...x, hint: 'Use the options below, or try rephrasing.' } : x))
+          }
+          return [...t, { id: nid(), type: 'assistant', content: data.reply || '' }]
+        })
+      }
     } catch (e) {
       setError(e.message || 'Something went wrong. Please try again.')
       setTranscript(baseTranscript)
@@ -290,6 +698,7 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
       restore?.(trimmed)
     } finally {
       setDrafting(false)
+      builderInflightRef.current = false
     }
   }
 
@@ -307,25 +716,53 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
     handleUserText(text, setRefineInput)
   }
 
-  // ----- prompt card accept / reopen -----
+  // ----- prompt accept: start the queue, or UPDATE the existing scenario -----
 
-  const acceptPrompt = () => {
-    if (drafting || !instructions.trim()) return
-    // Suggest the booking toggle from the prompt, until the user weighs in.
+  const acceptPrompt = async () => {
+    if (drafting || creatingScenario || !instructions.trim()) return
+    setError('')
+
+    // Reopened chat that already produced a scenario → update it, no duplicate.
+    if (chatScenarioId) {
+      if (updateInflightRef.current) return
+      updateInflightRef.current = true
+      setPromptAccepted(true)
+      setThread(t => t.map(x => (x.type === 'prompt' ? { ...x, status: 'accepted' } : x)))
+      try {
+        const res = await fetchWithWorkspace(`/api/scenarios/${chatScenarioId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ name: name.trim(), instructions }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok || data.success === false) throw new Error(data.error || 'Failed to update the scenario')
+        setUpdatedNote(true)
+        setThread(t => [...t, { id: nid(), type: 'assistant', content: 'Scenario updated.' }])
+        setTestScenario(p => (p && p.id === chatScenarioId ? { ...p, name: name.trim() } : p))
+      } catch (e) {
+        setError(e.message || 'Failed to update the scenario')
+        setPromptAccepted(false)
+        setThread(t => t.map(x => (x.type === 'prompt' ? { ...x, status: 'open' } : x)))
+      } finally {
+        updateInflightRef.current = false
+      }
+      return
+    }
+
+    // New scenario → walk the setup queue.
     if (!booksTouched.current && !premappedRef.current.has('books_appointments')) {
       setBooksAppointments(/book|appointment|schedule/i.test(instructions))
     }
+    if (createFailed) { createdRef.current = false; setCreateFailed(false) }
     setPromptAccepted(true)
-    setError('')
     setThread(t => ensureProgress(t.map(x => (x.type === 'prompt' ? { ...x, status: 'accepted' } : x))))
   }
 
-  // Reopen the prompt document at the end of the thread ("Edit" / "Refine").
-  // Always returns to the chat view — the card lives in the thread.
+  // Reopen the prompt document at the end of the thread ("Edit").
   const openPromptCard = () => {
     setPromptAccepted(false)
+    setUpdatedNote(false)
     setError('')
-    setView('chat')
+    setMode('builder')
     setThread(t => [
       ...t.filter(x => x.type !== 'prompt'),
       { id: nid(), type: 'prompt', status: 'open' },
@@ -334,18 +771,19 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
 
   // ----- create -----
 
-  const canCreate = !!(name.trim() && instructions.trim() && phoneIds.length)
-
-  const create = async () => {
-    if (!canCreate || creating || created) return
+  const createScenario = async () => {
+    if (createInflightRef.current) return
+    if (!name.trim() || !instructions.trim() || !phoneIds.length) return
+    createInflightRef.current = true
+    setCreatingScenario(true)
+    setCreateFailed(false)
     setError('')
-    setCreating(true)
     try {
       const res = await apiPost('/api/scenarios', {
         name: name.trim(),
         instructions,
         phoneNumbers: phoneIds,
-        contact_list_ids: audience === 'lists' ? listIds : [],   // empty = everyone
+        contact_list_ids: audience === 'lists' ? listIds : [],   // [] = everyone
         contacts: [],
         enable_followups: enableFollowups,
         max_followup_attempts: attempts,
@@ -356,11 +794,22 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok || !data.success) throw new Error(data.error || 'Failed to create scenario')
-      setCreated(true)
-      setTimeout(() => router.push('/scenarios'), 900)
+      const sid = data.scenario.id
+      setChatScenarioId(sid)
+      if (chatId) {
+        fetchWithWorkspace(`/api/scenarios/builder-chats/${chatId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ scenario_id: sid }),
+        }).catch(() => {})
+      }
+      loadChats()
+      openTest(sid, name.trim(), true)
     } catch (e) {
       setError(e.message || 'Failed to create scenario')
-      setCreating(false)
+      setCreateFailed(true)
+    } finally {
+      setCreatingScenario(false)
+      createInflightRef.current = false
     }
   }
 
@@ -374,6 +823,9 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
   const listLabel = id => contactLists.find(l => l.id === id)?.name || id
   const selectedModel = aiModel
     ? aiModels.find(m => m.id === aiModel)
+    : aiModels.find(m => m.isDefault)
+  const testModel = scenarioModelId
+    ? aiModels.find(m => m.id === scenarioModelId)
     : aiModels.find(m => m.isDefault)
 
   const addKeyword = () => {
@@ -399,8 +851,6 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
         return { label: 'Reply hours', value: replyMode === 'business_hours' ? 'Only during business hours' : 'Respond anytime' }
       case 'books_appointments':
         return { label: 'Appointment booking', value: booksAppointments ? 'Yes' : 'No' }
-      case 'ai_model':
-        return { label: 'AI model', value: selectedModel ? `${selectedModel.label}${!aiModel ? ' (default)' : ''}` : '—' }
       default:
         return { label: field, value: '—' }
     }
@@ -415,7 +865,7 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
   }`
 
   const continueBtn = (onClick, disabled = false, label = 'Continue') => (
-    <button type="button" onClick={onClick} disabled={disabled || drafting}
+    <button type="button" onClick={onClick} disabled={disabled || drafting || creatingScenario}
       className="px-4 py-2 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg disabled:opacity-40">
       {label}
     </button>
@@ -426,7 +876,6 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
       case 'phone_number_ids':
         return {
           title: 'Which line should it answer on?',
-          hint: 'Texts are sent and received on this number. Pick more than one to share the agent across lines.',
           body: (
             <div className="space-y-1.5 max-h-48 overflow-y-auto">
               {phoneNumbers.length === 0
@@ -453,7 +902,6 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
       case 'contact_list_ids':
         return {
           title: 'Who can it reply to?',
-          hint: 'Limit the agent to certain contact lists, or let it answer anyone.',
           body: (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -526,7 +974,6 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
       case 'enable_followups':
         return {
           title: 'Should it follow up automatically if a lead goes quiet?',
-          hint: 'Nudges the lead again after no response.',
           body: (
             <>
               <div className="flex gap-2">
@@ -549,7 +996,6 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
       case 'auto_stop_keywords':
         return {
           title: 'Stop keywords',
-          hint: 'If a lead texts one of these, the AI stops messaging them.',
           body: (
             <>
               <div className="flex flex-wrap gap-1.5">
@@ -581,15 +1027,13 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
       case 'ai_reply_mode':
         return {
           title: 'When should it reply?',
-          hint: null,
           body: (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {[
                 { v: 'anytime', t: 'Respond anytime', d: 'Replies 24/7, books within business hours.' },
                 { v: 'business_hours', t: 'Only during business hours', d: 'Defers replies to the next opening.' },
               ].map(o => (
-                <button key={o.v} type="button"
-                  onClick={() => setReplyMode(o.v)}
+                <button key={o.v} type="button" onClick={() => setReplyMode(o.v)}
                   className={`text-left px-3 py-2.5 rounded-lg border ${
                     replyMode === o.v ? 'border-[#D63B1F] bg-[rgba(214,59,31,0.04)]' : 'border-[#E3E1DB] hover:bg-[#FBFAF8]'
                   }`}>
@@ -612,7 +1056,7 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
       case 'books_appointments':
         return {
           title: 'Should it book appointments?',
-          hint: `Suggested: ${booksAppointments ? 'Yes' : 'No'} — based on your prompt. Confirmed times stay inside business hours.`,
+          hint: `Suggested: ${booksAppointments ? 'Yes' : 'No'} — based on your prompt.`,
           body: (
             <div className="flex gap-2">
               <button type="button"
@@ -626,79 +1070,47 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
           footer: continueBtn(() => completeSteps(['books_appointments'])),
         }
 
-      case 'ai_model':
-        return {
-          title: 'Which AI should write the replies?',
-          hint: 'The default works well — switch if you have a preference.',
-          body: (
-            <div className="space-y-0.5 max-h-64 overflow-y-auto -mx-1 px-1">
-              {aiModels.length === 0 && <p className="text-xs text-[#9B9890] py-1">Loading models…</p>}
-              {aiModels.map(m => (
-                <button key={m.id} type="button" disabled={!m.available}
-                  onClick={() => setAiModel(m.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 text-left rounded-xl border ${
-                    m.available
-                      ? (selectedModel?.id === m.id ? 'border-[#D63B1F] bg-[rgba(214,59,31,0.04)]' : 'border-transparent hover:bg-[#F7F6F3]')
-                      : 'border-transparent cursor-not-allowed'
-                  }`}>
-                  <VendorLogo vendor={m.vendor} size={22} />
-                  <span className={`flex-1 min-w-0 truncate text-[14px] ${m.available ? 'text-[#131210]' : 'text-[#B5B2AA]'}`}>
-                    {m.vendor === 'ChatGPT' ? m.label : `${m.vendor} ${m.label.replace(new RegExp(`^${m.vendor}\\s*`), '')}`}
-                  </span>
-                  {m.isDefault && m.available && (
-                    <span className="shrink-0 text-[10px] px-2 py-0.5 rounded-full bg-[#EFEDE8] text-[#5C5A55]">Default</span>
-                  )}
-                  {!m.available && (
-                    <span className="shrink-0 text-[10px] px-2 py-0.5 rounded-full bg-[#EFEDE8] text-[#9B9890]">Needs API key</span>
-                  )}
-                  {selectedModel?.id === m.id && <i className="fas fa-check text-[12px] text-[#D63B1F] shrink-0" />}
-                </button>
-              ))}
-            </div>
-          ),
-          footer: continueBtn(() => completeSteps(['ai_model'])),
-        }
-
       default:
-        return { title: field, hint: null, body: null, footer: continueBtn(() => completeSteps([field])) }
+        return { title: field, body: null, footer: continueBtn(() => completeSteps([field])) }
     }
   }
 
   // ----- thread item renderers -----
 
   const renderStep = item => {
-    if (item.status === 'active') {
-      const w = widgetBody(item.field)
+    if (item.status !== 'active') {
+      const s = stepSummary(item.field)
       return (
         <div key={item.id} className="flex justify-start">
-          <div className="w-full sm:max-w-[560px] bg-white border border-[#E3E1DB] rounded-xl shadow-sm p-4">
-            <p className="text-sm font-semibold text-[#131210]">{w.title}</p>
-            {w.hint && <p className="text-[11px] text-[#9B9890] mt-0.5 leading-relaxed">{w.hint}</p>}
-            <div className="mt-3">{w.body}</div>
-            {item.hint && (
-              <p className="text-[11px] text-[#D63B1F] mt-2.5">
-                <i className="fas fa-circle-info mr-1" />{item.hint}
-              </p>
+          <div className="inline-flex items-center gap-2 max-w-full text-xs text-[#5C5A55] bg-white border border-[#E3E1DB] rounded-full px-3 py-1.5">
+            <i className="fas fa-check text-[#1F8C4A] text-[10px] shrink-0" />
+            <span className="truncate">
+              <span className="font-medium text-[#131210]">{s.label}:</span> {s.value}
+              {item.premapped && <span className="text-[#9B9890]"> (you mentioned it)</span>}
+            </span>
+            {!chatScenarioId && (
+              <button type="button" onClick={() => reopenStep(item.field)}
+                className="text-[#D63B1F] font-medium hover:underline shrink-0">
+                Change
+              </button>
             )}
-            {w.footer && <div className="mt-3.5 flex justify-end">{w.footer}</div>}
           </div>
         </div>
       )
     }
-    // Compact confirmation line (pre-mapped skip or completed widget).
-    const s = stepSummary(item.field)
+    const w = widgetBody(item.field)
     return (
       <div key={item.id} className="flex justify-start">
-        <div className="inline-flex items-center gap-2 max-w-full text-xs text-[#5C5A55] bg-white border border-[#E3E1DB] rounded-full px-3 py-1.5">
-          <i className="fas fa-check text-[#1F8C4A] text-[10px] shrink-0" />
-          <span className="truncate">
-            <span className="font-medium text-[#131210]">{s.label}:</span> {s.value}
-            {item.premapped && <span className="text-[#9B9890]"> (you mentioned it)</span>}
-          </span>
-          <button type="button" onClick={() => reopenStep(item.field)}
-            className="text-[#D63B1F] font-medium hover:underline shrink-0">
-            Change
-          </button>
+        <div className="w-full sm:max-w-[560px] bg-white border border-[#E3E1DB] rounded-xl shadow-sm p-4">
+          <p className="text-sm font-semibold text-[#131210]">{w.title}</p>
+          {w.hint && <p className="text-[11px] text-[#9B9890] mt-0.5 leading-relaxed">{w.hint}</p>}
+          <div className="mt-3">{w.body}</div>
+          {item.hint && (
+            <p className="text-[11px] text-[#D63B1F] mt-2.5">
+              <i className="fas fa-circle-info mr-1" />{item.hint}
+            </p>
+          )}
+          {w.footer && <div className="mt-3.5 flex justify-end">{w.footer}</div>}
         </div>
       </div>
     )
@@ -736,7 +1148,6 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
               rows={12}
               className="w-full min-h-56 px-3 py-2.5 text-[13px] font-mono leading-relaxed text-[#131210] bg-[#FBFAF8] border border-[#E3E1DB] rounded-lg resize-y focus:outline-none focus:border-[#D63B1F] focus:ring-1 focus:ring-[#D63B1F]"
             />
-            <p className="text-[10px] text-[#9B9890] mt-1.5">You can edit this directly, or ask me for changes.</p>
           </div>
           <div className="px-4 pb-4">
             {statusLine && !drafting && (
@@ -759,9 +1170,9 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
                   className="px-4 py-2 text-sm font-medium text-[#D63B1F] border border-[#D63B1F]/40 rounded-lg hover:bg-[rgba(214,59,31,0.06)] disabled:opacity-40 shrink-0">
                   Refine
                 </button>
-                <button type="button" onClick={acceptPrompt} disabled={drafting || !instructions.trim()}
+                <button type="button" onClick={acceptPrompt} disabled={drafting || creatingScenario || !instructions.trim()}
                   className="px-4 py-2 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg disabled:opacity-40 shrink-0">
-                  Use this prompt
+                  {chatScenarioId ? 'Update scenario' : 'Use this prompt'}
                 </button>
               </div>
             </div>
@@ -771,247 +1182,404 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
     )
   }
 
-  // ----- review page (full view, replaces the chat area; composer hidden) -----
+  // ----- composer model dropdown (Monday.com-style, opens downward) -----
 
-  const reviewPage = (
+  const modelDropdown = (
+    <div className="relative">
+      <button type="button" onClick={() => setModelOpen(v => !v)}
+        title="Which AI writes the replies"
+        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-[#5C5A55] border border-transparent hover:border-[#E3E1DB] hover:bg-[#F7F6F3]">
+        {selectedModel
+          ? <VendorLogo vendor={selectedModel.vendor} size={16} />
+          : <i className="fas fa-microchip text-[11px] text-[#9B9890]" />}
+        <span className="max-w-[140px] truncate">{selectedModel ? selectedModel.label : 'AI model'}</span>
+        <i className={`fas fa-chevron-${modelOpen ? 'up' : 'down'} text-[9px] text-[#9B9890]`} />
+      </button>
+      {modelOpen && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={() => setModelOpen(false)} />
+          <div className="absolute right-0 top-full mt-2 z-30 w-80 bg-white border border-[#E3E1DB] rounded-2xl shadow-xl p-2">
+            {aiModels.length === 0 && <p className="px-3 py-2.5 text-sm text-[#9B9890]">Loading models…</p>}
+            {aiModels.map(m => (
+              <button key={m.id} type="button" disabled={!m.available}
+                onClick={() => { setAiModel(m.id); setModelOpen(false) }}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 text-left rounded-xl ${
+                  m.available
+                    ? (selectedModel?.id === m.id ? 'bg-[#F7F6F3]' : 'hover:bg-[#F7F6F3]')
+                    : 'cursor-not-allowed'
+                }`}>
+                <VendorLogo vendor={m.vendor} size={22} />
+                <span className={`flex-1 min-w-0 truncate text-[14px] ${m.available ? 'text-[#131210]' : 'text-[#B5B2AA]'}`}>
+                  {m.vendor === 'ChatGPT' ? m.label : `${m.vendor} ${m.label.replace(new RegExp(`^${m.vendor}\\s*`), '')}`}
+                </span>
+                {m.isDefault && m.available && (
+                  <span className="shrink-0 text-[10px] px-2 py-0.5 rounded-full bg-[#EFEDE8] text-[#5C5A55]">Default</span>
+                )}
+                {!m.available && (
+                  <span className="shrink-0 text-[10px] px-2 py-0.5 rounded-full bg-[#EFEDE8] text-[#9B9890]">Needs API key</span>
+                )}
+                {selectedModel?.id === m.id && <i className="fas fa-check text-[12px] text-[#D63B1F] shrink-0" />}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+
+  // ----- builder view -----
+
+  const builderView = thread.length === 0 ? (
+    /* Hero */
     <div className="flex-1 overflow-y-auto">
-      <div className="max-w-2xl mx-auto px-4 py-6">
-        <div className="mb-4">
-          <button type="button" onClick={() => setView('chat')}
-            className="px-4 py-2 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-white">
-            <i className="fas fa-arrow-left mr-1.5 text-xs" />Back to chat
-          </button>
+      <div className="max-w-2xl mx-auto px-4 pt-14 md:pt-20 pb-10 text-center">
+        <div className="w-14 h-14 rounded-2xl bg-[#D63B1F] flex items-center justify-center mx-auto mb-5 shadow-sm">
+          <i className="fas fa-wand-magic-sparkles text-white text-xl" />
+        </div>
+        <h1 className="text-2xl md:text-3xl font-semibold text-[#131210] tracking-tight">
+          Build your <span className="text-[#D63B1F]">AI</span> texting agent
+        </h1>
+        <p className="text-xs text-[#9B9890] mt-2 mb-6 max-w-lg mx-auto leading-relaxed">
+          <i className="fas fa-circle-info mr-1.5 text-[10px]" />
+          Your AI replies to incoming texts — campaigns and automations send the first message; this agent handles what comes after.
+        </p>
+
+        <div className="text-left bg-white border border-[#E3E1DB] rounded-2xl shadow-sm focus-within:border-[#D63B1F] focus-within:ring-2 focus-within:ring-[#D63B1F]/10">
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
+            rows={3}
+            placeholder="e.g. When my roofing leads text back, answer their questions and book an estimate…"
+            className="w-full px-4 pt-3.5 pb-1 text-sm text-[#131210] placeholder-[#9B9890] bg-transparent rounded-2xl resize-none focus:outline-none"
+          />
+          <div className="flex items-center justify-end gap-2 px-3 pb-2.5 pt-1">
+            {modelDropdown}
+            <button type="button" onClick={send} disabled={drafting || !input.trim()} title="Send"
+              className="w-8 h-8 rounded-full bg-[#D63B1F] hover:bg-[#c23119] text-white flex items-center justify-center disabled:opacity-40 shrink-0">
+              <i className="fas fa-arrow-up text-xs" />
+            </button>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2 mb-4">
-          <i className="fas fa-clipboard-check text-[#D63B1F]" />
-          <h1 className="text-lg font-semibold text-[#131210]">Review your scenario</h1>
+        {drafting ? (
+          <p className="flex items-center justify-center gap-2.5 text-xs text-[#5C5A55] mt-5">
+            <TypingDots /> Writing your prompt…
+          </p>
+        ) : (
+          <div className="flex flex-wrap justify-center gap-2 mt-5">
+            {SUGGESTIONS.map(s => (
+              <button key={s} type="button" onClick={() => { setInput(s); inputRef.current?.focus() }}
+                className="px-3.5 py-2 text-xs text-[#5C5A55] bg-white border border-[#E3E1DB] rounded-full hover:border-[#D63B1F]/40 hover:text-[#131210] transition-colors">
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  ) : (
+    /* Thread */
+    <div className="flex-1 flex flex-col min-h-0">
+      {updatedNote && (
+        <div className="px-5 py-2 text-xs bg-[rgba(31,140,74,0.06)] border-b border-[rgba(31,140,74,0.16)] text-[#1F8C4A] shrink-0">
+          <i className="fas fa-check-circle mr-1.5" />Scenario updated.
         </div>
-
-        <div className="bg-white border border-[#E3E1DB] rounded-xl shadow-sm overflow-hidden">
-          <div className="divide-y divide-[#F1EFEA]">
-          {/* Name — inline editable */}
-          <div className="px-4 py-3">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#9B9890]">Name</p>
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="Scenario name"
-              className="w-full mt-0.5 text-sm font-semibold text-[#131210] placeholder-[#9B9890] bg-transparent border-b border-transparent focus:border-[#D63B1F] focus:outline-none pb-0.5" />
-          </div>
-
-          {/* Prompt — collapsible, Refine reopens the document card */}
-          <div className="px-4 py-3">
-            <div className="flex items-start justify-between gap-4">
-              <button type="button" onClick={() => setShowReviewPrompt(v => !v)}
-                className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-[#9B9890] hover:text-[#5C5A55]">
-                AI prompt <i className={`fas fa-chevron-${showReviewPrompt ? 'up' : 'down'} text-[9px]`} />
-              </button>
-              <button type="button" onClick={openPromptCard} className="text-[11px] font-medium text-[#D63B1F] hover:underline shrink-0">
-                Refine
-              </button>
-            </div>
-            {showReviewPrompt
-              ? <pre className="mt-2 text-[11px] font-mono whitespace-pre-wrap text-[#131210] bg-[#FBFAF8] border border-[#E3E1DB] rounded-lg p-2.5 max-h-56 overflow-y-auto">{instructions}</pre>
-              : <p className="mt-1 text-[13px] text-[#5C5A55] truncate">{instructions.split('\n')[0] || '—'}</p>}
-          </div>
-
-          {QUEUE.map(f => {
-            const s = stepSummary(f)
-            return (
-              <div key={f} className="flex items-start justify-between gap-4 px-4 py-3">
-                <div className="min-w-0 flex-1">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-[#9B9890]">{s.label}</p>
-                  <div className="text-[13px] text-[#131210] mt-0.5 leading-snug break-words">
-                    {f === 'ai_model' && selectedModel
-                      ? <span className="inline-flex items-center gap-1.5"><VendorLogo vendor={selectedModel.vendor} size={16} />{s.value}</span>
-                      : s.value}
+      )}
+      <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6">
+        <div className="max-w-3xl mx-auto space-y-3">
+          {thread.map(item => {
+            switch (item.type) {
+              case 'user':
+                return (
+                  <div key={item.id} className="flex justify-end">
+                    <div className="max-w-[80%] px-3.5 py-2.5 rounded-2xl rounded-br-md text-sm leading-relaxed whitespace-pre-wrap bg-[#D63B1F] text-white">
+                      {item.content}
+                    </div>
                   </div>
-                </div>
-                <button type="button" onClick={() => reopenStep(f, true)}
-                  className="text-[11px] font-medium text-[#D63B1F] hover:underline shrink-0 mt-0.5">
-                  Change
-                </button>
-              </div>
-            )
+                )
+              case 'assistant':
+                return (
+                  <div key={item.id} className="flex justify-start">
+                    <div className="max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-bl-md text-sm leading-relaxed bg-white border border-[#E3E1DB] text-[#131210]">
+                      <span className="whitespace-pre-wrap">{renderAssistantText(item.content)}</span>
+                    </div>
+                  </div>
+                )
+              case 'prompt':
+                return renderPrompt(item)
+              case 'step':
+                return renderStep(item)
+              default:
+                return null
+            }
           })}
+          {(drafting || creatingScenario) && (
+            <div className="flex justify-start">
+              <div className="bg-white border border-[#E3E1DB] px-4 py-3 rounded-2xl rounded-bl-md">
+                <span className="inline-flex items-center gap-2.5 text-xs text-[#5C5A55]">
+                  <TypingDots />
+                  {creatingScenario ? 'Creating your scenario…' : promptAccepted ? 'Checking…' : 'Writing your prompt…'}
+                </span>
+              </div>
+            </div>
+          )}
+          <div ref={bottomRef} />
         </div>
+      </div>
 
-        <div className="px-4 py-4 border-t border-[#E3E1DB] bg-[#FBFAF8]">
-          <button type="button" onClick={create} disabled={!canCreate || creating || created}
-            className="w-full px-5 py-3 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg disabled:opacity-40">
-            {created ? 'Created!' : creating ? 'Creating…' : 'Create scenario'}
-          </button>
-          {created && (
-            <p className="text-xs text-[#1F8C4A] mt-2 text-center">
-              <i className="fas fa-check-circle mr-1" />Created! Taking you to your scenarios…
-            </p>
-          )}
-          {!canCreate && !created && (
-            <p className="text-[10px] text-[#9B9890] mt-2 text-center leading-relaxed">
-              Needs a name, an AI prompt, and at least one phone line.
-            </p>
-          )}
+      {createFailed && !creatingScenario && (
+        <div className="border-t border-[#E3E1DB] bg-white px-4 md:px-8 py-2 shrink-0">
+          <div className="max-w-3xl mx-auto flex items-center justify-end gap-3">
+            <p className="text-[11px] text-[#9B9890]">The scenario wasn&rsquo;t created.</p>
+            <button type="button" onClick={createScenario}
+              className="px-4 py-2 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg">
+              Try again
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Composer — refines and free-text answers */}
+      <div className="border-t border-[#E3E1DB] bg-white px-4 md:px-8 py-3 shrink-0">
+        <div className="max-w-3xl mx-auto">
+          <div className="bg-white border border-[#E3E1DB] rounded-2xl focus-within:border-[#D63B1F] focus-within:ring-2 focus-within:ring-[#D63B1F]/10 flex items-end gap-2 pr-2">
+            <textarea
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
+              rows={1}
+              placeholder={promptAccepted
+                ? 'Type an answer, or use the options above…'
+                : 'Tell me what to change about the prompt…'}
+              className="flex-1 px-4 py-3 text-sm text-[#131210] placeholder-[#9B9890] bg-transparent rounded-2xl resize-none focus:outline-none"
+            />
+            <button type="button" onClick={send} disabled={drafting || !input.trim()} title="Send"
+              className="mb-2 w-8 h-8 rounded-full bg-[#D63B1F] hover:bg-[#c23119] text-white flex items-center justify-center disabled:opacity-40 shrink-0">
+              <i className="fas fa-arrow-up text-xs" />
+            </button>
           </div>
         </div>
       </div>
     </div>
   )
 
-  // ----- render -----
+  // ----- test view -----
 
-  const hasThread = thread.length > 0
-
-  return (
-    <div className="h-full flex flex-col bg-[#F7F6F3]">
-      {/* Top bar */}
-      <div className="flex items-center gap-3 px-5 py-3 border-b border-[#E3E1DB] bg-white shrink-0">
-        <button onClick={() => router.push('/scenarios')} title="Back" className="p-2 -ml-1 rounded-lg text-[#5C5A55] hover:bg-[#F7F6F3]">
-          <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
-        </button>
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-          <span className="w-7 h-7 rounded-lg bg-[#D63B1F] flex items-center justify-center shrink-0"><i className="fas fa-wand-magic-sparkles text-white text-xs" /></span>
-          <p className="text-base font-semibold text-[#131210] truncate">New scenario</p>
+  const testView = (
+    <div className="flex-1 flex flex-col min-h-0">
+      {createdNote && (
+        <div className="px-5 py-2 text-xs bg-[rgba(31,140,74,0.06)] border-b border-[rgba(31,140,74,0.16)] text-[#1F8C4A] shrink-0">
+          <i className="fas fa-check-circle mr-1.5" />Created — test it below.
         </div>
-        <button onClick={onSwitchToManual}
-          className="px-4 py-2 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3]">
-          <i className="fas fa-sliders mr-1.5 text-xs" />Set up manually
-        </button>
-      </div>
-
-      {error && (
-        <div className="px-5 py-2 text-xs bg-[rgba(214,59,31,0.07)] border-b border-[rgba(214,59,31,0.16)] text-[#D63B1F] shrink-0">{error}</div>
       )}
-
-      {hasThread && view === 'review' ? (
-        /* ---------- Review page (composer hidden) ---------- */
-        reviewPage
-      ) : !hasThread ? (
-        /* ---------- Empty state: centered hero ---------- */
-        <div className="flex-1 overflow-y-auto">
-          <div className="max-w-2xl mx-auto px-4 pt-14 md:pt-24 pb-10 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-[#D63B1F] flex items-center justify-center mx-auto mb-5 shadow-sm">
-              <i className="fas fa-wand-magic-sparkles text-white text-xl" />
-            </div>
-            <h1 className="text-2xl md:text-3xl font-semibold text-[#131210] tracking-tight">
-              Build your <span className="text-[#D63B1F]">AI</span> texting agent
-            </h1>
-            <p className="text-sm text-[#5C5A55] mt-2">Describe what you want it to do — I&rsquo;ll set everything up for you.</p>
-            <p className="text-xs text-[#9B9890] mt-2 mb-8 max-w-lg mx-auto leading-relaxed">
-              <i className="fas fa-circle-info mr-1.5 text-[10px]" />
-              Your AI replies to incoming texts — campaigns and automations send the first message; this agent handles what comes after.
-            </p>
-
-            <div className="text-left bg-white border border-[#E3E1DB] rounded-2xl shadow-sm focus-within:border-[#D63B1F] focus-within:ring-2 focus-within:ring-[#D63B1F]/10">
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-                rows={3}
-                placeholder="e.g. When my roofing leads text back, answer their questions and book an estimate…"
-                className="w-full px-4 pt-3.5 pb-1 text-sm text-[#131210] placeholder-[#9B9890] bg-transparent rounded-2xl resize-none focus:outline-none"
-              />
-              <div className="flex items-center justify-between gap-2 px-3 pb-2.5 pt-1">
-                <p className="hidden sm:block text-[10px] text-[#9B9890] pl-1">Enter to send · Shift+Enter for a new line</p>
-                <button type="button" onClick={send} disabled={drafting || !input.trim()} title="Send"
-                  className="ml-auto w-8 h-8 rounded-full bg-[#D63B1F] hover:bg-[#c23119] text-white flex items-center justify-center disabled:opacity-40 shrink-0">
-                  <i className="fas fa-arrow-up text-xs" />
-                </button>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap justify-center gap-2 mt-5">
-              {SUGGESTIONS.map(s => (
-                <button key={s} type="button" onClick={() => { setInput(s); inputRef.current?.focus() }}
-                  className="px-3.5 py-2 text-xs text-[#5C5A55] bg-white border border-[#E3E1DB] rounded-full hover:border-[#D63B1F]/40 hover:text-[#131210] transition-colors">
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      ) : (
-        /* ---------- Chat thread ---------- */
-        <div className="flex-1 flex flex-col min-h-0">
-          <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6">
-            <div className="max-w-3xl mx-auto space-y-3">
-              {thread.map(item => {
-                switch (item.type) {
-                  case 'user':
-                    return (
-                      <div key={item.id} className="flex justify-end">
-                        <div className="max-w-[80%] px-3.5 py-2.5 rounded-2xl rounded-br-md text-sm leading-relaxed whitespace-pre-wrap bg-[#D63B1F] text-white">
-                          {item.content}
-                        </div>
-                      </div>
-                    )
-                  case 'assistant':
-                    return (
-                      <div key={item.id} className="flex justify-start">
-                        <div className="max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-bl-md text-sm leading-relaxed bg-white border border-[#E3E1DB] text-[#131210]">
-                          <span className="whitespace-pre-wrap">{renderAssistantText(item.content)}</span>
-                        </div>
-                      </div>
-                    )
-                  case 'prompt':
-                    return renderPrompt(item)
-                  case 'step':
-                    return renderStep(item)
-                  default:
-                    return null
-                }
-              })}
-              {drafting && (
-                <div className="flex justify-start">
-                  <div className="bg-white border border-[#E3E1DB] px-4 py-3 rounded-2xl rounded-bl-md">
-                    <span className="inline-flex items-center gap-2.5 text-xs text-[#5C5A55]">
-                      <TypingDots />
-                      {promptAccepted ? 'Checking…' : 'Writing your prompt…'}
+      <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6">
+        <div className="max-w-2xl mx-auto space-y-3">
+          {sessions === null || loadingMessages ? (
+            <p className="text-center text-xs text-[#9B9890] py-10">Loading…</p>
+          ) : testMessages.length === 0 && !testSending ? (
+            // Clean empty state — the composer placeholder carries the hint.
+            <div className="py-12" />
+          ) : (
+            testMessages.map(m => {
+              const isLead = m.direction === 'inbound'
+              if (!isLead && m.meta?.stopped) {
+                return (
+                  <div key={m.id} className="flex justify-center">
+                    <span className="text-[11px] px-3 py-1.5 rounded-full bg-[#EFEDE8] text-[#5C5A55]">
+                      <i className="fas fa-hand mr-1.5 text-[10px]" />The AI chose to stop replying here
                     </span>
                   </div>
+                )
+              }
+              const unresolved = m.meta?.unresolved_tokens || []
+              return (
+                <div key={m.id}>
+                  <div className={`flex ${isLead ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[80%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
+                      isLead
+                        ? 'bg-[#D63B1F] text-white rounded-br-md'
+                        : 'bg-white border border-[#E3E1DB] text-[#131210] rounded-bl-md'
+                    }`}>
+                      {m.body}
+                      <p className={`text-[10px] mt-1 ${isLead ? 'text-white/70 text-right' : 'text-[#9B9890]'}`}>
+                        {isLead ? 'You (as the lead)' : m.meta?.opener ? 'Your opening text' : 'AI'} · {fmtTime(m.created_at)}
+                      </p>
+                    </div>
+                  </div>
+                  {!isLead && m.meta?.human_needed && (
+                    <div className="flex justify-center mt-2">
+                      <span className="text-[11px] px-3 py-1.5 rounded-full bg-[rgba(214,59,31,0.07)] text-[#D63B1F] border border-[rgba(214,59,31,0.16)]">
+                        <i className="fas fa-user mr-1.5 text-[10px]" />The AI asked for a human here and would stop
+                      </span>
+                    </div>
+                  )}
+                  {!isLead && unresolved.length > 0 && (
+                    <div className="flex justify-center mt-2">
+                      <span className="text-[11px] px-3 py-1.5 rounded-full bg-[rgba(214,59,31,0.07)] text-[#D63B1F] border border-[rgba(214,59,31,0.16)]">
+                        <i className="fas fa-triangle-exclamation mr-1.5 text-[10px]" />
+                        {unresolved.map(t => `{{${t}}}`).join(', ')} blank in tests — real sends fill {unresolved.length === 1 ? 'it' : 'them'} from contact data
+                      </span>
+                    </div>
+                  )}
                 </div>
-              )}
-              <div ref={bottomRef} />
-            </div>
-          </div>
-
-          {/* Sticky path back to review once the queue is complete */}
-          {queueComplete && (
-            <div className="border-t border-[#E3E1DB] bg-white px-4 md:px-8 py-2 shrink-0">
-              <div className="max-w-3xl mx-auto flex items-center justify-end gap-3">
-                <p className="hidden sm:block text-[11px] text-[#9B9890]">Everything is answered.</p>
-                <button type="button" onClick={() => setView('review')}
-                  className="px-4 py-2 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg">
-                  Review scenario <i className="fas fa-arrow-right ml-1 text-xs" />
-                </button>
+              )
+            })
+          )}
+          {testSending && (
+            <div className="flex justify-start">
+              <div className="bg-white border border-[#E3E1DB] px-4 py-3 rounded-2xl rounded-bl-md">
+                <TypingDots />
               </div>
             </div>
           )}
+          <div ref={testBottomRef} />
+        </div>
+      </div>
 
-          {/* Composer — persists for refines and free-text answers */}
-          <div className="border-t border-[#E3E1DB] bg-white px-4 md:px-8 py-3 shrink-0">
-            <div className="max-w-3xl mx-auto">
-              <div className="bg-white border border-[#E3E1DB] rounded-2xl focus-within:border-[#D63B1F] focus-within:ring-2 focus-within:ring-[#D63B1F]/10">
-                <textarea
-                  value={input}
-                  onChange={e => setInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-                  rows={1}
-                  placeholder={promptAccepted
-                    ? 'Type an answer, or use the buttons above…'
-                    : 'Tell me what to change about the prompt…'}
-                  className="w-full px-4 pt-3 pb-1 text-sm text-[#131210] placeholder-[#9B9890] bg-transparent rounded-2xl resize-none focus:outline-none"
-                />
-                <div className="flex items-center justify-between gap-2 px-3 pb-2 pt-0.5">
-                  <p className="hidden sm:block text-[10px] text-[#9B9890] pl-1">Enter to send · Shift+Enter for a new line</p>
-                  <button type="button" onClick={send} disabled={drafting || !input.trim()} title="Send"
-                    className="ml-auto w-8 h-8 rounded-full bg-[#D63B1F] hover:bg-[#c23119] text-white flex items-center justify-center disabled:opacity-40 shrink-0">
-                    <i className="fas fa-arrow-up text-xs" />
+      {/* Test composer */}
+      <div className="border-t border-[#E3E1DB] bg-white px-4 md:px-8 py-3 shrink-0">
+        <div className="max-w-2xl mx-auto flex items-end gap-2">
+          <textarea
+            value={testInput}
+            onChange={e => setTestInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); testSend() } }}
+            placeholder="Type what a lead might send…"
+            rows={1}
+            className="flex-1 px-3.5 py-2.5 border border-[#D4D1C9] rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#D63B1F]/20 focus:border-[#D63B1F]"
+          />
+          <button type="button" onClick={testSend} disabled={testSending || !testInput.trim()}
+            className="px-4 py-2.5 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-xl disabled:opacity-50 shrink-0">
+            <i className="fas fa-paper-plane" />
+          </button>
+        </div>
+        <p className="max-w-2xl mx-auto text-[10px] text-[#9B9890] mt-1.5">
+          Replying with {testModel ? testModel.label : '…'} · to change the model, edit the scenario
+        </p>
+      </div>
+    </div>
+  )
+
+  // ----- render -----
+
+  return (
+    <div className="h-full flex bg-[#F7F6F3]">
+      {/* LEFT — builder chats (ChatGPT-style history) */}
+      {sidebarCollapsed ? (
+        <aside className="hidden md:flex flex-col items-center gap-1.5 w-12 shrink-0 bg-white border-r border-[#E3E1DB] py-3">
+          <button type="button" onClick={() => setSidebarCollapsed(false)} title="Expand chats"
+            className="w-8 h-8 rounded-lg text-[#5C5A55] hover:bg-[#F7F6F3] flex items-center justify-center">
+            <i className="fas fa-chevron-right text-xs" />
+          </button>
+          <button type="button" onClick={startNewChat} title="New chat"
+            className="w-8 h-8 rounded-lg bg-[#D63B1F] hover:bg-[#c23119] text-white flex items-center justify-center">
+            <i className="fas fa-plus text-xs" />
+          </button>
+        </aside>
+      ) : (
+        <aside className="hidden md:flex flex-col w-60 shrink-0 bg-white border-r border-[#E3E1DB]">
+          <div className="p-3 flex items-center gap-2">
+            <button type="button" onClick={startNewChat}
+              className="flex-1 px-3 py-2 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg">
+              + New chat
+            </button>
+            <button type="button" onClick={() => setSidebarCollapsed(true)} title="Collapse"
+              className="w-8 h-8 rounded-lg text-[#9B9890] hover:bg-[#F7F6F3] hover:text-[#5C5A55] flex items-center justify-center shrink-0">
+              <i className="fas fa-chevron-left text-xs" />
+            </button>
+          </div>
+          <p className="px-4 pb-1.5 text-[11px] font-semibold uppercase tracking-widest text-[#9B9890]">Chats</p>
+          <div className="flex-1 overflow-y-auto pb-3">
+            {chats === null ? (
+              <p className="px-4 py-2 text-xs text-[#9B9890]">Loading…</p>
+            ) : chats.length === 0 ? (
+              <p className="px-4 py-2 text-xs text-[#9B9890] leading-relaxed">No chats yet.</p>
+            ) : chats.map(c => {
+              const current = c.id === chatId
+              if (confirmDeleteChat === c.id) {
+                return (
+                  <div key={c.id} className="flex items-center gap-2 px-4 py-2 bg-[rgba(214,59,31,0.05)]">
+                    <span className="flex-1 min-w-0 truncate text-xs text-[#D63B1F] font-medium">Delete?</span>
+                    <button type="button" onClick={() => deleteChat(c.id)} title="Confirm delete"
+                      className="p-1 text-[#D63B1F] hover:opacity-70">
+                      <i className="fas fa-check text-[11px]" />
+                    </button>
+                    <button type="button" onClick={() => setConfirmDeleteChat(null)} title="Cancel"
+                      className="p-1 text-[#9B9890] hover:text-[#5C5A55]">
+                      <i className="fas fa-xmark text-[11px]" />
+                    </button>
+                  </div>
+                )
+              }
+              return (
+                <div key={c.id} onClick={() => openChat(c.id)}
+                  className={`group flex items-center gap-2 px-4 py-2 cursor-pointer ${current ? 'bg-[#F7F6F3]' : 'hover:bg-[#FBFAF8]'}`}>
+                  <span className={`flex-1 min-w-0 truncate text-[13px] ${current ? 'font-semibold text-[#131210]' : 'text-[#5C5A55]'}`}>
+                    {c.title || 'Untitled chat'}
+                  </span>
+                  <span className="text-[10px] text-[#9B9890] shrink-0 group-hover:hidden">{relTime(c.updated_at)}</span>
+                  <button type="button" title="Delete chat"
+                    onClick={e => { e.stopPropagation(); setConfirmDeleteChat(c.id) }}
+                    className="hidden group-hover:block p-1 text-[#9B9890] hover:text-[#D63B1F]">
+                    <i className="fas fa-trash text-[11px]" />
                   </button>
                 </div>
-              </div>
-            </div>
+              )
+            })}
           </div>
-        </div>
+        </aside>
       )}
+
+      {/* MAIN */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Header */}
+        {mode === 'builder' ? (
+          <div className="flex items-center gap-3 px-5 py-3 border-b border-[#E3E1DB] bg-white shrink-0">
+            <span className="w-7 h-7 rounded-lg bg-[#D63B1F] flex items-center justify-center shrink-0">
+              <i className="fas fa-wand-magic-sparkles text-white text-xs" />
+            </span>
+            <p className="text-base font-semibold text-[#131210] truncate flex-1 min-w-0">
+              {chatScenarioId ? (name || 'Scenario') : 'New scenario'}
+            </p>
+            {chatScenarioId && (
+              <button type="button"
+                onClick={() => testScenario?.id === chatScenarioId ? setMode('test') : openTest(chatScenarioId, name || '')}
+                className="px-3 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3] shrink-0">
+                <i className="fas fa-vial mr-1.5 text-[10px]" />Test
+              </button>
+            )}
+            <button onClick={onSwitchToManual}
+              className="px-4 py-2 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3]">
+              <i className="fas fa-sliders mr-1.5 text-xs" />Set up manually
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2.5 px-5 py-3 border-b border-[#E3E1DB] bg-white shrink-0">
+            <p className="text-base font-semibold text-[#D63B1F] shrink-0">Test</p>
+            <p className="text-sm text-[#5C5A55] truncate flex-1 min-w-0">{testScenario?.name || '…'}</p>
+            <span className="hidden sm:inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-[rgba(31,140,74,0.08)] text-[#1F8C4A] border border-[rgba(31,140,74,0.18)]">
+              <i className="fas fa-shield-alt text-[10px]" /> Practice mode — no real texts are sent
+            </span>
+            {chatId && thread.length > 0 && (
+              <button type="button" onClick={() => { setCreatedNote(false); setMode('builder') }}
+                className="px-3 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3] shrink-0">
+                <i className="fas fa-comments mr-1.5 text-[10px]" />View chat
+              </button>
+            )}
+            <button type="button" onClick={newTestChat}
+              className="px-3 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3] shrink-0">
+              + New test chat
+            </button>
+          </div>
+        )}
+
+        {error && (
+          <div className="px-5 py-2 text-xs bg-[rgba(214,59,31,0.07)] border-b border-[rgba(214,59,31,0.16)] text-[#D63B1F] shrink-0">{error}</div>
+        )}
+
+        {mode === 'builder' ? builderView : testView}
+      </div>
     </div>
   )
 }
