@@ -92,6 +92,8 @@ async function patchSheetsAutomation(automation, body) {
     }
   }
 
+  if (body.graph && typeof body.graph === 'object') update.graph = body.graph
+
   const { data, error } = await supabaseAdmin
     .from('sheets_automations')
     .update(update)
@@ -183,6 +185,8 @@ export async function PATCH(request, { params }) {
       update.ai_instructions = body.ai_instructions.trim()
     }
   }
+
+  if (body.graph && typeof body.graph === 'object') update.graph = body.graph
 
   const { data, error } = await supabaseAdmin
     .from('monday_automations')
