@@ -157,13 +157,18 @@ function ModelPicker({ models, value, onChange, locked }) {
       <button type="button" onClick={() => !locked && setOpen(o => !o)} disabled={locked}
         title={locked ? 'The model is locked once the chat starts' : undefined}
         className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#5C5A55] enabled:hover:bg-[#F7F6F3] border border-transparent enabled:hover:border-[#E3E1DB] transition-colors disabled:cursor-default">
-        <i className="fas fa-microchip text-[10px] text-[#9B9890]" />
-        <span className="max-w-[120px] truncate">{cur ? `${cur.vendor} ${cur.label}` : 'Model'}</span>
+        {models.length === 0
+          ? <i className="fas fa-spinner fa-spin text-[10px] text-[#9B9890]" />
+          : <i className="fas fa-microchip text-[10px] text-[#9B9890]" />}
+        <span className="max-w-[120px] truncate">{models.length === 0 ? 'Loading…' : (cur ? `${cur.vendor} ${cur.label}` : 'Model')}</span>
         <i className={`fas ${locked ? 'fa-lock' : 'fa-chevron-down'} text-[9px] text-[#9B9890]`} />
       </button>
       {open && !locked && (
-        <div className="absolute top-full left-0 mt-1.5 w-60 bg-white border border-[#E3E1DB] rounded-xl shadow-lg py-1 z-30">
+        <div className="absolute top-full right-0 mt-1.5 w-60 bg-white border border-[#E3E1DB] rounded-xl shadow-lg py-1 z-30">
           <p className="px-3 py-1.5 text-[10px] font-semibold text-[#9B9890] uppercase tracking-wide">Model</p>
+          {models.length === 0 && (
+            <p className="flex items-center gap-2 px-3 py-2 text-xs text-[#9B9890]"><i className="fas fa-spinner fa-spin text-[10px]" /> Loading models…</p>
+          )}
           {models.map(m => (
             <button key={m.id} disabled={!m.available} onClick={() => { onChange(m.id); setOpen(false) }}
               className="w-full flex items-center justify-between px-3 py-2 text-left text-xs hover:bg-[#F7F6F3] disabled:opacity-40 disabled:cursor-not-allowed">
@@ -184,7 +189,7 @@ function Composer({ rows, placeholder, input, setInput, onSend, busy, models, mo
         onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend() } }}
         rows={rows} placeholder={placeholder}
         className="w-full px-4 pt-3.5 pb-1 text-sm text-[#131210] placeholder-[#9B9890] bg-transparent rounded-2xl resize-none focus:outline-none" />
-      <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5 pt-1">
+      <div className="flex items-center justify-end gap-2 px-2.5 pb-2.5 pt-1">
         <ModelPicker models={models} value={model} onChange={setModel} locked={locked} />
         <button type="button" onClick={onSend} disabled={busy || !input.trim()} title="Send"
           className="w-8 h-8 rounded-full bg-[#D63B1F] hover:bg-[#c23119] text-white flex items-center justify-center disabled:opacity-40 shrink-0">
@@ -396,7 +401,7 @@ export default function CampaignAgentChat({ onSwitchToManual, inline = false, on
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-2xl mx-auto px-4 pt-14 md:pt-24 pb-10 text-center">
             <div className="w-14 h-14 rounded-2xl bg-[#D63B1F] flex items-center justify-center mx-auto mb-5 shadow-sm"><i className="fas fa-bullhorn text-white text-xl" /></div>
-            <h1 className="text-2xl md:text-3xl font-semibold text-[#131210] tracking-tight">Build your <span className="text-[#D63B1F]">campaign</span> with AI</h1>
+            <h1 className="text-2xl md:text-3xl font-semibold text-[#131210] tracking-tight">Build your <span className="text-[#D63B1F] font-extrabold text-[1.1em]">SMS campaign</span> with AI</h1>
             <p className="text-sm text-[#5C5A55] mt-2">Describe what you want to send and to whom — I&rsquo;ll write the text and set it up.</p>
             <p className="text-xs text-[#9B9890] mt-2 mb-8 max-w-lg mx-auto leading-relaxed"><i className="fas fa-circle-info mr-1.5 text-[10px]" />A campaign sends one text to many recipients at once. You launch it from the list when it&rsquo;s ready.</p>
             <div className="text-left"><Composer rows={3} placeholder="e.g. Promote this Saturday's open house at 123 Oak St to my seller leads…" {...composerProps} /></div>
