@@ -22,6 +22,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { apiGet, apiPost, fetchWithWorkspace } from '@/lib/api-client'
+import ScenarioForm from '@/components/scenarios/ScenarioForm'
 
 // Reply-framed on purpose: the agent only ANSWERS incoming texts — campaigns
 // and automations send the first message.
@@ -105,10 +106,14 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
   const router = useRouter()
 
   // ----- studio-level state -----
-  const [mode, setMode] = useState('builder')        // 'builder' | 'test'
-  const [chats, setChats] = useState(null)           // sidebar; null = loading
+  const [mode, setMode] = useState('builder')        // 'builder' | 'test' | 'form'
+  const [chats, setChats] = useState(null)           // builder chats; null = loading
+  const [scenarios, setScenarios] = useState(null)   // workspace scenarios; null = loading
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [confirmDeleteChat, setConfirmDeleteChat] = useState(null)   // chat id
+  const [sidebarSearch, setSidebarSearch] = useState('')
+  const [menuOpenId, setMenuOpenId] = useState(null)         // per-row "…" menu (row key)
+  const [confirmDelete, setConfirmDelete] = useState(null)   // { kind: 'scenario'|'chat', id, linkedChatId? }
+  const [formScenario, setFormScenario] = useState(null)   // { id, name, chatId } — embedded edit form
   const [chatId, setChatId] = useState(null)         // current builder chat
   const [chatScenarioId, setChatScenarioId] = useState(null)   // scenario this chat produced
   const [testScenario, setTestScenario] = useState(null)       // { id, name }
@@ -185,11 +190,18 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
       .catch(() => setChats([]))
   }, [])
 
+  const loadScenarios = useCallback(() => {
+    apiGet('/api/scenarios').then(r => r.json())
+      .then(d => setScenarios(d.scenarios || []))
+      .catch(() => setScenarios([]))
+  }, [])
+
   useEffect(() => {
     fetchWithWorkspace('/api/ai-models').then(r => r.json()).then(d => setAiModels(d.models || [])).catch(() => {})
     fetchWithWorkspace('/api/phone-numbers').then(r => r.json()).then(d => setPhoneNumbers(d.phoneNumbers || [])).catch(() => {})
     apiGet('/api/contact-lists').then(r => r.json()).then(d => setContactLists(d.contactLists || [])).catch(() => {})
     loadChats()
+    loadScenarios()
     // ?test=<scenarioId> → open that scenario in test mode straight away.
     try {
       const t = new URLSearchParams(window.location.search).get('test')
@@ -381,7 +393,9 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
     createdRef.current = false
     setCreatingScenario(false)
     setCreateFailed(false)
-    setConfirmDeleteChat(null)
+    setConfirmDelete(null)
+    setMenuOpenId(null)
+    setFormScenario(null)
   }
 
   // First user send in a new chat → create the server-side chat record.
@@ -403,12 +417,59 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
   }
 
   const deleteChat = async id => {
-    setConfirmDeleteChat(null)
+    setConfirmDelete(null)
     try {
       await fetchWithWorkspace(`/api/scenarios/builder-chats/${id}`, { method: 'DELETE' })
     } catch { /* noop */ }
     if (id === chatId) startNewChat()
     loadChats()
+  }
+
+  // ----- scenario row actions (replaces the old management page) -----
+
+  const toggleActive = async s => {
+    setMenuOpenId(null)
+    try {
+      const res = await fetchWithWorkspace(`/api/scenarios/${s.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ is_active: !s.is_active }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok || d.success === false) throw new Error(d.error || 'Failed to update scenario')
+      loadScenarios()
+    } catch (e) {
+      setError(e.message || 'Failed to update scenario')
+    }
+  }
+
+  const deleteScenarioRow = async (id, linkedChatId) => {
+    setConfirmDelete(null)
+    try {
+      const res = await fetchWithWorkspace(`/api/scenarios/${id}`, { method: 'DELETE' })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok || d.success === false) throw new Error(d.error || 'Failed to delete scenario')
+      if (linkedChatId) {
+        await fetchWithWorkspace(`/api/scenarios/builder-chats/${linkedChatId}`, { method: 'DELETE' }).catch(() => {})
+      }
+      // If the deleted scenario is what's on screen, reset the main panel.
+      if (chatScenarioId === id || testScenario?.id === id || formScenario?.id === id || (linkedChatId && linkedChatId === chatId)) {
+        startNewChat()
+      }
+      loadScenarios()
+      loadChats()
+    } catch (e) {
+      setError(e.message || 'Failed to delete scenario')
+    }
+  }
+
+  // Clicking a scenario opens its EDITABLE FORM (embedded ScenarioForm);
+  // the [ Form | Chat ] toggle switches to the stored builder chat, if any.
+  const openForm = (id, scenarioName = '', linkedChatId = null) => {
+    setError('')
+    setMenuOpenId(null)
+    setConfirmDelete(null)
+    setFormScenario({ id, name: scenarioName, chatId: linkedChatId })
+    setMode('form')
   }
 
   // Full draft snapshot for persistence.
@@ -460,7 +521,8 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
   // Reopen a chat from the sidebar: rebuild the thread from messages + draft.
   const openChat = async id => {
     setError('')
-    setConfirmDeleteChat(null)
+    setConfirmDelete(null)
+    setMenuOpenId(null)
     try {
       const res = await apiGet(`/api/scenarios/builder-chats/${id}`)
       const data = await res.json().catch(() => ({}))
@@ -626,7 +688,7 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
 
   // ----- builder-chat round-trips -----
 
-  const handleUserText = async (text, restore) => {
+  const handleUserText = async (text, restore, source = 'composer') => {
     const trimmed = (text || '').trim()
     if (!trimmed || builderInflightRef.current) return
     builderInflightRef.current = true
@@ -651,44 +713,51 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
       // conversational reply, NOT a draft. Only touch the prompt document
       // when the response actually carries instructions.
       const hasDraft = typeof data.instructions === 'string' && data.instructions.trim().length > 0
+      // Only card-refine sends surface the reply in the card's status line —
+      // the user is looking at the card there. Main-composer replies must be
+      // visible bubbles at the thread end (chronological), or the chat looks
+      // unanswered.
+      const fromComposer = source !== 'refine'
       if (hasDraft) {
         if (data.name) setName(data.name)
         setInstructions(data.instructions)
-        setStatusLine(data.reply || '')
+        if (!fromComposer) setStatusLine(data.reply || '')
       }
       const applied = chatScenarioId
         ? await patchScenarioSettings(data.settings)   // PATCH the real scenario first
         : applySettings(data.settings)
+
+      const replyBubble = () => ({ id: nid(), type: 'assistant', content: data.reply || '' })
 
       if (!promptAccepted) {
         setThread(t => {
           const cardExists = t.some(x => x.type === 'prompt')
           if (!cardExists) {
             return hasDraft
-              ? [...t,
-                  { id: nid(), type: 'assistant', content: data.reply || '' },
-                  { id: nid(), type: 'prompt', status: 'open' },
-                ]
-              : [...t, { id: nid(), type: 'assistant', content: data.reply || '' }]
+              ? [...t, replyBubble(), { id: nid(), type: 'prompt', status: 'open' }]
+              : [...t, replyBubble()]
           }
-          // Card exists: draft updates are absorbed in place (status line);
-          // conversational answers just get a reply bubble, card untouched.
-          return hasDraft ? t : [...t, { id: nid(), type: 'assistant', content: data.reply || '' }]
+          // Card exists: refine sends are absorbed in place (status line);
+          // composer sends and conversational answers get a reply bubble.
+          return (hasDraft && !fromComposer) ? t : [...t, replyBubble()]
         })
       } else {
-        // Queue phase: free-text answers are extracted server-side.
+        // Queue phase: free-text answers are extracted server-side. The reply
+        // always lands as a bubble (only the composer sends here).
         setThread(t => {
           const hadActive = t.some(x => x.type === 'step' && x.status === 'active')
           if (applied.length) {
-            let next = t.map(x => (x.type === 'step' && applied.includes(x.field) ? { ...x, status: 'done', hint: null } : x))
-            if (!hadActive) next = [...next, { id: nid(), type: 'assistant', content: data.reply || '' }]
-            return ensureProgress(next)
+            const next = t.map(x => (x.type === 'step' && applied.includes(x.field) ? { ...x, status: 'done', hint: null } : x))
+            return ensureProgress([...next, replyBubble()])
           }
           if (hadActive) {
-            return t.map(x => (x.type === 'step' && x.status === 'active'
-              ? { ...x, hint: 'Use the options below, or try rephrasing.' } : x))
+            return [
+              ...t.map(x => (x.type === 'step' && x.status === 'active'
+                ? { ...x, hint: 'Use the options below, or try rephrasing.' } : x)),
+              replyBubble(),
+            ]
           }
-          return [...t, { id: nid(), type: 'assistant', content: data.reply || '' }]
+          return [...t, replyBubble()]
         })
       }
     } catch (e) {
@@ -713,7 +782,7 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
     const text = refineInput.trim()
     if (!text || drafting) return
     setRefineInput('')
-    handleUserText(text, setRefineInput)
+    handleUserText(text, setRefineInput, 'refine')
   }
 
   // ----- prompt accept: start the queue, or UPDATE the existing scenario -----
@@ -797,12 +866,14 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
       const sid = data.scenario.id
       setChatScenarioId(sid)
       if (chatId) {
+        // Link the chat AND retitle it to the scenario name (titles stay auto).
         fetchWithWorkspace(`/api/scenarios/builder-chats/${chatId}`, {
           method: 'PATCH',
-          body: JSON.stringify({ scenario_id: sid }),
-        }).catch(() => {})
+          body: JSON.stringify({ scenario_id: sid, title: name.trim() }),
+        }).then(() => loadChats()).catch(() => {})
       }
       loadChats()
+      loadScenarios()   // new row appears with its green dot
       openTest(sid, name.trim(), true)
     } catch (e) {
       setError(e.message || 'Failed to create scenario')
@@ -1461,72 +1532,183 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
     </div>
   )
 
+  // ----- form view (embedded editable ScenarioForm + Form/Chat toggle) -----
+
+  const formView = formScenario ? (
+    <div className="flex-1 flex flex-col min-h-0">
+      {/* Slim studio strip: segmented [ Form | Chat ] toggle */}
+      <div className="flex items-center gap-3 px-5 py-2 border-b border-[#E3E1DB] bg-white shrink-0">
+        <div className="inline-flex rounded-lg border border-[#E3E1DB] bg-[#F7F6F3] p-0.5">
+          <button type="button"
+            className="px-3 py-1 text-xs font-medium rounded-md bg-white text-[#131210] shadow-sm">
+            Form
+          </button>
+          <button type="button" disabled={!formScenario.chatId}
+            onClick={() => formScenario.chatId && openChat(formScenario.chatId)}
+            title={formScenario.chatId ? 'Continue editing conversationally' : 'No builder chat for this scenario'}
+            className={`px-3 py-1 text-xs font-medium rounded-md ${
+              formScenario.chatId ? 'text-[#5C5A55] hover:text-[#131210]' : 'text-[#C9C6BE] cursor-not-allowed'
+            }`}>
+            Chat
+          </button>
+        </div>
+        <p className="text-xs text-[#9B9890] truncate flex-1 min-w-0">{formScenario.name}</p>
+      </div>
+      {/* Embedded edit form (its own top bar handles Save/Test/Cancel) */}
+      <div className="flex-1 min-h-0">
+        <ScenarioForm key={formScenario.id} mode="edit" scenarioId={formScenario.id} />
+      </div>
+    </div>
+  ) : null
+
   // ----- render -----
 
   return (
     <div className="h-full flex bg-[#F7F6F3]">
-      {/* LEFT — builder chats (ChatGPT-style history) */}
+      {/* LEFT — scenarios (merged with their builder chats) */}
       {sidebarCollapsed ? (
         <aside className="hidden md:flex flex-col items-center gap-1.5 w-12 shrink-0 bg-white border-r border-[#E3E1DB] py-3">
-          <button type="button" onClick={() => setSidebarCollapsed(false)} title="Expand chats"
+          <button type="button" onClick={() => setSidebarCollapsed(false)} title="Expand scenarios"
             className="w-8 h-8 rounded-lg text-[#5C5A55] hover:bg-[#F7F6F3] flex items-center justify-center">
             <i className="fas fa-chevron-right text-xs" />
           </button>
-          <button type="button" onClick={startNewChat} title="New chat"
+          <button type="button" onClick={startNewChat} title="New scenario"
             className="w-8 h-8 rounded-lg bg-[#D63B1F] hover:bg-[#c23119] text-white flex items-center justify-center">
             <i className="fas fa-plus text-xs" />
           </button>
         </aside>
       ) : (
         <aside className="hidden md:flex flex-col w-60 shrink-0 bg-white border-r border-[#E3E1DB]">
-          <div className="p-3 flex items-center gap-2">
+          <div className="p-3 pb-2 flex items-center gap-2">
             <button type="button" onClick={startNewChat}
               className="flex-1 px-3 py-2 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg">
-              + New chat
+              + New scenario
             </button>
             <button type="button" onClick={() => setSidebarCollapsed(true)} title="Collapse"
               className="w-8 h-8 rounded-lg text-[#9B9890] hover:bg-[#F7F6F3] hover:text-[#5C5A55] flex items-center justify-center shrink-0">
               <i className="fas fa-chevron-left text-xs" />
             </button>
           </div>
-          <p className="px-4 pb-1.5 text-[11px] font-semibold uppercase tracking-widest text-[#9B9890]">Chats</p>
+          <div className="px-3 pb-2">
+            <div className="relative">
+              <i className="fas fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9B9890] text-[10px]" />
+              <input value={sidebarSearch} onChange={e => setSidebarSearch(e.target.value)}
+                placeholder="Search scenarios…"
+                className="w-full pl-7 pr-2.5 py-1.5 border border-[#E3E1DB] rounded-lg text-xs focus:outline-none focus:border-[#D63B1F]" />
+            </div>
+          </div>
+          <p className="px-4 pb-1.5 text-[11px] font-semibold uppercase tracking-widest text-[#9B9890]">Scenarios</p>
           <div className="flex-1 overflow-y-auto pb-3">
-            {chats === null ? (
-              <p className="px-4 py-2 text-xs text-[#9B9890]">Loading…</p>
-            ) : chats.length === 0 ? (
-              <p className="px-4 py-2 text-xs text-[#9B9890] leading-relaxed">No chats yet.</p>
-            ) : chats.map(c => {
-              const current = c.id === chatId
-              if (confirmDeleteChat === c.id) {
+            {(() => {
+              if (scenarios === null || chats === null) {
+                return <p className="px-4 py-2 text-xs text-[#9B9890]">Loading…</p>
+              }
+              // One row per SCENARIO (matched to its chat by scenario_id);
+              // chats that haven't produced a scenario yet show as drafts.
+              const chatByScenario = new Map()
+              const drafts = []
+              for (const c of chats) {
+                if (c.scenario_id) { if (!chatByScenario.has(c.scenario_id)) chatByScenario.set(c.scenario_id, c) }
+                else drafts.push(c)
+              }
+              const q = sidebarSearch.trim().toLowerCase()
+              const rows = [
+                ...scenarios
+                  .filter(s => !q || (s.name || '').toLowerCase().includes(q))
+                  .map(s => ({ key: `s-${s.id}`, kind: 'scenario', scenario: s, chat: chatByScenario.get(s.id) || null })),
+                ...drafts
+                  .filter(c => !q || (c.title || '').toLowerCase().includes(q))
+                  .map(c => ({ key: `d-${c.id}`, kind: 'draft', chat: c })),
+              ]
+              if (rows.length === 0) {
+                return <p className="px-4 py-2 text-xs text-[#9B9890] leading-relaxed">{q ? 'No matches.' : 'No scenarios yet.'}</p>
+              }
+              return rows.map(row => {
+                const isDraft = row.kind === 'draft'
+                const current = isDraft
+                  ? (mode === 'builder' && chatId === row.chat.id)
+                  : ((mode === 'form' && formScenario?.id === row.scenario.id) ||
+                     (mode === 'test' && testScenario?.id === row.scenario.id) ||
+                     (mode === 'builder' && row.chat && chatId === row.chat.id))
+                const deleting = confirmDelete &&
+                  ((isDraft && confirmDelete.kind === 'chat' && confirmDelete.id === row.chat.id) ||
+                   (!isDraft && confirmDelete.kind === 'scenario' && confirmDelete.id === row.scenario.id))
+                if (deleting) {
+                  return (
+                    <div key={row.key} className="flex items-center gap-2 px-4 py-2 bg-[rgba(214,59,31,0.05)]">
+                      <span className="flex-1 min-w-0 truncate text-xs text-[#D63B1F] font-medium">
+                        Delete{isDraft ? ' draft' : ''}?
+                      </span>
+                      <button type="button" title="Confirm delete"
+                        onClick={() => isDraft ? deleteChat(confirmDelete.id) : deleteScenarioRow(confirmDelete.id, confirmDelete.linkedChatId)}
+                        className="p-1 text-[#D63B1F] hover:opacity-70">
+                        <i className="fas fa-check text-[11px]" />
+                      </button>
+                      <button type="button" onClick={() => setConfirmDelete(null)} title="Cancel"
+                        className="p-1 text-[#9B9890] hover:text-[#5C5A55]">
+                        <i className="fas fa-xmark text-[11px]" />
+                      </button>
+                    </div>
+                  )
+                }
                 return (
-                  <div key={c.id} className="flex items-center gap-2 px-4 py-2 bg-[rgba(214,59,31,0.05)]">
-                    <span className="flex-1 min-w-0 truncate text-xs text-[#D63B1F] font-medium">Delete?</span>
-                    <button type="button" onClick={() => deleteChat(c.id)} title="Confirm delete"
-                      className="p-1 text-[#D63B1F] hover:opacity-70">
-                      <i className="fas fa-check text-[11px]" />
-                    </button>
-                    <button type="button" onClick={() => setConfirmDeleteChat(null)} title="Cancel"
-                      className="p-1 text-[#9B9890] hover:text-[#5C5A55]">
-                      <i className="fas fa-xmark text-[11px]" />
-                    </button>
+                  <div key={row.key}
+                    onClick={() => isDraft
+                      ? openChat(row.chat.id)
+                      : openForm(row.scenario.id, row.scenario.name, row.chat?.id || null)}
+                    className={`group flex items-center gap-2 px-4 py-2 cursor-pointer ${current ? 'bg-[#F7F6F3]' : 'hover:bg-[#FBFAF8]'}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                      isDraft ? 'bg-[#D4D1C9]' : row.scenario.is_active ? 'bg-[#1F8C4A]' : 'bg-[#C9C6BE]'
+                    }`} title={isDraft ? 'Draft' : row.scenario.is_active ? 'Active' : 'Inactive'} />
+                    <span className={`flex-1 min-w-0 truncate text-[13px] ${current ? 'font-semibold text-[#131210]' : 'text-[#5C5A55]'}`}>
+                      {isDraft ? `Draft — ${row.chat.title || 'Untitled'}` : row.scenario.name}
+                    </span>
+                    {/* "…" menu */}
+                    <div className="relative shrink-0">
+                      <button type="button" title="More"
+                        onClick={e => { e.stopPropagation(); setMenuOpenId(menuOpenId === row.key ? null : row.key) }}
+                        className={`p-1 text-[#9B9890] hover:text-[#131210] transition-opacity ${menuOpenId === row.key ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                        <i className="fas fa-ellipsis text-[12px]" />
+                      </button>
+                      {menuOpenId === row.key && (
+                        <>
+                          <div className="fixed inset-0 z-40" onClick={e => { e.stopPropagation(); setMenuOpenId(null) }} />
+                          <div className="absolute right-0 top-full mt-1 w-44 bg-white border border-[#E3E1DB] rounded-lg shadow-lg z-50 py-1"
+                            onClick={e => e.stopPropagation()}>
+                            {!isDraft && (
+                              <>
+                                <button type="button" onClick={() => toggleActive(row.scenario)}
+                                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-[#5C5A55] hover:bg-[#F7F6F3]">
+                                  <i className={`fas ${row.scenario.is_active ? 'fa-pause' : 'fa-play'} w-4 text-center text-xs`} />
+                                  {row.scenario.is_active ? 'Pause' : 'Resume'}
+                                </button>
+                                <button type="button"
+                                  onClick={() => { setMenuOpenId(null); router.push(`/scenarios/${row.scenario.id}/edit`) }}
+                                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-[#5C5A55] hover:bg-[#F7F6F3]">
+                                  <i className="fas fa-pencil w-4 text-center text-xs" />Edit
+                                </button>
+                                <button type="button"
+                                  onClick={() => { setMenuOpenId(null); setConfirmDelete({ kind: 'scenario', id: row.scenario.id, linkedChatId: row.chat?.id || null }) }}
+                                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-[#D63B1F] hover:bg-[rgba(214,59,31,0.06)]">
+                                  <i className="fas fa-trash w-4 text-center text-xs" />Delete
+                                </button>
+                              </>
+                            )}
+                            {isDraft && (
+                              <button type="button"
+                                onClick={() => { setMenuOpenId(null); setConfirmDelete({ kind: 'chat', id: row.chat.id }) }}
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-[#D63B1F] hover:bg-[rgba(214,59,31,0.06)]">
+                                <i className="fas fa-trash w-4 text-center text-xs" />Delete chat
+                              </button>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
                 )
-              }
-              return (
-                <div key={c.id} onClick={() => openChat(c.id)}
-                  className={`group flex items-center gap-2 px-4 py-2 cursor-pointer ${current ? 'bg-[#F7F6F3]' : 'hover:bg-[#FBFAF8]'}`}>
-                  <span className={`flex-1 min-w-0 truncate text-[13px] ${current ? 'font-semibold text-[#131210]' : 'text-[#5C5A55]'}`}>
-                    {c.title || 'Untitled chat'}
-                  </span>
-                  <span className="text-[10px] text-[#9B9890] shrink-0 group-hover:hidden">{relTime(c.updated_at)}</span>
-                  <button type="button" title="Delete chat"
-                    onClick={e => { e.stopPropagation(); setConfirmDeleteChat(c.id) }}
-                    className="hidden group-hover:block p-1 text-[#9B9890] hover:text-[#D63B1F]">
-                    <i className="fas fa-trash text-[11px]" />
-                  </button>
-                </div>
-              )
-            })}
+              })
+            })()}
           </div>
         </aside>
       )}
@@ -1543,28 +1725,41 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
               {chatScenarioId ? (name || 'Scenario') : 'New scenario'}
             </p>
             {chatScenarioId && (
-              <button type="button"
-                onClick={() => testScenario?.id === chatScenarioId ? setMode('test') : openTest(chatScenarioId, name || '')}
-                className="px-3 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3] shrink-0">
-                <i className="fas fa-vial mr-1.5 text-[10px]" />Test
-              </button>
+              <>
+                <button type="button"
+                  onClick={() => openForm(chatScenarioId, name || '', chatId)}
+                  className="px-3 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3] shrink-0">
+                  <i className="fas fa-sliders mr-1.5 text-[10px]" />Form
+                </button>
+                <button type="button"
+                  onClick={() => testScenario?.id === chatScenarioId ? setMode('test') : openTest(chatScenarioId, name || '')}
+                  className="px-3 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3] shrink-0">
+                  <i className="fas fa-vial mr-1.5 text-[10px]" />Test
+                </button>
+              </>
             )}
             <button onClick={onSwitchToManual}
               className="px-4 py-2 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3]">
               <i className="fas fa-sliders mr-1.5 text-xs" />Set up manually
             </button>
           </div>
-        ) : (
+        ) : mode === 'form' ? null : (
           <div className="flex items-center gap-2.5 px-5 py-3 border-b border-[#E3E1DB] bg-white shrink-0">
             <p className="text-base font-semibold text-[#D63B1F] shrink-0">Test</p>
             <p className="text-sm text-[#5C5A55] truncate flex-1 min-w-0">{testScenario?.name || '…'}</p>
             <span className="hidden sm:inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-[rgba(31,140,74,0.08)] text-[#1F8C4A] border border-[rgba(31,140,74,0.18)]">
               <i className="fas fa-shield-alt text-[10px]" /> Practice mode — no real texts are sent
             </span>
-            {chatId && thread.length > 0 && (
+            {chatId && thread.length > 0 && chatScenarioId === testScenario?.id && (
               <button type="button" onClick={() => { setCreatedNote(false); setMode('builder') }}
                 className="px-3 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3] shrink-0">
                 <i className="fas fa-comments mr-1.5 text-[10px]" />View chat
+              </button>
+            )}
+            {formScenario && formScenario.id === testScenario?.id && (
+              <button type="button" onClick={() => setMode('form')}
+                className="px-3 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3] shrink-0">
+                <i className="fas fa-sliders mr-1.5 text-[10px]" />Form
               </button>
             )}
             <button type="button" onClick={newTestChat}
@@ -1578,7 +1773,7 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
           <div className="px-5 py-2 text-xs bg-[rgba(214,59,31,0.07)] border-b border-[rgba(214,59,31,0.16)] text-[#D63B1F] shrink-0">{error}</div>
         )}
 
-        {mode === 'builder' ? builderView : testView}
+        {mode === 'builder' ? builderView : mode === 'form' ? formView : testView}
       </div>
     </div>
   )
