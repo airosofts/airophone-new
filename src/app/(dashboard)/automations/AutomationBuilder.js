@@ -20,11 +20,11 @@ const BLOCKS = [
   { type: NODE.SYNC, label: 'Sync back', hint: 'Two-way sync — optional', color: '#16A34A' },
 ]
 
-export default function AutomationBuilder({ phoneNumbers = [], automation = null, onSaved, onCancel }) {
+export default function AutomationBuilder({ phoneNumbers = [], automation = null, initialSource = 'monday', onSaved, onCancel }) {
   const isEdit = !!automation
   // The provider is fixed for the lifetime of the builder — GET tags every row
-  // with `source`, and new automations default to Monday.
-  const source = automation?.source || 'monday'
+  // with `source`; a NEW automation takes its source from the picker (initialSource).
+  const source = automation?.source || initialSource || 'monday'
   const isSheets = source === 'sheets'
 
   // ── Canvas state ──────────────────────────────────────────────────────────
@@ -33,7 +33,7 @@ export default function AutomationBuilder({ phoneNumbers = [], automation = null
   // from the flat columns for pre-graph automations).
   const initial = automation
     ? buildGraphFromAutomation(automation)
-    : { nodes: [{ id: 'trigger', type: NODE.TRIGGER, position: { x: 80, y: 80 }, data: { trigger_event: 'create_item' } }], edges: [] }
+    : { nodes: [{ id: 'trigger', type: NODE.TRIGGER, position: { x: 80, y: 80 }, data: isSheets ? {} : { trigger_event: 'create_item' } }], edges: [] }
   const [nodes, setNodes, onNodesChange] = useNodesState(initial.nodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges)
 
@@ -96,9 +96,11 @@ export default function AutomationBuilder({ phoneNumbers = [], automation = null
   // writeback state/setters — bundled under `data.ctx` (stripped before save).
   const ctx = {
     isEdit,
+    isSheets,
     onChange: updateNodeData,
     onDelete: deleteNode,
     boards, columns, loadingBoards, loadingColumns,
+    spreadsheets, tabs, sheetColumns, loadingSheets,
     phoneNumbers,
     placeholderCols: isSheets ? sheetColumns : columns,
     placeholderSeed: isSheets ? 'name' : 'item_name',

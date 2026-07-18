@@ -2,7 +2,10 @@
 'use client'
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import SearchableDropdown from '@/components/SearchableDropdown'
+import CampaignsWorkspace from '@/components/campaigns/CampaignsWorkspace'
+import VoicemailWorkspace from '@/components/campaigns/VoicemailWorkspace'
 import { getCurrentUser } from '@/lib/auth'
 import { apiGet, apiPost, apiPut, apiDelete, fetchWithWorkspace } from '@/lib/api-client'
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz'
@@ -166,6 +169,7 @@ export default function CampaignsPage() {
   const [campaigns, setCampaigns] = useState([])
   const [contactLists, setContactLists] = useState([])
   const [phoneNumbers, setPhoneNumbers] = useState([])
+  const router = useRouter()
   const [showCreateCampaign, setShowCreateCampaign] = useState(false)
   const [showViewCampaign, setShowViewCampaign] = useState(false)
   const [selectedCampaign, setSelectedCampaign] = useState(null)
@@ -247,6 +251,8 @@ export default function CampaignsPage() {
     const close = () => setShowCreateCampaign(false)
     window.addEventListener('tour:open-campaign-modal', open)
     window.addEventListener('tour:close-campaign-modal', close)
+    // Open the manual wizard when the AI builder's "Set up manually" sent us back.
+    try { if (localStorage.getItem('campaign.openManual') === '1') { localStorage.removeItem('campaign.openManual'); setShowCreateCampaign(true) } } catch {}
     return () => {
       window.removeEventListener('tour:open-campaign-modal', open)
       window.removeEventListener('tour:close-campaign-modal', close)
@@ -466,7 +472,7 @@ export default function CampaignsPage() {
 
   return (
     <div className="h-full bg-[#F7F6F3] overflow-auto">
-      <div className="p-6 space-y-4">
+      <div className={activeTab === 'sms' || activeTab === 'rvm' ? 'h-full' : 'p-6 space-y-4'}>
 
         {/* Trial Banner */}
         {subscription?.status === 'trialing' && (
@@ -489,8 +495,8 @@ export default function CampaignsPage() {
           </div>
         )}
 
-        {/* Campaign type tabs */}
-        <div className="flex items-center gap-2">
+        {/* Campaign type tabs — both SMS and RVM show them in the workspace header now */}
+        <div className="items-center gap-2 hidden">
           <button
             onClick={() => setActiveTab('sms')}
             className={`flex items-center gap-1.5 px-3 py-2 border rounded-lg transition-colors ${
@@ -518,6 +524,9 @@ export default function CampaignsPage() {
 
         {/* ── SMS Section ── */}
         {activeTab === 'sms' && (
+          <CampaignsWorkspace onManual={() => setShowCreateCampaign(true)} activeTab={activeTab} setActiveTab={setActiveTab} />
+        )}
+        {false && activeTab === 'sms' && (
           <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg overflow-hidden">
             <div data-tour="campaigns-header" className="px-4 py-3 border-b border-[#E3E1DB] space-y-2.5 md:space-y-0 md:flex md:items-center md:justify-between md:gap-4 md:px-5 md:py-3.5">
               <div className="flex items-center justify-between gap-3">
@@ -525,6 +534,14 @@ export default function CampaignsPage() {
                   <h3 className="text-sm font-semibold text-[#131210] whitespace-nowrap">SMS Campaigns</h3>
                   <span className="hidden sm:inline text-[10px] font-medium text-[#9B9890] bg-[#F7F6F3] border border-[#E3E1DB] px-1.5 py-0.5 rounded whitespace-nowrap">Bulk SMS to contact lists</span>
                 </div>
+                <button
+                  onClick={() => router.push('/campaigns/new')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-[#D63B1F] text-[#D63B1F] hover:bg-[#FBEAE7] text-sm font-medium rounded-md transition-colors whitespace-nowrap shrink-0"
+                >
+                  <i className="fas fa-wand-magic-sparkles text-xs"></i>
+                  <span className="hidden sm:inline">Build with AI</span>
+                  <span className="sm:hidden">AI</span>
+                </button>
                 <button
                   data-tour="new-campaign-btn"
                   onClick={() => setShowCreateCampaign(true)}
@@ -674,6 +691,14 @@ export default function CampaignsPage() {
 
         {/* ── RVM Section ── */}
         {activeTab === 'rvm' && (
+          <VoicemailWorkspace
+            onManual={() => setShowCreateRVM(true)}
+            onEdit={(c) => setEditRVMCampaign(c)}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+          />
+        )}
+        {false && activeTab === 'rvm' && (
           <div className="bg-[#FFFFFF] border border-[#E3E1DB] rounded-lg overflow-hidden">
             <div className="px-4 py-3 border-b border-[#E3E1DB] space-y-2.5 md:space-y-0 md:flex md:items-center md:justify-between md:gap-4 md:px-5 md:py-3.5">
               <div className="flex items-center justify-between gap-3">

@@ -81,6 +81,64 @@ function ConfirmDialog({ open, title, message, confirmLabel = 'Confirm', destruc
   )
 }
 
+// Source picker — the first step of "New Automation". Choose what triggers the
+// flow (Monday board or Google Sheet); the choice is passed to the builder,
+// which opens in that mode. A provider that isn't connected is shown disabled.
+function SourcePickerModal({ open, mondayConnected, sheetsConnected, onPick, onClose }) {
+  if (!open) return null
+  const Option = ({ source, accent, logo, title, desc, connected }) => (
+    <button
+      type="button"
+      onClick={() => connected && onPick(source)}
+      disabled={!connected}
+      className="group text-left rounded-xl border border-[#E3E1DB] bg-white p-4 transition-all enabled:hover:shadow-md enabled:hover:-translate-y-0.5 disabled:opacity-55 disabled:cursor-not-allowed"
+      style={{ outline: 'none' }}
+      onMouseEnter={e => { if (connected) e.currentTarget.style.borderColor = accent }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = '#E3E1DB' }}
+    >
+      <div className="flex items-center gap-2.5 mb-2">
+        <span className="w-9 h-9 rounded-lg flex items-center justify-center bg-[#F7F6F3] border border-[#EFEDE8]">{logo}</span>
+        <span className="text-sm font-semibold text-[#131210]">{title}</span>
+      </div>
+      <p className="text-xs text-[#9B9890] leading-relaxed">{desc}</p>
+      {connected ? (
+        <span className="mt-3 inline-flex items-center gap-1 text-[11px] font-medium" style={{ color: accent }}>
+          Choose <span className="transition-transform group-hover:translate-x-0.5">→</span>
+        </span>
+      ) : (
+        <span className="mt-3 inline-flex text-[11px] font-medium text-[#B5B2AA]">Not connected · Settings → Integrations</span>
+      )}
+    </button>
+  )
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#E3E1DB]">
+          <div>
+            <h3 className="text-base font-semibold text-[#131210]">New automation</h3>
+            <p className="text-xs text-[#9B9890] mt-0.5">What should trigger it?</p>
+          </div>
+          <button onClick={onClose} className="text-[#9B9890] hover:text-[#5C5A55] p-1">
+            <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
+          </button>
+        </div>
+        <div className="px-6 py-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Option
+            source="monday" accent="#6161FF" logo={<MondayLogo size={20} />}
+            title="Monday board" connected={!!mondayConnected}
+            desc="Text a lead the moment a board item is created or a column changes."
+          />
+          <Option
+            source="sheets" accent="#0F9D58" logo={<SheetsLogo size={18} />}
+            title="Google Sheet" connected={!!sheetsConnected}
+            desc="Text a lead when a new row lands in a spreadsheet tab."
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function AutomationsPage() {
   const router = useRouter()
   const [automations, setAutomations] = useState([])
@@ -89,6 +147,7 @@ export default function AutomationsPage() {
   const [sheetsConnected, setSheetsConnected] = useState(null)
   const [phoneNumbers, setPhoneNumbers] = useState([])
   const [showCreate, setShowCreate] = useState(false)
+  const [showPicker, setShowPicker] = useState(false)
   const [busyId, setBusyId] = useState(null)
   // Deletion confirmation — holds the automation pending delete, null otherwise.
   const [pendingDelete, setPendingDelete] = useState(null)
@@ -156,7 +215,7 @@ export default function AutomationsPage() {
         <div className="flex items-center justify-between gap-4 mb-1">
           <h1 className="text-xl font-semibold text-[#131210]">Automations</h1>
           <button
-            onClick={() => router.push('/automations/new')}
+            onClick={() => setShowPicker(true)}
             disabled={!mondayConnected && !sheetsConnected}
             title={(mondayConnected || sheetsConnected) ? '' : 'Connect Monday.com or Google Sheets first'}
             className="px-4 py-2 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -258,6 +317,14 @@ export default function AutomationsPage() {
         busy={pendingDelete && busyId === pendingDelete.id}
         onCancel={() => setPendingDelete(null)}
         onConfirm={confirmDelete}
+      />
+
+      <SourcePickerModal
+        open={showPicker}
+        mondayConnected={mondayConnected}
+        sheetsConnected={sheetsConnected}
+        onClose={() => setShowPicker(false)}
+        onPick={(src) => router.push(`/automations/new?source=${src}`)}
       />
     </div>
   )

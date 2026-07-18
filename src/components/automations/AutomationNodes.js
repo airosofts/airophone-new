@@ -37,6 +37,16 @@ function MondayLogo({ size = 16 }) {
   )
 }
 
+function SheetsLogo({ size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
+      <path d="M8 2h12l6 6v20a2 2 0 01-2 2H8a2 2 0 01-2-2V4a2 2 0 012-2z" fill="#0F9D58" />
+      <path d="M20 2l6 6h-6V2z" fill="#87CEAC" />
+      <path d="M11 14h10v9H11v-9zm2 2v1.5h2.5V16H13zm4.5 0v1.5H20V16h-2.5zM13 19.5V21h2.5v-1.5H13zm4.5 0V21H20v-1.5h-2.5z" fill="#FFFFFF" />
+    </svg>
+  )
+}
+
 // ── Node shell ──────────────────────────────────────────────────────────────
 // Header is the drag handle; the body is `nodrag` so every form control inside
 // works without the canvas hijacking the pointer. Handles are the manual
@@ -139,7 +149,84 @@ function SheetEventEditor({ title, hint, columns, col, setCol, value, setValue }
 // ── 1. Trigger — Monday board (source of the flow) ──────────────────────────
 export function TriggerNode({ id, data }) {
   const ctx = data.ctx || {}
-  const { isEdit, boards = [], columns = [], loadingBoards, loadingColumns, onChange } = ctx
+  const {
+    isEdit, isSheets, onChange,
+    boards = [], columns = [], loadingBoards, loadingColumns,
+    spreadsheets = [], tabs = [], sheetColumns = [], loadingSheets = {},
+  } = ctx
+
+  // ── Google Sheets trigger — new row in a tab ──────────────────────────────
+  if (isSheets) {
+    const phoneColLabel = sheetColumns.find(c => c.id === data.phone_column)?.title
+    return (
+      <NodeShell accent={ACCENT.sync} badgeBg="#FFFFFF" badge={<SheetsLogo size={16} />}
+        title="When this happens" subtitle="Trigger — new row in a Google Sheet" width={340} source>
+        <div>
+          <label className={labelCls}>Spreadsheet *</label>
+          {isEdit ? (
+            <div className={roCls}>{data.spreadsheet_name || data.spreadsheet_id}</div>
+          ) : (
+            <SearchableDropdown
+              value={data.spreadsheet_id || ''}
+              onChange={(v) => { const s = spreadsheets.find(x => String(x.id) === String(v)); onChange(id, { spreadsheet_id: v, spreadsheet_name: s?.name || '', sheet_id: null, sheet_name: '', phone_column: '' }) }}
+              options={spreadsheets.map(s => ({ value: String(s.id), label: s.name, searchText: s.name }))}
+              placeholder={loadingSheets.spreadsheets ? 'Loading spreadsheets…' : 'Select a spreadsheet'}
+              loading={loadingSheets.spreadsheets}
+              renderSelected={(o) => o.label}
+              renderOption={(o) => <p className="text-sm text-[#131210]">{o.label}</p>}
+            />
+          )}
+        </div>
+        <div>
+          <label className={labelCls}>Sheet tab *</label>
+          {isEdit ? (
+            <div className={roCls}>{data.sheet_name || '—'}</div>
+          ) : data.spreadsheet_id ? (
+            <SearchableDropdown
+              value={data.sheet_name || ''}
+              onChange={(v) => { const t = tabs.find(x => x.title === v); onChange(id, { sheet_name: v, sheet_id: t?.id ?? null, phone_column: '' }) }}
+              options={tabs.map(t => ({ value: t.title, label: t.title, searchText: t.title }))}
+              placeholder={loadingSheets.tabs ? 'Loading tabs…' : 'Select a tab'}
+              loading={loadingSheets.tabs}
+              renderSelected={(o) => o.label}
+              renderOption={(o) => <p className="text-sm text-[#131210]">{o.label}</p>}
+            />
+          ) : (
+            <div className="px-3 py-2.5 border border-dashed border-[#D4D1C9] rounded-lg text-sm bg-[#F7F6F3] text-[#9B9890]">Pick a spreadsheet first</div>
+          )}
+        </div>
+        <p className="text-[11px] text-[#9B9890]">Fires when a <b>new row</b> (a new phone number) is added to this tab. Rows already there when you save are ignored.</p>
+        <div>
+          <label className={labelCls}>Phone number column *</label>
+          {isEdit ? (
+            <div className={roCls}>{phoneColLabel || data.phone_column || '—'}</div>
+          ) : data.sheet_name ? (
+            <SearchableDropdown
+              value={data.phone_column || ''}
+              onChange={(v) => onChange(id, { phone_column: v })}
+              options={sheetColumns.map(c => ({ value: c.id, label: c.title || `Column ${c.id}`, type: `Column ${c.id}`, searchText: `${c.title} ${c.id}` }))}
+              placeholder={loadingSheets.columns ? 'Loading columns…' : 'Select the phone column'}
+              loading={loadingSheets.columns}
+              renderSelected={(o) => o.label}
+              renderOption={(o) => (
+                <div>
+                  <p className="text-sm text-[#131210]">{o.label}</p>
+                  <p className="text-xs text-[#9B9890] font-mono mt-0.5">{o.type}</p>
+                </div>
+              )}
+            />
+          ) : (
+            <div className="px-3 py-2.5 border border-dashed border-[#D4D1C9] rounded-lg text-sm bg-[#F7F6F3] text-[#9B9890]">Pick a tab first</div>
+          )}
+        </div>
+        {isEdit && (
+          <p className="text-[11px] text-[#9B9890]">Spreadsheet and tab are locked after creation — the baseline of existing rows is bound to them. To change either, create a new automation.</p>
+        )}
+      </NodeShell>
+    )
+  }
+
+  // ── Monday trigger — board event ──────────────────────────────────────────
   return (
     <NodeShell accent={ACCENT.trigger} badgeBg="#FFFFFF" badge={<MondayLogo size={16} />}
       title="When this happens" subtitle="Trigger — Monday board" width={340} source>
