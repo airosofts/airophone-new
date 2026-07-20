@@ -114,10 +114,16 @@ export async function POST(request) {
     return NextResponse.json({ challenge: body.challenge })
   }
 
-  // 2) Verify authenticity. If this fails, Monday auto-disables the webhook.
+  // 2) Signature check is ADVISORY, never fatal. Monday permanently disables
+  // an automation after repeated 401s ("webhook endpoint requires
+  // authentication"), and webhooks created via Monday's NATIVE "send a
+  // webhook" recipe are signed by a different app identity than ours —
+  // rejecting those killed live integrations. Processing is safe regardless:
+  // events only act when the board matches a registered automation, item data
+  // is fetched from Monday with the workspace's own token, and sends are
+  // dedup-guarded per item.
   if (!(await verifySignature(request))) {
-    console.warn('[monday-webhook] 401 — signature verify failed. Most likely cause: MONDAY_SIGNING_SECRET env var does not match the current Monday app\'s signing secret.')
-    return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+    console.warn('[monday-webhook] signature verify failed — accepting anyway. If this webhook came from OUR app, MONDAY_SIGNING_SECRET may not match the Monday app\'s signing secret.')
   }
 
   const event = body?.event

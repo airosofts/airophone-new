@@ -15,7 +15,10 @@ const DEFAULT = {
   ai_reply_mode: 'anytime', books_appointments: true, ai_model: '',
 }
 
-export default function ScenarioForm({ mode, scenarioId }) {
+// `embedded` — rendered inside the Scenario Studio, which provides its own
+// header (back/Test/status live there): hide the internal back chevron and
+// "Test your AI" button; keep Cancel + Save.
+export default function ScenarioForm({ mode, scenarioId, embedded = false }) {
   const router = useRouter()
   const isEdit = mode === 'edit'
 
@@ -100,14 +103,16 @@ export default function ScenarioForm({ mode, scenarioId }) {
     <div className="h-full flex flex-col bg-[#F7F6F3]">
       {/* Top bar */}
       <div className="flex items-center gap-3 px-5 py-3 border-b border-[#E3E1DB] bg-white shrink-0">
-        <button onClick={() => router.push('/scenarios')} title="Back" className="p-2 -ml-1 rounded-lg text-[#5C5A55] hover:bg-[#F7F6F3]">
-          <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
-        </button>
+        {!embedded && (
+          <button onClick={() => router.push('/scenarios')} title="Back" className="p-2 -ml-1 rounded-lg text-[#5C5A55] hover:bg-[#F7F6F3]">
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+          </button>
+        )}
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <span className="w-7 h-7 rounded-lg bg-[#D63B1F] flex items-center justify-center shrink-0"><i className="fas fa-robot text-white text-xs" /></span>
           <p className="text-base font-semibold text-[#131210] truncate">{isEdit ? 'Edit scenario' : 'New scenario'}</p>
         </div>
-        {isEdit && (
+        {isEdit && !embedded && (
           <button onClick={() => router.push(`/scenarios/new?test=${scenarioId}`)}
             title="Practice chat — see how the AI replies, without texting anyone"
             className="px-4 py-2 text-sm font-medium text-[#D63B1F] border border-[#D63B1F]/40 rounded-lg hover:bg-[rgba(214,59,31,0.06)]">
