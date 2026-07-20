@@ -154,6 +154,7 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
   const [creatingScenario, setCreatingScenario] = useState(false)
   const [createFailed, setCreateFailed] = useState(false)
   const [updatedNote, setUpdatedNote] = useState(false)
+  const [showPromptPeek, setShowPromptPeek] = useState(false)   // inline view of the current prompt
 
   const premappedRef = useRef(new Set())
   const builderInflightRef = useRef(false)   // hard double-send guards
@@ -396,6 +397,7 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
     setConfirmDelete(null)
     setMenuOpenId(null)
     setFormScenario(null)
+    setShowPromptPeek(false)
   }
 
   // First user send in a new chat → create the server-side chat record.
@@ -427,17 +429,20 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
 
   // ----- scenario row actions (replaces the old management page) -----
 
-  const toggleActive = async s => {
+  // Optimistic pause/resume (used by the header status chip and row menu).
+  const toggleActiveById = async (id, currentActive) => {
     setMenuOpenId(null)
+    setScenarios(p => (p ? p.map(s => (s.id === id ? { ...s, is_active: !currentActive } : s)) : p))
     try {
-      const res = await fetchWithWorkspace(`/api/scenarios/${s.id}`, {
+      const res = await fetchWithWorkspace(`/api/scenarios/${id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ is_active: !s.is_active }),
+        body: JSON.stringify({ is_active: !currentActive }),
       })
       const d = await res.json().catch(() => ({}))
       if (!res.ok || d.success === false) throw new Error(d.error || 'Failed to update scenario')
       loadScenarios()
     } catch (e) {
+      setScenarios(p => (p ? p.map(s => (s.id === id ? { ...s, is_active: currentActive } : s)) : p))
       setError(e.message || 'Failed to update scenario')
     }
   }
@@ -1190,12 +1195,24 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
   const renderPrompt = item => {
     if (item.status !== 'open') {
       return (
-        <div key={item.id} className="flex justify-start">
-          <div className="inline-flex items-center gap-2 max-w-full text-xs text-[#5C5A55] bg-white border border-[#E3E1DB] rounded-full px-3 py-1.5">
-            <i className="fas fa-check text-[#1F8C4A] text-[10px] shrink-0" />
-            <span className="truncate"><span className="font-medium text-[#131210]">AI prompt:</span> {name || 'Drafted'}</span>
-            <button type="button" onClick={openPromptCard} className="text-[#D63B1F] font-medium hover:underline shrink-0">Edit</button>
+        <div key={item.id}>
+          <div className="flex justify-start">
+            <div className="inline-flex items-center gap-2 max-w-full text-xs text-[#5C5A55] bg-white border border-[#E3E1DB] rounded-full px-3 py-1.5">
+              <i className="fas fa-check text-[#1F8C4A] text-[10px] shrink-0" />
+              <span className="truncate"><span className="font-medium text-[#131210]">AI prompt:</span> {name || 'Drafted'}</span>
+              <button type="button" onClick={() => setShowPromptPeek(v => !v)}
+                className="text-[#D63B1F] font-medium hover:underline shrink-0">
+                {showPromptPeek ? 'Hide' : 'View'}
+              </button>
+              <button type="button" onClick={openPromptCard} className="text-[#D63B1F] font-medium hover:underline shrink-0">Edit</button>
+            </div>
           </div>
+          {showPromptPeek && (
+            <div className="mt-2 max-w-[85%]">
+              {/* Live state — always the latest refined prompt */}
+              <pre className="text-[11px] font-mono whitespace-pre-wrap leading-relaxed text-[#131210] bg-white border border-[#E3E1DB] rounded-lg p-2.5 max-h-64 overflow-y-auto">{instructions || '—'}</pre>
+            </div>
+          )}
         </div>
       )
     }
@@ -1532,34 +1549,63 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
     </div>
   )
 
-  // ----- form view (embedded editable ScenarioForm + Form/Chat toggle) -----
+  // ----- form view (embedded editable ScenarioForm; the unified studio
+  // header above carries the Form/Chat toggle, status chip and Test) -----
 
   const formView = formScenario ? (
-    <div className="flex-1 flex flex-col min-h-0">
-      {/* Slim studio strip: segmented [ Form | Chat ] toggle */}
-      <div className="flex items-center gap-3 px-5 py-2 border-b border-[#E3E1DB] bg-white shrink-0">
-        <div className="inline-flex rounded-lg border border-[#E3E1DB] bg-[#F7F6F3] p-0.5">
+    <div className="flex-1 min-h-0">
+      <ScenarioForm key={formScenario.id} mode="edit" scenarioId={formScenario.id} embedded />
+    </div>
+  ) : null
+
+  // ----- unified scenario header (identical for form view and chat view) -----
+
+  const scenarioHeader = ({ id, displayName, linkedChatId, view }) => {
+    const s = scenarios?.find(x => x.id === id)
+    const active = s ? !!s.is_active : true
+    return (
+      <div className="flex items-center gap-3 px-5 py-2.5 border-b border-[#E3E1DB] bg-white shrink-0">
+        {/* Segmented [ Form | Chat ] toggle — THE switcher, same in both views */}
+        <div className="inline-flex rounded-lg border border-[#E3E1DB] bg-[#F7F6F3] p-0.5 shrink-0">
           <button type="button"
-            className="px-3 py-1 text-xs font-medium rounded-md bg-white text-[#131210] shadow-sm">
+            onClick={() => view !== 'form' && openForm(id, displayName || '', linkedChatId)}
+            className={`px-3 py-1 text-xs font-medium rounded-md ${
+              view === 'form' ? 'bg-white text-[#131210] shadow-sm' : 'text-[#5C5A55] hover:text-[#131210]'
+            }`}>
             Form
           </button>
-          <button type="button" disabled={!formScenario.chatId}
-            onClick={() => formScenario.chatId && openChat(formScenario.chatId)}
-            title={formScenario.chatId ? 'Continue editing conversationally' : 'No builder chat for this scenario'}
+          <button type="button" disabled={!linkedChatId}
+            onClick={() => view !== 'chat' && linkedChatId && openChat(linkedChatId)}
+            title={linkedChatId ? 'Continue editing conversationally' : 'No builder chat for this scenario'}
             className={`px-3 py-1 text-xs font-medium rounded-md ${
-              formScenario.chatId ? 'text-[#5C5A55] hover:text-[#131210]' : 'text-[#C9C6BE] cursor-not-allowed'
+              view === 'chat' ? 'bg-white text-[#131210] shadow-sm'
+                : linkedChatId ? 'text-[#5C5A55] hover:text-[#131210]' : 'text-[#C9C6BE] cursor-not-allowed'
             }`}>
             Chat
           </button>
         </div>
-        <p className="text-xs text-[#9B9890] truncate flex-1 min-w-0">{formScenario.name}</p>
+        <span className="w-7 h-7 rounded-lg bg-[#D63B1F] flex items-center justify-center shrink-0">
+          <i className="fas fa-robot text-white text-xs" />
+        </span>
+        <p className="text-base font-semibold text-[#131210] truncate flex-1 min-w-0">{displayName || 'Scenario'}</p>
+        {/* Active status chip — click to pause/resume */}
+        <button type="button" onClick={() => toggleActiveById(id, active)} title="Click to pause/resume"
+          className={`inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full border shrink-0 ${
+            active
+              ? 'bg-[rgba(31,140,74,0.08)] text-[#1F8C4A] border-[rgba(31,140,74,0.18)]'
+              : 'bg-[#F7F6F3] text-[#5C5A55] border-[#E3E1DB]'
+          }`}>
+          <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-[#1F8C4A]' : 'bg-[#C9C6BE]'}`} />
+          {active ? 'Active' : 'Paused'}
+        </button>
+        <button type="button"
+          onClick={() => testScenario?.id === id ? setMode('test') : openTest(id, displayName || '')}
+          className="px-3 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3] shrink-0">
+          <i className="fas fa-vial mr-1.5 text-[10px]" />Test
+        </button>
       </div>
-      {/* Embedded edit form (its own top bar handles Save/Test/Cancel) */}
-      <div className="flex-1 min-h-0">
-        <ScenarioForm key={formScenario.id} mode="edit" scenarioId={formScenario.id} />
-      </div>
-    </div>
-  ) : null
+    )
+  }
 
   // ----- render -----
 
@@ -1677,7 +1723,7 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
                             onClick={e => e.stopPropagation()}>
                             {!isDraft && (
                               <>
-                                <button type="button" onClick={() => toggleActive(row.scenario)}
+                                <button type="button" onClick={() => toggleActiveById(row.scenario.id, row.scenario.is_active)}
                                   className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-[#5C5A55] hover:bg-[#F7F6F3]">
                                   <i className={`fas ${row.scenario.is_active ? 'fa-pause' : 'fa-play'} w-4 text-center text-xs`} />
                                   {row.scenario.is_active ? 'Pause' : 'Resume'}
@@ -1715,35 +1761,23 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
 
       {/* MAIN */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Header */}
-        {mode === 'builder' ? (
+        {/* Header — unified when a scenario is open (form OR chat view) */}
+        {mode === 'form' && formScenario ? (
+          scenarioHeader({ id: formScenario.id, displayName: formScenario.name, linkedChatId: formScenario.chatId, view: 'form' })
+        ) : mode === 'builder' && chatScenarioId ? (
+          scenarioHeader({ id: chatScenarioId, displayName: name, linkedChatId: chatId, view: 'chat' })
+        ) : mode === 'builder' ? (
           <div className="flex items-center gap-3 px-5 py-3 border-b border-[#E3E1DB] bg-white shrink-0">
             <span className="w-7 h-7 rounded-lg bg-[#D63B1F] flex items-center justify-center shrink-0">
               <i className="fas fa-wand-magic-sparkles text-white text-xs" />
             </span>
-            <p className="text-base font-semibold text-[#131210] truncate flex-1 min-w-0">
-              {chatScenarioId ? (name || 'Scenario') : 'New scenario'}
-            </p>
-            {chatScenarioId && (
-              <>
-                <button type="button"
-                  onClick={() => openForm(chatScenarioId, name || '', chatId)}
-                  className="px-3 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3] shrink-0">
-                  <i className="fas fa-sliders mr-1.5 text-[10px]" />Form
-                </button>
-                <button type="button"
-                  onClick={() => testScenario?.id === chatScenarioId ? setMode('test') : openTest(chatScenarioId, name || '')}
-                  className="px-3 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3] shrink-0">
-                  <i className="fas fa-vial mr-1.5 text-[10px]" />Test
-                </button>
-              </>
-            )}
+            <p className="text-base font-semibold text-[#131210] truncate flex-1 min-w-0">New scenario</p>
             <button onClick={onSwitchToManual}
               className="px-4 py-2 text-sm text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3]">
               <i className="fas fa-sliders mr-1.5 text-xs" />Set up manually
             </button>
           </div>
-        ) : mode === 'form' ? null : (
+        ) : (
           <div className="flex items-center gap-2.5 px-5 py-3 border-b border-[#E3E1DB] bg-white shrink-0">
             <p className="text-base font-semibold text-[#D63B1F] shrink-0">Test</p>
             <p className="text-sm text-[#5C5A55] truncate flex-1 min-w-0">{testScenario?.name || '…'}</p>
