@@ -1565,7 +1565,27 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
     const active = s ? !!s.is_active : true
     return (
       <div className="flex items-center gap-3 px-5 py-2.5 border-b border-[#E3E1DB] bg-white shrink-0">
-        {/* Segmented [ Form | Chat ] toggle — THE switcher, same in both views */}
+        {/* LEFT — status chip (click to pause/resume) + Test */}
+        <button type="button" onClick={() => toggleActiveById(id, active)} title="Click to pause/resume"
+          className={`inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full border shrink-0 ${
+            active
+              ? 'bg-[rgba(31,140,74,0.08)] text-[#1F8C4A] border-[rgba(31,140,74,0.18)]'
+              : 'bg-[#F7F6F3] text-[#5C5A55] border-[#E3E1DB]'
+          }`}>
+          <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-[#1F8C4A]' : 'bg-[#C9C6BE]'}`} />
+          {active ? 'Active' : 'Paused'}
+        </button>
+        <button type="button"
+          onClick={() => testScenario?.id === id ? setMode('test') : openTest(id, displayName || '')}
+          className="px-3 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3] shrink-0">
+          <i className="fas fa-vial mr-1.5 text-[10px]" />Test
+        </button>
+        {/* CENTER — icon + name */}
+        <span className="w-7 h-7 rounded-lg bg-[#D63B1F] flex items-center justify-center shrink-0">
+          <i className="fas fa-robot text-white text-xs" />
+        </span>
+        <p className="text-base font-semibold text-[#131210] truncate flex-1 min-w-0">{displayName || 'Scenario'}</p>
+        {/* RIGHT — segmented [ Form | Chat ] toggle, sits above the form's Save changes */}
         <div className="inline-flex rounded-lg border border-[#E3E1DB] bg-[#F7F6F3] p-0.5 shrink-0">
           <button type="button"
             onClick={() => view !== 'form' && openForm(id, displayName || '', linkedChatId)}
@@ -1584,25 +1604,6 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
             Chat
           </button>
         </div>
-        <span className="w-7 h-7 rounded-lg bg-[#D63B1F] flex items-center justify-center shrink-0">
-          <i className="fas fa-robot text-white text-xs" />
-        </span>
-        <p className="text-base font-semibold text-[#131210] truncate flex-1 min-w-0">{displayName || 'Scenario'}</p>
-        {/* Active status chip — click to pause/resume */}
-        <button type="button" onClick={() => toggleActiveById(id, active)} title="Click to pause/resume"
-          className={`inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full border shrink-0 ${
-            active
-              ? 'bg-[rgba(31,140,74,0.08)] text-[#1F8C4A] border-[rgba(31,140,74,0.18)]'
-              : 'bg-[#F7F6F3] text-[#5C5A55] border-[#E3E1DB]'
-          }`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-[#1F8C4A]' : 'bg-[#C9C6BE]'}`} />
-          {active ? 'Active' : 'Paused'}
-        </button>
-        <button type="button"
-          onClick={() => testScenario?.id === id ? setMode('test') : openTest(id, displayName || '')}
-          className="px-3 py-1.5 text-xs text-[#5C5A55] border border-[#E3E1DB] rounded-lg hover:bg-[#F7F6F3] shrink-0">
-          <i className="fas fa-vial mr-1.5 text-[10px]" />Test
-        </button>
       </div>
     )
   }

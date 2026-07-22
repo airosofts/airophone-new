@@ -164,8 +164,12 @@ export default function InboxPage() {
     try {
       const ctx = window.__airoCtx
       const buffer = window.__airoMsgBuffer
-      if (ctx && buffer) {
-        if (ctx.state === 'suspended') ctx.resume().catch(() => {})
+      // Only use Web Audio when the context is RUNNING. A BufferSource
+      // started on a suspended context doesn't play now — it queues, and
+      // every queued tone fires at once the moment a click resumes the
+      // context (the "phantom ding when I switch back to the tab" bug).
+      // A notification sound is now-or-never.
+      if (ctx && buffer && ctx.state === 'running') {
         const src = ctx.createBufferSource()
         const gain = ctx.createGain()
         gain.gain.value = 0.35
@@ -175,10 +179,12 @@ export default function InboxPage() {
         src.start(0)
         return
       }
+      // Suspended: nudge a resume so FUTURE tones can play, but don't queue this one.
+      if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {})
     } catch (e) {
       console.warn('[msg-tone] buffer play failed, falling back:', e.message)
     }
-    // Fallback: HTMLAudio element
+    // Fallback: HTMLAudio — plays immediately or rejects; it never queues.
     if (audioRef.current) {
       audioRef.current.volume = 0.35
       audioRef.current.currentTime = 0
@@ -280,7 +286,7 @@ export default function InboxPage() {
     setMobileView('list')
   }, [selectedPhoneNumber?.phoneNumber])
 
-  const { conversations, loading: conversationsLoading, refetch, setActiveConversation, deleteConversation, updateConversationOptimistic } = useRealtimeConversations(selectedPhoneNumber?.phoneNumber)
+  const { conversations, loading: conversationsLoading, freshLoaded: conversationsFresh, refetch, setActiveConversation, deleteConversation, updateConversationOptimistic } = useRealtimeConversations(selectedPhoneNumber?.phoneNumber)
   const { messages: allMessages, loading: messagesLoading, addOptimisticMessage, replaceOptimisticMessage, removeOptimisticMessage } = useRealtimeMessages(selectedConversation?.id)
 
   // Only show messages that belong to the currently selected phone line
@@ -457,6 +463,12 @@ export default function InboxPage() {
       lastConvTimestampRef.current = null   // re-baseline for the new line; don't play
     }
     if (!conversations.length) return
+    // Never baseline off the IndexedDB cache hydration (stale-while-revalidate).
+    // The cached list is a snapshot from the LAST visit; if we record its
+    // newest-inbound as the baseline, the fresh fetch a second later brings
+    // any message that arrived while the app was closed and rings for it —
+    // the "bell rings when I open the site" bug. Wait for real network data.
+    if (!conversationsFresh) return
     // Guard against the number-switch race: useRealtimeConversations keeps the
     // PREVIOUS line's conversations in state until its async refetch resolves,
     // but `line` above already points at the new number. If we baseline/compare
@@ -487,7 +499,7 @@ export default function InboxPage() {
       lastConvTimestampRef.current = newestInbound
       playMessageTone()
     }
-  }, [conversations, selectedPhoneNumber?.phoneNumber])
+  }, [conversations, conversationsFresh, selectedPhoneNumber?.phoneNumber])
 
   const handleConversationSelect = (conversation) => {
     setActiveConversation(conversation.id)
