@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { apiGet } from '@/lib/api-client'
 import { cacheGet, cacheSet } from '@/lib/client-cache'
+import { getCurrentUser } from '@/lib/auth'
 
 // Persist a bounded copy of a chat's messages for instant reload hydration.
 const MAX_CACHED_MESSAGES = 200
@@ -598,6 +599,8 @@ export function useRealtimeConversations(fromNumber) {
     if (!fromNumber) return () => { cancelled = true }
 
     const normalizedFromNumber = normalizePhoneNumber(fromNumber)
+    const wsId = getCurrentUser()?.workspaceId
+    const wsFilter = wsId ? { filter: `workspace_id=eq.${wsId}` } : {}
 
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current)
@@ -610,7 +613,8 @@ export function useRealtimeConversations(fromNumber) {
         {
           event: 'INSERT',
           schema: 'public',
-          table: 'messages'
+          table: 'messages',
+          ...wsFilter
         },
         (payload) => {
           const messageFromNumber = normalizePhoneNumber(payload.new.from_number || '')
@@ -663,7 +667,8 @@ export function useRealtimeConversations(fromNumber) {
         {
           event: 'UPDATE',
           schema: 'public',
-          table: 'messages'
+          table: 'messages',
+          ...wsFilter
         },
         (payload) => {
           if (payload.new.read_at && !payload.old.read_at && payload.new.direction === 'inbound') {
@@ -685,7 +690,8 @@ export function useRealtimeConversations(fromNumber) {
         {
           event: 'UPDATE',
           schema: 'public',
-          table: 'conversations'
+          table: 'conversations',
+          ...wsFilter
         },
         (payload) => {
           setConversations(current => current.map(conv => {
