@@ -170,6 +170,25 @@ function Pills({ options, value, onPick }) {
 }
 
 // ChatGPT-style model dropdown inside the composer.
+// Provider logos (square-cropped 128px versions from /public) — same set the
+// scenarios AI assistant uses, so the model dropdown matches across the app.
+const VENDOR_LOGOS = {
+  ChatGPT: { src: '/chatgpt-logo-sq.png', round: true },
+  Claude: { src: '/claude-128.jpeg', round: true },
+  Gemini: { src: '/gemini-128.png', round: false },
+}
+
+function VendorLogo({ vendor, size = 20 }) {
+  const logo = VENDOR_LOGOS[vendor] || VENDOR_LOGOS.ChatGPT
+  return (
+    <img src={logo.src} alt={vendor} width={size} height={size}
+      className={`shrink-0 object-cover ${logo.round ? 'rounded-full ring-1 ring-[#E3E1DB]' : ''}`}
+      style={{ width: size, height: size }} />
+  )
+}
+
+// Composer model dropdown — matches the scenarios AI assistant (vendor logos,
+// wide card, Default / Needs-API-key pills). `locked` freezes it once a chat starts.
 function ModelPicker({ models, value, onChange, locked }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
@@ -178,29 +197,43 @@ function ModelPicker({ models, value, onChange, locked }) {
     document.addEventListener('pointerdown', h)
     return () => document.removeEventListener('pointerdown', h)
   }, [])
-  const cur = models.find(m => m.id === value)
+  // Show the default model's logo/label when no explicit choice (value === '').
+  const cur = models.find(m => m.id === value) || models.find(m => m.isDefault)
   return (
     <div ref={ref} className="relative">
       <button type="button" onClick={() => !locked && setOpen(o => !o)} disabled={locked}
-        title={locked ? 'The model is locked once the chat starts' : undefined}
-        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#5C5A55] enabled:hover:bg-[#F7F6F3] border border-transparent enabled:hover:border-[#E3E1DB] transition-colors disabled:cursor-default">
+        title={locked ? 'The model is locked once the chat starts' : 'Which AI writes the messages'}
+        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-[#5C5A55] border border-transparent enabled:hover:border-[#E3E1DB] enabled:hover:bg-[#F7F6F3] transition-colors disabled:cursor-default">
         {models.length === 0
-          ? <i className="fas fa-spinner fa-spin text-[10px] text-[#9B9890]" />
-          : <i className="fas fa-microchip text-[10px] text-[#9B9890]" />}
-        <span className="max-w-[120px] truncate">{models.length === 0 ? 'Loading…' : (cur ? `${cur.vendor} ${cur.label}` : 'Model')}</span>
-        <i className={`fas ${locked ? 'fa-lock' : 'fa-chevron-down'} text-[9px] text-[#9B9890]`} />
+          ? <i className="fas fa-spinner fa-spin text-[11px] text-[#9B9890]" />
+          : cur
+            ? <VendorLogo vendor={cur.vendor} size={16} />
+            : <i className="fas fa-microchip text-[11px] text-[#9B9890]" />}
+        <span className="max-w-[140px] truncate">{models.length === 0 ? 'Loading…' : (cur ? cur.label : 'AI model')}</span>
+        <i className={`fas ${locked ? 'fa-lock' : `fa-chevron-${open ? 'up' : 'down'}`} text-[9px] text-[#9B9890]`} />
       </button>
       {open && !locked && (
-        <div className="absolute top-full right-0 mt-1.5 w-60 bg-white border border-[#E3E1DB] rounded-xl shadow-lg py-1 z-30">
-          <p className="px-3 py-1.5 text-[10px] font-semibold text-[#9B9890] uppercase tracking-wide">Model</p>
-          {models.length === 0 && (
-            <p className="flex items-center gap-2 px-3 py-2 text-xs text-[#9B9890]"><i className="fas fa-spinner fa-spin text-[10px]" /> Loading models…</p>
-          )}
+        <div className="absolute right-0 top-full mt-2 z-30 w-80 bg-white border border-[#E3E1DB] rounded-2xl shadow-xl p-2">
+          {models.length === 0 && <p className="px-3 py-2.5 text-sm text-[#9B9890]">Loading models…</p>}
           {models.map(m => (
-            <button key={m.id} disabled={!m.available} onClick={() => { onChange(m.id); setOpen(false) }}
-              className="w-full flex items-center justify-between px-3 py-2 text-left text-xs hover:bg-[#F7F6F3] disabled:opacity-40 disabled:cursor-not-allowed">
-              <span className="text-[#131210]">{m.vendor} · {m.label}{m.isDefault ? '  · Default' : ''}</span>
-              {value === m.id ? <i className="fas fa-check text-[#D63B1F] text-[10px]" /> : (!m.available && <span className="text-[9px] text-[#9B9890]">key needed</span>)}
+            <button key={m.id} type="button" disabled={!m.available}
+              onClick={() => { onChange(m.id); setOpen(false) }}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 text-left rounded-xl ${
+                m.available
+                  ? (cur?.id === m.id ? 'bg-[#F7F6F3]' : 'hover:bg-[#F7F6F3]')
+                  : 'cursor-not-allowed'
+              }`}>
+              <VendorLogo vendor={m.vendor} size={22} />
+              <span className={`flex-1 min-w-0 truncate text-[14px] ${m.available ? 'text-[#131210]' : 'text-[#B5B2AA]'}`}>
+                {m.vendor === 'ChatGPT' ? m.label : `${m.vendor} ${m.label.replace(new RegExp(`^${m.vendor}\\s*`), '')}`}
+              </span>
+              {m.isDefault && m.available && (
+                <span className="shrink-0 text-[10px] px-2 py-0.5 rounded-full bg-[#EFEDE8] text-[#5C5A55]">Default</span>
+              )}
+              {!m.available && (
+                <span className="shrink-0 text-[10px] px-2 py-0.5 rounded-full bg-[#EFEDE8] text-[#9B9890]">Needs API key</span>
+              )}
+              {cur?.id === m.id && <i className="fas fa-check text-[12px] text-[#D63B1F] shrink-0" />}
             </button>
           ))}
         </div>
