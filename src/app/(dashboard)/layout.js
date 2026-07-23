@@ -6,6 +6,7 @@ import { getCurrentUser, isAuthenticated } from '@/lib/auth'
 import Sidebar from '@/components/layout/Sidebar'
 import ProductTour from '@/components/inbox/ProductTour'
 import { CallProvider } from '@/contexts/CallContext'
+import { startSupabaseTokenRefresh, clearSupabaseToken } from '@/lib/supabaseBrowserAuth'
 
 const BLOCKED_STATUSES = ['canceled', 'past_due']
 
@@ -126,6 +127,10 @@ export default function DashboardLayout({ children }) {
         return
       }
 
+      // Valid session confirmed — start (or resume) the Path A workspace token loop
+      // so supabase-js has an accessToken for PostgREST + Realtime under RLS.
+      startSupabaseTokenRefresh()
+
       // Check if onboarding is completed (only for users who have an onboarding profile)
       try {
         const checkRes = await fetch('/api/onboarding/status', {
@@ -162,6 +167,7 @@ export default function DashboardLayout({ children }) {
           if (memberData.success && !stillMember) {
             // User has been removed from this workspace — clear session and redirect
             localStorage.removeItem('user_session')
+            clearSupabaseToken()
             router.push('/login')
             return
           }

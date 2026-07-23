@@ -1,11 +1,13 @@
 // src/lib/supabase.js - Clean version without auth helpers
 import { createClient } from '@supabase/supabase-js'
+import { getSupabaseToken } from './supabaseBrowserAuth'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
 // Simple client for basic operations (no auth)
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  accessToken: async () => getSupabaseToken(),
   auth: {
     persistSession: false,
     autoRefreshToken: false,
@@ -20,6 +22,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 
 // Create supabase client function (clean version)
 export const createSupabaseClient = () => createClient(supabaseUrl, supabaseAnonKey, {
+  accessToken: async () => getSupabaseToken(),
   auth: {
     persistSession: false,
     autoRefreshToken: false,

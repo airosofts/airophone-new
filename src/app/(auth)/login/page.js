@@ -3,6 +3,7 @@
 import { useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import { startSupabaseTokenRefresh } from '@/lib/supabaseBrowserAuth'
 
 const C = {
   bg: '#F7F6F3', bg2: '#EFEDE8', surface: '#FFFFFF',
@@ -92,6 +93,7 @@ function LoginForm() {
         identifyUser(data.session)
         trackEvent('user_logged_in', { method: 'email' })
       } catch {}
+      await startSupabaseTokenRefresh()
       router.push('/inbox')
     } catch (err) {
       setError(err.message)
