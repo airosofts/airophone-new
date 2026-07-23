@@ -3,22 +3,33 @@
 let currentToken = null
 let expiresAt = 0          // epoch ms
 let refreshTimer = null
+let inFlight = null        // dedupes concurrent refreshes (inbox fires several at once)
 
 export function getSupabaseToken() {
   return currentToken
 }
 
 export async function refreshSupabaseToken() {
+  // Collapse concurrent callers onto one network request so a reload that fires
+  // fetchMessages + fetchCalls + subscriptions doesn't mint several tokens.
+  if (inFlight) return inFlight
+  inFlight = (async () => {
+    try {
+      const res = await fetch('/api/auth/supabase-token', { credentials: 'include' })
+      if (!res.ok) { currentToken = null; return null }
+      const data = await res.json()
+      currentToken = data.token
+      expiresAt = data.expiresAt
+      return currentToken
+    } catch {
+      currentToken = null
+      return null
+    }
+  })()
   try {
-    const res = await fetch('/api/auth/supabase-token', { credentials: 'include' })
-    if (!res.ok) { currentToken = null; return null }
-    const data = await res.json()
-    currentToken = data.token
-    expiresAt = data.expiresAt
-    return currentToken
-  } catch {
-    currentToken = null
-    return null
+    return await inFlight
+  } finally {
+    inFlight = null
   }
 }
 

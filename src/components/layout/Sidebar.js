@@ -307,12 +307,12 @@ export default function Sidebar({ user, currentPath, onClose, onNotificationNavi
       )
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'messages' },
+        { event: 'INSERT', schema: 'public', table: 'messages', filter: `workspace_id=eq.${workspaceId}` },
         () => fetchUnreadCounts()
       )
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'messages' },
+        { event: 'UPDATE', schema: 'public', table: 'messages', filter: `workspace_id=eq.${workspaceId}` },
         () => fetchUnreadCounts()
       )
       .subscribe()
