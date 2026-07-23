@@ -40,8 +40,12 @@ export async function POST(request) {
       case 'customer.subscription.created':
       case 'customer.subscription.updated': {
         const sub = event.data.object
-        const priceId = sub.items.data[0]?.price?.id
+        const subItem = sub.items?.data?.[0]
+        const priceId = subItem?.price?.id
         const planName = PRICE_TO_PLAN[priceId] || 'starter'
+        // Stripe API ≥2025-03-31 moved current_period_* to the items.
+        const periodStart = subItem?.current_period_start ?? sub.current_period_start
+        const periodEnd = subItem?.current_period_end ?? sub.current_period_end
 
         // Find workspace by stripe customer
         const { data: sc } = await supabaseAdmin
@@ -61,8 +65,8 @@ export async function POST(request) {
           price_id: priceId,
           status: sub.status,
           trial_end: sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null,
-          current_period_start: sub.current_period_start ? new Date(sub.current_period_start * 1000).toISOString() : null,
-          current_period_end: sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null,
+          current_period_start: periodStart ? new Date(periodStart * 1000).toISOString() : null,
+          current_period_end: periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
           cancel_at_period_end: sub.cancel_at_period_end,
           updated_at: new Date().toISOString(),
         }, { onConflict: 'stripe_subscription_id' })
@@ -158,15 +162,22 @@ export async function POST(request) {
             .update({ credits: planCredits, updated_at: new Date().toISOString() })
             .eq('id', wallet.id)
 
-          await supabaseAdmin.from('transactions').insert({
-            workspace_id: sc.workspace_id,
+          // transactions requires user_id/wallet_id/balance_before/balance_after —
+          // the old insert used workspace_id/currency (columns that don't exist)
+          // and failed silently, so renewals never got a transaction record.
+          const { error: txError } = await supabaseAdmin.from('transactions').insert({
+            user_id: sc.user_id,
+            wallet_id: wallet.id,
             type: 'topup',
             credits: planCredits,
             amount: invoice.amount_paid / 100,
-            currency: 'USD',
+            balance_before: wallet.credits,
+            balance_after: planCredits,
             description: `Monthly ${sub?.plan_name || 'starter'} plan renewal — ${planCredits} credits`,
             status: 'completed',
+            metadata: { plan_name: sub?.plan_name || 'starter', stripe_invoice_id: invoice.id },
           })
+          if (txError) console.error('[webhook] renewal transaction insert failed:', txError.message)
         }
         break
       }
@@ -175,7 +186,7 @@ export async function POST(request) {
         const sub = event.data.object
         const { data: sc } = await supabaseAdmin
           .from('stripe_customers')
-          .select('workspace_id')
+          .select('user_id, workspace_id')
           .eq('stripe_customer_id', sub.customer)
           .single()
         if (!sc) break
@@ -188,20 +199,35 @@ export async function POST(request) {
           .update({ plan_name: null, plan_status: 'canceled', updated_at: new Date().toISOString() })
           .eq('id', sc.workspace_id)
 
-        // Zero out credits immediately — prevent abuse after cancellation
+        // Zero out credits immediately — prevent abuse after cancellation.
+        // Read the wallet first so the audit transaction can record the
+        // balance change (and because transactions needs wallet_id, not
+        // workspace_id — the old insert used nonexistent columns and failed
+        // silently).
+        const { data: wallet } = await supabaseAdmin
+          .from('wallets')
+          .select('id, credits')
+          .eq('workspace_id', sc.workspace_id)
+          .maybeSingle()
+
         await supabaseAdmin.from('wallets')
           .update({ credits: 0, updated_at: new Date().toISOString() })
           .eq('workspace_id', sc.workspace_id)
 
-        await supabaseAdmin.from('transactions').insert({
-          workspace_id: sc.workspace_id,
-          type: 'adjustment',
-          credits: 0,
-          amount: 0,
-          currency: 'USD',
-          description: 'Credits zeroed — subscription canceled',
-          status: 'completed',
-        })
+        if (wallet) {
+          const { error: txError } = await supabaseAdmin.from('transactions').insert({
+            user_id: sc.user_id,
+            wallet_id: wallet.id,
+            type: 'adjustment',
+            credits: 0,
+            amount: 0,
+            balance_before: wallet.credits,
+            balance_after: 0,
+            description: 'Credits zeroed — subscription canceled',
+            status: 'completed',
+          })
+          if (txError) console.error('[webhook] cancel transaction insert failed:', txError.message)
+        }
 
         // Queue workspace phone numbers for recycling (quarantine period varies by tenure)
         const quarantineUntil = await getQuarantineUntilIso(sc.workspace_id)
