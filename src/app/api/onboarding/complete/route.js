@@ -6,20 +6,32 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
 
 const PLAN_CREDITS = { starter: 200, growth: 500, enterprise: 1000 }
 
+// Price IDs live in env (Stripe LIVE mode), never in client code: the client
+// only sends a plan name. The old flow trusted a client-sent price_id — and
+// the hardcoded IDs it sent were test-mode prices that don't exist under the
+// live key, so every production subscription create failed with
+// "No such price".
+const PLAN_PRICE_IDS = {
+  starter: process.env.STRIPE_STARTER_PRICE_ID,
+  growth: process.env.STRIPE_GROWTH_PRICE_ID,
+  enterprise: process.env.STRIPE_ENTERPRISE_PRICE_ID,
+}
+
 export async function POST(request) {
   try {
     const userId = request.headers.get('x-user-id')
     const workspaceId = request.headers.get('x-workspace-id')
     if (!userId || !workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { plan_name, price_id, payment_method_id, cardholder_name, coupon_id } = await request.json()
+    const { plan_name, payment_method_id, cardholder_name, coupon_id } = await request.json()
 
     if (!payment_method_id || !cardholder_name) {
       return NextResponse.json({ error: 'Payment method and cardholder name are required' }, { status: 400 })
     }
 
-    if (!plan_name || !price_id) {
-      return NextResponse.json({ error: 'Plan name and price ID are required' }, { status: 400 })
+    const price_id = PLAN_PRICE_IDS[plan_name]
+    if (!price_id) {
+      return NextResponse.json({ error: 'Invalid plan selected' }, { status: 400 })
     }
 
     // ── Idempotency guard ──────────────────────────────────────────────────
@@ -100,15 +112,17 @@ export async function POST(request) {
     // Get payment method details for storage
     const paymentMethod = await stripe.paymentMethods.retrieve(payment_method_id)
 
-    // Save card in payment_methods table
+    // Save card in payment_methods table. Skip if this exact payment method
+    // was already saved — a retry after a mid-flow failure (e.g. subscription
+    // create error) re-runs this block and used to insert a duplicate card row.
     const { data: existingCards } = await supabaseAdmin
       .from('payment_methods')
-      .select('id')
+      .select('id, stripe_payment_method_id')
       .eq('user_id', userId)
 
     const isDefault = !existingCards || existingCards.length === 0
 
-    await supabaseAdmin.from('payment_methods').insert({
+    if (!existingCards?.some(c => c.stripe_payment_method_id === payment_method_id)) await supabaseAdmin.from('payment_methods').insert({
       user_id: userId,
       workspace_id: workspaceId,
       stripe_payment_method_id: payment_method_id,
@@ -168,6 +182,9 @@ export async function POST(request) {
       subscriptionParams.discounts = [{ coupon: stripeCouponId }]
     }
     const subscription = await stripe.subscriptions.create(subscriptionParams)
+    const subItem = subscription.items?.data?.[0]
+    const periodStart = subItem?.current_period_start ?? subscription.current_period_start
+    const periodEnd = subItem?.current_period_end ?? subscription.current_period_end
 
     // Record coupon redemption
     if (couponRecord) {
@@ -201,10 +218,10 @@ export async function POST(request) {
       price_id,
       status: subscription.status,
       trial_end: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
-      current_period_start: subscription.current_period_start
-        ? new Date(subscription.current_period_start * 1000).toISOString() : null,
-      current_period_end: subscription.current_period_end
-        ? new Date(subscription.current_period_end * 1000).toISOString() : null,
+      // Stripe API ≥2025-03-31 moved current_period_* from the subscription
+      // to its items; read the item first, fall back for older API versions.
+      current_period_start: periodStart ? new Date(periodStart * 1000).toISOString() : null,
+      current_period_end: periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
     })
 
     // ── Wallet: add plan credits ───────────────────────────────────────────
