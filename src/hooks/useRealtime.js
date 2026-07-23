@@ -488,6 +488,12 @@ export function usePhoneNumbers(workspaceId) {
 export function useRealtimeConversations(fromNumber) {
   const [conversations, setConversations] = useState([])
   const [loading, setLoading] = useState(true)
+  // False until the first NETWORK response for the current line lands.
+  // Cache-hydrated state (stale-while-revalidate) keeps it false — consumers
+  // that compare timestamps (the notification tone) must not baseline off
+  // stale cached data, or the fresh fetch right after rings for messages
+  // that arrived while the app was closed.
+  const [freshLoaded, setFreshLoaded] = useState(false)
   const channelRef = useRef(null)
   const lastFetchRef = useRef(0)
   const initialLoadDone = useRef(false)
@@ -548,6 +554,7 @@ export function useRealtimeConversations(fromNumber) {
       }
       
       lastFetchRef.current = now
+      setFreshLoaded(true)
 
       // Persist the fresh server list so the next page load hydrates
       // instantly instead of showing the skeleton (stale-while-revalidate).
@@ -573,6 +580,7 @@ export function useRealtimeConversations(fromNumber) {
     // replace it with fresh data (stale-while-revalidate).
     setConversations([])
     setLoading(true)
+    setFreshLoaded(false)
 
     let cancelled = false
     ;(async () => {
@@ -743,6 +751,7 @@ export function useRealtimeConversations(fromNumber) {
   return {
     conversations,
     loading,
+    freshLoaded,
     refetch,
     deleteConversation,
     setActiveConversation,

@@ -79,21 +79,21 @@ const COUNTRIES = [
 ]
 
 const PLANS = [
+  // Stripe price IDs are resolved SERVER-SIDE from the plan id (env
+  // STRIPE_*_PRICE_ID) — never hardcode them here: the previous hardcoded ids
+  // were test-mode prices, which the live key rejects with "No such price".
   {
     id: 'starter', name: 'Starter', price: 9, credits: 200, overage: 0.04,
-    priceId: 'price_1TLljUG8ztKaoxw1p9Taxc8W',
     features: ['200 credits / month', 'Unlimited calling', 'All features included', 'Unified inbox & AI scenarios', 'Phone number provisioning', '24/7 support & analytics'],
     featured: false,
   },
   {
     id: 'growth', name: 'Growth', price: 29, credits: 500, overage: 0.03,
-    priceId: 'price_1TLljWG8ztKaoxw11Gi6wfQF',
     features: ['500 credits / month', 'Unlimited calling', 'All features included', 'Unified inbox & AI scenarios', 'Phone number provisioning', '24/7 support & analytics'],
     featured: true,
   },
   {
     id: 'enterprise', name: 'Enterprise', price: 59, credits: 1000, overage: 0.02,
-    priceId: 'price_1TLljYG8ztKaoxw10g2MFLjV',
     features: ['1,000 credits / month', 'Unlimited calling', 'All features included', 'Unified inbox & AI scenarios', 'Phone number provisioning', '24/7 support & analytics'],
     featured: false,
   },
@@ -615,7 +615,7 @@ export default function OnboardingPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-user-id': user.userId, 'x-workspace-id': user.workspaceId },
         body: JSON.stringify({
-          plan_name: plan.id, price_id: plan.priceId,
+          plan_name: plan.id,
           payment_method_id: paymentMethodId, cardholder_name: cardholderName,
           coupon_id: couponId || null,
         }),
