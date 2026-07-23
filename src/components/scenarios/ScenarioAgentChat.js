@@ -89,6 +89,8 @@ const TypingDots = () => (
 )
 
 const fmtTime = iso => new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(new Date(iso))
+// Same short-date format the campaigns sidebar uses (e.g. "Jul 21").
+const fmtDay = (d) => (d ? new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '')
 
 const relTime = iso => {
   if (!iso) return ''
@@ -1325,7 +1327,7 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
           <i className="fas fa-wand-magic-sparkles text-white text-xl" />
         </div>
         <h1 className="text-2xl md:text-3xl font-semibold text-[#131210] tracking-tight">
-          Build your <span className="text-[#D63B1F]">AI</span> texting agent
+          Build your <span className="text-[#D63B1F] font-extrabold text-[1.1em]">AI texting agent</span>
         </h1>
         <p className="text-xs text-[#9B9890] mt-2 mb-6 max-w-lg mx-auto leading-relaxed">
           <i className="fas fa-circle-info mr-1.5 text-[10px]" />
@@ -1565,23 +1567,22 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
     const active = s ? !!s.is_active : true
     return (
       <div className="flex items-center gap-3 px-5 py-2.5 border-b border-[#E3E1DB] bg-white shrink-0">
-        {/* Segmented [ Form | Chat ] toggle — THE switcher, same in both views */}
-        <div className="inline-flex rounded-lg border border-[#E3E1DB] bg-[#F7F6F3] p-0.5 shrink-0">
+        {/* Segmented [ Form | Chat ] toggle — same pill styling as the campaigns SMS / Ringless tabs */}
+        <div className="inline-flex items-center gap-1 p-1 bg-[#F1EFEA] border border-[#E3E1DB] rounded-lg shrink-0">
           <button type="button"
             onClick={() => view !== 'form' && openForm(id, displayName || '', linkedChatId)}
-            className={`px-3 py-1 text-xs font-medium rounded-md ${
-              view === 'form' ? 'bg-white text-[#131210] shadow-sm' : 'text-[#5C5A55] hover:text-[#131210]'
-            }`}>
-            Form
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-md text-sm transition-colors ${view === 'form' ? 'bg-[#D63B1F] shadow-sm' : 'hover:bg-white'}`}>
+            <i className={`fas fa-sliders text-xs ${view === 'form' ? 'text-white' : 'text-[#9B9890]'}`} />
+            <span className={view === 'form' ? 'font-semibold text-white' : 'font-medium text-[#5C5A55]'}>Form</span>
           </button>
           <button type="button" disabled={!linkedChatId}
             onClick={() => view !== 'chat' && linkedChatId && openChat(linkedChatId)}
             title={linkedChatId ? 'Continue editing conversationally' : 'No builder chat for this scenario'}
-            className={`px-3 py-1 text-xs font-medium rounded-md ${
-              view === 'chat' ? 'bg-white text-[#131210] shadow-sm'
-                : linkedChatId ? 'text-[#5C5A55] hover:text-[#131210]' : 'text-[#C9C6BE] cursor-not-allowed'
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-md text-sm transition-colors ${
+              view === 'chat' ? 'bg-[#D63B1F] shadow-sm' : linkedChatId ? 'hover:bg-white' : 'cursor-not-allowed'
             }`}>
-            Chat
+            <i className={`fas fa-comment-dots text-xs ${view === 'chat' ? 'text-white' : linkedChatId ? 'text-[#9B9890]' : 'text-[#C9C6BE]'}`} />
+            <span className={view === 'chat' ? 'font-semibold text-white' : linkedChatId ? 'font-medium text-[#5C5A55]' : 'font-medium text-[#C9C6BE]'}>Chat</span>
           </button>
         </div>
         <span className="w-7 h-7 rounded-lg bg-[#D63B1F] flex items-center justify-center shrink-0">
@@ -1610,12 +1611,12 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
   // ----- render -----
 
   return (
-    <div className="h-full flex bg-[#F7F6F3]">
+    <div className="h-full flex bg-[#F7F6F3]" style={{ fontFamily: 'DM Sans, system-ui, sans-serif' }}>
       {/* LEFT — scenarios (merged with their builder chats) */}
       {sidebarCollapsed ? (
-        <aside className="hidden md:flex flex-col items-center gap-1.5 w-12 shrink-0 bg-white border-r border-[#E3E1DB] py-3">
+        <aside className="hidden md:flex flex-col items-center gap-1.5 w-12 shrink-0 bg-[#FBFAF8] border-r border-[#E3E1DB] py-3">
           <button type="button" onClick={() => setSidebarCollapsed(false)} title="Expand scenarios"
-            className="w-8 h-8 rounded-lg text-[#5C5A55] hover:bg-[#F7F6F3] flex items-center justify-center">
+            className="w-8 h-8 rounded-lg text-[#5C5A55] hover:bg-white flex items-center justify-center">
             <i className="fas fa-chevron-right text-xs" />
           </button>
           <button type="button" onClick={startNewChat} title="New scenario"
@@ -1624,30 +1625,29 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
           </button>
         </aside>
       ) : (
-        <aside className="hidden md:flex flex-col w-60 shrink-0 bg-white border-r border-[#E3E1DB]">
+        <aside className="hidden md:flex flex-col w-72 shrink-0 bg-[#FBFAF8] border-r border-[#E3E1DB]">
           <div className="p-3 pb-2 flex items-center gap-2">
             <button type="button" onClick={startNewChat}
-              className="flex-1 px-3 py-2 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg">
-              + New scenario
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-white bg-[#D63B1F] hover:bg-[#c23119] rounded-lg transition-colors">
+              <i className="fas fa-plus text-xs" /> New scenario
             </button>
             <button type="button" onClick={() => setSidebarCollapsed(true)} title="Collapse"
-              className="w-8 h-8 rounded-lg text-[#9B9890] hover:bg-[#F7F6F3] hover:text-[#5C5A55] flex items-center justify-center shrink-0">
+              className="w-8 h-8 rounded-lg text-[#9B9890] hover:bg-white hover:text-[#5C5A55] flex items-center justify-center shrink-0">
               <i className="fas fa-chevron-left text-xs" />
             </button>
           </div>
           <div className="px-3 pb-2">
             <div className="relative">
-              <i className="fas fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9B9890] text-[10px]" />
+              <i className="fas fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9B9890] text-xs" />
               <input value={sidebarSearch} onChange={e => setSidebarSearch(e.target.value)}
                 placeholder="Search scenarios…"
-                className="w-full pl-7 pr-2.5 py-1.5 border border-[#E3E1DB] rounded-lg text-xs focus:outline-none focus:border-[#D63B1F]" />
+                className="w-full pl-7 pr-2 py-2 border border-[#E3E1DB] rounded-md text-xs bg-white focus:outline-none focus:ring-1 focus:ring-[#D63B1F]" />
             </div>
           </div>
-          <p className="px-4 pb-1.5 text-[11px] font-semibold uppercase tracking-widest text-[#9B9890]">Scenarios</p>
-          <div className="flex-1 overflow-y-auto pb-3">
+          <div className="flex-1 overflow-y-auto py-1">
             {(() => {
               if (scenarios === null || chats === null) {
-                return <p className="px-4 py-2 text-xs text-[#9B9890]">Loading…</p>
+                return <p className="px-4 py-3 text-xs text-[#9B9890]">Loading…</p>
               }
               // One row per SCENARIO (matched to its chat by scenario_id);
               // chats that haven't produced a scenario yet show as drafts.
@@ -1667,7 +1667,7 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
                   .map(c => ({ key: `d-${c.id}`, kind: 'draft', chat: c })),
               ]
               if (rows.length === 0) {
-                return <p className="px-4 py-2 text-xs text-[#9B9890] leading-relaxed">{q ? 'No matches.' : 'No scenarios yet.'}</p>
+                return <p className="px-4 py-3 text-xs text-[#9B9890]">{q ? 'No matches.' : 'No scenarios yet.'}</p>
               }
               return rows.map(row => {
                 const isDraft = row.kind === 'draft'
@@ -1681,7 +1681,7 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
                    (!isDraft && confirmDelete.kind === 'scenario' && confirmDelete.id === row.scenario.id))
                 if (deleting) {
                   return (
-                    <div key={row.key} className="flex items-center gap-2 px-4 py-2 bg-[rgba(214,59,31,0.05)]">
+                    <div key={row.key} className="flex items-center gap-2 px-3 py-2.5 border-l-2 border-transparent bg-[rgba(214,59,31,0.05)]">
                       <span className="flex-1 min-w-0 truncate text-xs text-[#D63B1F] font-medium">
                         Delete{isDraft ? ' draft' : ''}?
                       </span>
@@ -1702,55 +1702,63 @@ export default function ScenarioAgentChat({ onSwitchToManual }) {
                     onClick={() => isDraft
                       ? openChat(row.chat.id)
                       : openForm(row.scenario.id, row.scenario.name, row.chat?.id || null)}
-                    className={`group flex items-center gap-2 px-4 py-2 cursor-pointer ${current ? 'bg-[#F7F6F3]' : 'hover:bg-[#FBFAF8]'}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                      isDraft ? 'bg-[#D4D1C9]' : row.scenario.is_active ? 'bg-[#1F8C4A]' : 'bg-[#C9C6BE]'
-                    }`} title={isDraft ? 'Draft' : row.scenario.is_active ? 'Active' : 'Inactive'} />
-                    <span className={`flex-1 min-w-0 truncate text-[13px] ${current ? 'font-semibold text-[#131210]' : 'text-[#5C5A55]'}`}>
-                      {isDraft ? `Draft — ${row.chat.title || 'Untitled'}` : row.scenario.name}
-                    </span>
-                    {/* "…" menu */}
-                    <div className="relative shrink-0">
-                      <button type="button" title="More"
-                        onClick={e => { e.stopPropagation(); setMenuOpenId(menuOpenId === row.key ? null : row.key) }}
-                        className={`p-1 text-[#9B9890] hover:text-[#131210] transition-opacity ${menuOpenId === row.key ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                        <i className="fas fa-ellipsis text-[12px]" />
-                      </button>
-                      {menuOpenId === row.key && (
-                        <>
-                          <div className="fixed inset-0 z-40" onClick={e => { e.stopPropagation(); setMenuOpenId(null) }} />
-                          <div className="absolute right-0 top-full mt-1 w-44 bg-white border border-[#E3E1DB] rounded-lg shadow-lg z-50 py-1"
-                            onClick={e => e.stopPropagation()}>
-                            {!isDraft && (
-                              <>
-                                <button type="button" onClick={() => toggleActiveById(row.scenario.id, row.scenario.is_active)}
-                                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-[#5C5A55] hover:bg-[#F7F6F3]">
-                                  <i className={`fas ${row.scenario.is_active ? 'fa-pause' : 'fa-play'} w-4 text-center text-xs`} />
-                                  {row.scenario.is_active ? 'Pause' : 'Resume'}
-                                </button>
+                    className={`group w-full text-left px-3 py-2.5 cursor-pointer border-l-2 transition-colors ${current ? 'bg-white border-[#D63B1F]' : 'border-transparent hover:bg-white'}`}>
+                    <div className="flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full shrink-0"
+                        style={{ background: isDraft ? '#9B9890' : row.scenario.is_active ? '#2563EB' : '#CA8A04' }}
+                        title={isDraft ? 'Draft' : row.scenario.is_active ? 'Active' : 'Inactive'} />
+                      <span className="text-sm text-[#131210] truncate flex-1">
+                        {isDraft ? (row.chat.title || 'Untitled') : row.scenario.name}
+                      </span>
+                      {/* date at rest → "…" menu on hover/open */}
+                      <div className="relative shrink-0">
+                        <span className={`text-[10px] text-[#9B9890] ${menuOpenId === row.key ? 'hidden' : 'group-hover:hidden'}`}>
+                          {fmtDay(isDraft ? row.chat.created_at : row.scenario.created_at)}
+                        </span>
+                        <button type="button" title="More"
+                          onClick={e => { e.stopPropagation(); setMenuOpenId(menuOpenId === row.key ? null : row.key) }}
+                          className={`p-1 -mr-1 text-[#9B9890] hover:text-[#131210] ${menuOpenId === row.key ? 'block' : 'hidden group-hover:block'}`}>
+                          <i className="fas fa-ellipsis text-[12px]" />
+                        </button>
+                        {menuOpenId === row.key && (
+                          <>
+                            <div className="fixed inset-0 z-40" onClick={e => { e.stopPropagation(); setMenuOpenId(null) }} />
+                            <div className="absolute right-0 top-full mt-1 w-44 bg-white border border-[#E3E1DB] rounded-lg shadow-lg z-50 py-1"
+                              onClick={e => e.stopPropagation()}>
+                              {!isDraft && (
+                                <>
+                                  <button type="button" onClick={() => toggleActiveById(row.scenario.id, row.scenario.is_active)}
+                                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-[#5C5A55] hover:bg-[#F7F6F3]">
+                                    <i className={`fas ${row.scenario.is_active ? 'fa-pause' : 'fa-play'} w-4 text-center text-xs`} />
+                                    {row.scenario.is_active ? 'Pause' : 'Resume'}
+                                  </button>
+                                  <button type="button"
+                                    onClick={() => { setMenuOpenId(null); router.push(`/scenarios/${row.scenario.id}/edit`) }}
+                                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-[#5C5A55] hover:bg-[#F7F6F3]">
+                                    <i className="fas fa-pencil w-4 text-center text-xs" />Edit
+                                  </button>
+                                  <button type="button"
+                                    onClick={() => { setMenuOpenId(null); setConfirmDelete({ kind: 'scenario', id: row.scenario.id, linkedChatId: row.chat?.id || null }) }}
+                                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-[#D63B1F] hover:bg-[rgba(214,59,31,0.06)]">
+                                    <i className="fas fa-trash w-4 text-center text-xs" />Delete
+                                  </button>
+                                </>
+                              )}
+                              {isDraft && (
                                 <button type="button"
-                                  onClick={() => { setMenuOpenId(null); router.push(`/scenarios/${row.scenario.id}/edit`) }}
-                                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-[#5C5A55] hover:bg-[#F7F6F3]">
-                                  <i className="fas fa-pencil w-4 text-center text-xs" />Edit
-                                </button>
-                                <button type="button"
-                                  onClick={() => { setMenuOpenId(null); setConfirmDelete({ kind: 'scenario', id: row.scenario.id, linkedChatId: row.chat?.id || null }) }}
+                                  onClick={() => { setMenuOpenId(null); setConfirmDelete({ kind: 'chat', id: row.chat.id }) }}
                                   className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-[#D63B1F] hover:bg-[rgba(214,59,31,0.06)]">
-                                  <i className="fas fa-trash w-4 text-center text-xs" />Delete
+                                  <i className="fas fa-trash w-4 text-center text-xs" />Delete chat
                                 </button>
-                              </>
-                            )}
-                            {isDraft && (
-                              <button type="button"
-                                onClick={() => { setMenuOpenId(null); setConfirmDelete({ kind: 'chat', id: row.chat.id }) }}
-                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-[#D63B1F] hover:bg-[rgba(214,59,31,0.06)]">
-                                <i className="fas fa-trash w-4 text-center text-xs" />Delete chat
-                              </button>
-                            )}
-                          </div>
-                        </>
-                      )}
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </div>
                     </div>
+                    <p className="text-[11px] text-[#9B9890] truncate mt-0.5 pl-3.5">
+                      {isDraft ? 'Draft' : (row.scenario.is_active ? 'Active' : 'Inactive')}
+                    </p>
                   </div>
                 )
               })
