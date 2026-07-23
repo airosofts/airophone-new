@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { clearSupabaseToken } from './supabaseBrowserAuth'
 
 // Login function
 export async function loginWithEmailPassword(email, password) {
@@ -234,6 +235,7 @@ export async function logout() {
   }
 
   localStorage.removeItem('user_session')
+  clearSupabaseToken()
   try {
     const { resetIdentity } = await import('./analytics')
     resetIdentity()
