@@ -24,6 +24,11 @@ const PUBLIC_API_ROUTES = [
   '/api/auth/google',
   '/api/auth/forgot-password',   // send-otp / verify-otp / reset — all pre-auth
   '/api/webhooks',   // Telnyx + Monday webhooks — no session, verified by signature
+  // Stripe webhook lives OUTSIDE /api/webhooks (at /api/stripe/webhook), so it
+  // needs its own entry. Without it the middleware 401s every Stripe delivery
+  // — Stripe retries for days, then auto-disables the endpoint. Stripe
+  // signature verification inside the route is the real gate.
+  '/api/stripe/webhook',
   '/api/external',   // External API key endpoints — Bearer-token auth handled in route
   // Monday Integration Recipe endpoints — authenticated by a JWT monday signs
   // with MONDAY_SIGNING_SECRET (verified inside each route via
