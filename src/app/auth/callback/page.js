@@ -75,6 +75,12 @@ function AuthCallbackInner() {
         identifyUser(data.session)
         trackEvent(data.isNewUser ? 'user_signed_up' : 'user_logged_in', { method: 'google' })
       } catch {}
+      try {
+        if (data.isNewUser) {
+          const { trackSignUpConversion } = await import('@/lib/google-conversions')
+          trackSignUpConversion('google')
+        }
+      } catch {}
       setStatus('Redirecting...')
       // Invited users go to inbox; brand-new users (no invite) go to onboarding
       router.push(data.isNewUser ? '/onboarding' : '/inbox')

@@ -132,6 +132,12 @@ function SignupForm() {
         identifyUser(data.session)
         trackEvent('user_signed_up', { method: 'email', ...(attribution || {}) })
       } catch {}
+      try {
+        if (!data.session.isInvited) {
+          const { trackSignUpConversion } = await import('@/lib/google-conversions')
+          trackSignUpConversion('email')
+        }
+      } catch {}
       router.push(data.session.isInvited ? '/inbox' : '/onboarding')
     } catch (err) {
       setError(err?.message || 'An unexpected error occurred')
