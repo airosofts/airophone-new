@@ -8,6 +8,10 @@ import AnalyticsProvider from '@/components/AnalyticsProvider'
 
 // Google tag (gtag.js) — hardcoded, loads on every page via the root layout.
 const GA_MEASUREMENT_ID = 'G-1DQJB2E530'
+// Google Ads account id ("AW-XXXXXXXXX") — enables direct Ads conversion
+// tracking (see src/lib/google-conversions.js). Optional until the ads
+// manager provides it.
+const GOOGLE_ADS_ID = process.env.NEXT_PUBLIC_GOOGLE_ADS_ID
 
 const jakarta = Plus_Jakarta_Sans({ subsets: ['latin'], weight: ['300', '400', '500', '600'], variable: '--font-sans' })
 const jetbrains = JetBrains_Mono({ subsets: ['latin'], weight: ['400', '500'], variable: '--font-mono' })
@@ -48,6 +52,7 @@ export default function RootLayout({ children }) {
             function gtag(){dataLayer.push(arguments);}
             gtag('js', new Date());
             gtag('config', '${GA_MEASUREMENT_ID}');
+            ${GOOGLE_ADS_ID ? `gtag('config', '${GOOGLE_ADS_ID}');` : ''}
           `}
         </Script>
       </head>

@@ -622,6 +622,10 @@ export default function OnboardingPage() {
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Failed to complete setup'); setSaving(false); return }
+      try {
+        const { trackTrialStartConversion } = await import('@/lib/google-conversions')
+        trackTrialStartConversion(plan.id)
+      } catch {}
       // Upgrade session so messagingProfileId is populated if already set
       let currentUser = user
       const upgradeRes = await fetch('/api/auth/session-upgrade', { headers: { 'x-user-id': user.userId } })
