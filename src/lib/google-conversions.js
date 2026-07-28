@@ -19,15 +19,26 @@ function gtagSafe(...args) {
   }
 }
 
+// Plain dataLayer push — gtag('event', ...) entries are NOT visible to GTM
+// custom-event triggers (they're arguments-style), so we also push the
+// {event: ...} shape the GTM container can trigger tags on.
+function dataLayerPush(payload) {
+  if (typeof window !== 'undefined' && Array.isArray(window.dataLayer)) {
+    window.dataLayer.push(payload)
+  }
+}
+
 // Account created (email form or Google OAuth). Not fired for invited team
 // members — those aren't ad-driven signups.
 export function trackSignUpConversion(method) {
   gtagSafe('event', 'sign_up', { method })
+  dataLayerPush({ event: 'sign_up', method })
   if (SIGNUP_SEND_TO) gtagSafe('event', 'conversion', { send_to: SIGNUP_SEND_TO })
 }
 
 // Onboarding completed: card added + 7-day trial subscription created.
 export function trackTrialStartConversion(plan) {
   gtagSafe('event', 'start_trial', { plan })
+  dataLayerPush({ event: 'start_trial', plan })
   if (TRIAL_SEND_TO) gtagSafe('event', 'conversion', { send_to: TRIAL_SEND_TO, value: 0.0, currency: 'USD' })
 }
