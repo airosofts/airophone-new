@@ -73,6 +73,11 @@ function SignupForm() {
     if (inviteEmail) setEmail(inviteEmail)
   }, [inviteEmail])
 
+  // Funnel step 1: user landed on the signup page
+  useEffect(() => {
+    import('@/lib/google-conversions').then(m => m.trackBeginSignup()).catch(() => {})
+  }, [])
+
   useEffect(() => {
     if (method === 'google' && !autoGoogleFired.current) {
       autoGoogleFired.current = true
