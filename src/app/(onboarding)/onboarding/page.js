@@ -478,6 +478,8 @@ export default function OnboardingPage() {
         .catch(() => {})
     }
     setReady(true)
+    // Funnel step 2: account created, user reached onboarding
+    import('@/lib/google-conversions').then(m => m.trackStartOnboarding()).catch(() => {})
   }, [])
 
   const [isMobile, setIsMobile] = useState(false)
@@ -623,8 +625,15 @@ export default function OnboardingPage() {
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Failed to complete setup'); setSaving(false); return }
       try {
-        const { trackTrialStartConversion } = await import('@/lib/google-conversions')
-        trackTrialStartConversion(plan.id)
+        // alreadyCompleted = idempotent retry (double-click, refresh, back
+        // navigation) — the account was registered on an earlier request, so
+        // NO conversion may fire again (ads-team once-per-account rule).
+        if (!data.alreadyCompleted) {
+          const { trackTrialStartConversion, trackSignupCompleted } = await import('@/lib/google-conversions')
+          trackTrialStartConversion(plan.id)
+          // Funnel step 3 + Google Ads conversion — once per new account
+          trackSignupCompleted(plan.id, user?.userId)
+        }
       } catch {}
       // Upgrade session so messagingProfileId is populated if already set
       let currentUser = user

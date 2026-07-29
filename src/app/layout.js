@@ -8,10 +8,9 @@ import AnalyticsProvider from '@/components/AnalyticsProvider'
 
 // Google tag (gtag.js) — hardcoded, loads on every page via the root layout.
 const GA_MEASUREMENT_ID = 'G-1DQJB2E530'
-// Google Ads account id ("AW-XXXXXXXXX") — enables direct Ads conversion
-// tracking (see src/lib/google-conversions.js). Optional until the ads
-// manager provides it.
-const GOOGLE_ADS_ID = process.env.NEXT_PUBLIC_GOOGLE_ADS_ID
+// Google Ads account id — enables direct Ads conversion tracking (see
+// src/lib/google-conversions.js). Provided by the ads manager; env overrides.
+const GOOGLE_ADS_ID = process.env.NEXT_PUBLIC_GOOGLE_ADS_ID || 'AW-18356615565'
 // Google Tag Manager container — provided by the ads team (Tahir). GTM shares
 // window.dataLayer with the gtag.js tag below; conversion events also push
 // plain {event: ...} entries so GTM custom-event triggers can fire on them.
